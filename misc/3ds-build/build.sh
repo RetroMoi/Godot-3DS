@@ -2,7 +2,7 @@
 # Compila o Godot 2.1 para 3DS (e opcionalmente o editor Linux) dentro do container devkitPro.
 # Uso (a partir de qualquer pasta): misc/3ds-build/build.sh [template|editor|package|all]
 #   template : compila bin/godot.3ds.elf e gera bin/godot.3dsx (sem jogo)
-#              OPTIMIZE=max|speed|size (-O3/-O2/-Os; padrão max)
+#              OPTIMIZE=max|speed|size (-O3/-O2/-Os; padrão speed)
 #   package  : embute um projeto na RomFS -> bin/<nome>.3dsx
 #              PROJECT=<pasta do projeto, relativa à raiz do repo> (padrão: misc/3ds-build/test_project)
 #   WITH_EDITOR=0 misc/3ds-build/build.sh template   -> imagem sem libs X11 (só template 3DS)
@@ -19,7 +19,7 @@ docker build --build-arg WITH_EDITOR="${WITH_EDITOR:-1}" -t "$IMG" "$HERE"
 run() { docker run --rm -v "$SRC":/src "$IMG" bash -c "$1"; }
 
 if [[ $WHAT == template || $WHAT == all ]]; then
-  run "scons -j$JOBS platform=3ds target=release tools=no disable_3d=yes optimize=${OPTIMIZE:-max} \
+  run "scons -j$JOBS platform=3ds target=release tools=no disable_3d=yes optimize=${OPTIMIZE:-speed} \
     && arm-none-eabi-size bin/godot.3ds.elf \
     && smdhtool --create 'Godot 2.1 3DS' 'Template' 'Homebrodot' misc/3ds-build/smdh_icon.png bin/godot.smdh \
     && 3dsxtool bin/godot.3ds.elf bin/godot.3dsx --smdh=bin/godot.smdh"

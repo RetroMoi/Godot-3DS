@@ -29,7 +29,9 @@ def get_opts():
         # the malloc heap. Godot uses linear memory only for GPU textures/buffers and audio.
         ('linear_heap_mb', 'Linear heap reserved for GPU/audio buffers, in MB', '12'),
         # Code size matters on 3DS: it is loaded into the same RAM the game uses.
-        ('optimize', 'Release optimization: max (-O3), speed (-O2) or size (-Os)', 'max'),
+        # Measured on a New 3DS (bench_project): -O2 runs as fast as -O3 with 1.3 MB less code;
+        # -Os saves 5.2 MB but is 8-12% slower, and CPU is the tighter limit for games.
+        ('optimize', 'Release optimization: max (-O3), speed (-O2) or size (-Os)', 'speed'),
     ]
 
 
