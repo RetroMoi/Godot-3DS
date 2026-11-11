@@ -75,6 +75,7 @@ class OS_3DS : public OS {
 	Point2i last_mouse_pos;
 	Point2 touch_pos;
 	bool touch_pressed;
+	mutable bool data_dir_created;
 	VideoMode video_mode;
 	
 	bool use_vsync;
@@ -231,7 +232,7 @@ public:
 // 	virtual String get_locale() const;
 
 // 	String get_safe_application_name() const;
-// 	virtual String get_data_dir() const { return "."; }
+	virtual String get_data_dir() const;
 	virtual String get_resource_dir() const { 
 		//printf("res dir: %s\n", Globals::get_singleton()->get_resource_path().utf8().get_data()); return Globals::get_singleton()->get_resource_path(); 
 			return "romfs:/";
@@ -296,6 +297,7 @@ public:
 	void run();
 	void processInput();
 	void _send_axis(int p_axis, float p_value);
+	void _dispatch_apt_events();
 
 	OS_3DS();
 	virtual ~OS_3DS();

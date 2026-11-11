@@ -35,6 +35,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include "print_string.h"
 #include "servers/physics/physics_server_sw.h"
 #include "errno.h"
@@ -137,10 +138,28 @@ void __system_allocateHeaps(void)
 
 static aptHookCookie apt_hook_cookie;
 
+// APT hooks may run outside the main loop (e.g. on the APT event thread), so they only record
+// what happened; OS_3DS::run() turns that into MainLoop notifications on the main thread.
+static volatile bool apt_lost_focus = false;
+static volatile bool apt_got_focus = false;
+static volatile bool apt_exiting = false;
+
 static void apt_hook_callback(APT_HookType hook, void* param)
 {
-	if (hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) {
-		
+	switch (hook) {
+		case APTHOOK_ONSUSPEND: // HOME menu / another applet opened
+		case APTHOOK_ONSLEEP:   // lid closed
+			apt_lost_focus = true;
+			break;
+		case APTHOOK_ONRESTORE:
+		case APTHOOK_ONWAKEUP:
+			apt_got_focus = true;
+			break;
+		case APTHOOK_ONEXIT:    // closed from the HOME menu (or power button)
+			apt_exiting = true;
+			break;
+		default:
+			break;
 	}
 }
 
@@ -150,6 +169,7 @@ OS_3DS::OS_3DS()
 {	
 	platform_3ds = NULL;
 	touch_pressed = false;
+	data_dir_created = false;
 	gfxInitDefault();
 	// Send stderr to svcOutputDebugString (shown in the Azahar/Citra log and by debuggers);
 	// stdout is redirected to stderr in vprint() below.
@@ -178,13 +198,20 @@ void OS_3DS::run()
 	
 	main_loop->init();
 	unsigned int frame = 0;
-	while (aptMainLoop())
+	bool closed_by_system = false;
+	while (true)
 	{
+		if (!aptMainLoop()) {
+			closed_by_system = true;
+			break;
+		}
+
 		// Sample memory peaks about once per second (mallinfo walks the heap).
 		if ((frame++ % 60) == 0)
 			platform_3ds->update_peaks();
 
 		processInput();
+		_dispatch_apt_events();
 
 		if (Main::iteration()==true)
 			break;
@@ -192,7 +219,41 @@ void OS_3DS::run()
 		//printf("fps:%f\n", get_frames_per_second());
 	}
 	
+	// Closed through the HOME menu / power button: give the game a chance to save.
+	if (closed_by_system || apt_exiting)
+		main_loop->notification(MainLoop::NOTIFICATION_WM_QUIT_REQUEST);
+
 	main_loop->finish();
+}
+
+void OS_3DS::_dispatch_apt_events()
+{
+	if (!main_loop)
+		return;
+	// Both can be pending after a suspend: aptMainLoop() blocks while the HOME menu is open.
+	if (apt_lost_focus) {
+		apt_lost_focus = false;
+		main_loop->notification(MainLoop::NOTIFICATION_WM_FOCUS_OUT);
+	}
+	if (apt_got_focus) {
+		apt_got_focus = false;
+		main_loop->notification(MainLoop::NOTIFICATION_WM_FOCUS_IN);
+	}
+}
+
+String OS_3DS::get_data_dir() const
+{
+	// user:// lives on the SD card, next to the homebrew: sdmc:/3ds/<application name>
+	String name = get_safe_application_name().strip_edges();
+	if (name == "")
+		name = "godot";
+	String dir = "sdmc:/3ds/" + name;
+	if (!data_dir_created) {
+		mkdir("sdmc:/3ds", 0777);
+		mkdir(dir.utf8().get_data(), 0777);
+		data_dir_created = true;
+	}
+	return dir;
 }
 
 static MemoryPoolStaticMalloc *mempool_static=NULL;

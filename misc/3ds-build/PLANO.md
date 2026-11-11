@@ -21,7 +21,9 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - [x] Render nativo 400x240: alvo 240x400 + transferência sem escala, projeção/recorte do canvas em
       400x240, video mode 400x240. Azahar (Old 3DS): VRAM 2,9 → 0,7 MB; quadro 5,55 → 4,80 ms.
 - Texturas sem cópia na RAM; formatos nativos (RGB565, RGBA4, L8/A8, ETC1).
-- `main_pack` lido de `romfs:/data.pck`; `user://` no SD; hooks de sleep/HOME (APT).
+- `main_pack` lido de `romfs:/data.pck` (Fase 2).
+- [~] `user://` → `sdmc:/3ds/<nome do jogo>/`; sleep/HOME → NOTIFICATION_WM_FOCUS_OUT/IN; fechar pelo
+      HOME → NOTIFICATION_WM_QUIT_REQUEST. Aguardando teste no console.
 - [x] Entrada: Circle Pad → eixos 0/1, C-Stick → eixos 2/3 (New 3DS), touch da tela de baixo →
       SCREEN_TOUCH/SCREEN_DRAG (pixels 320x240), SELECT deixou de fechar o app (sair = HOME ou quit()).
       Testado no New 3DS: todos os botões, sticks, ZL/ZR e toque ok (toque começa em ~4-5 px nas bordas,

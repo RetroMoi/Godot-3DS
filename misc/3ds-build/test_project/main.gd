@@ -8,13 +8,42 @@ var acumulado = 0.0
 var impresso = 0.0
 var plat = null
 var toque = "-"
+var execucoes = 0
+var focos_perdidos = 0
+
+const ARQUIVO_SAVE = "user://execucoes.txt"
 
 func _ready():
 	if Globals.has_singleton("Platform3DS"):
 		plat = Globals.get_singleton("Platform3DS")
 	set_process(true)
 	set_process_input(true)
+	execucoes = contar_execucao()
 	print("Teste 3DS iniciado; video mode: ", OS.get_video_mode_size(), " viewport: ", get_viewport_rect().size)
+
+# Lê e incrementa um contador em user:// (no 3DS: sdmc:/3ds/<nome do jogo>/).
+func contar_execucao():
+	var n = 0
+	var f = File.new()
+	if f.file_exists(ARQUIVO_SAVE) and f.open(ARQUIVO_SAVE, File.READ) == OK:
+		n = int(f.get_line())
+		f.close()
+	n += 1
+	if f.open(ARQUIVO_SAVE, File.WRITE) == OK:
+		f.store_line(str(n))
+		f.close()
+	else:
+		print("Nao consegui gravar ", ARQUIVO_SAVE)
+	return n
+
+func _notification(what):
+	if what == MainLoop.NOTIFICATION_WM_FOCUS_OUT:
+		focos_perdidos += 1
+		print("Foco perdido (HOME/sleep): ", focos_perdidos)
+	elif what == MainLoop.NOTIFICATION_WM_FOCUS_IN:
+		print("Foco recuperado")
+	elif what == MainLoop.NOTIFICATION_WM_QUIT_REQUEST:
+		print("Saindo pelo sistema")
 
 func _input(ev):
 	if ev.type == InputEvent.SCREEN_TOUCH:
@@ -59,7 +88,8 @@ func _process(delta):
 	texto += "Pool dinamico: %s\n" % kb(OS.get_dynamic_memory_usage())
 	texto += "Botoes: %s\n" % botoes
 	texto += "Circle: %s,%s  C-Stick: %s,%s\n" % [eixo(0), eixo(1), eixo(2), eixo(3)]
-	texto += "Toque: %s" % toque
+	texto += "Toque: %s\n" % toque
+	texto += "Execucoes: %d  Foco perdido: %d" % [execucoes, focos_perdidos]
 	get_node("Label").set_text(texto)
 	impresso += 0.1
 	if impresso >= 1.0:
