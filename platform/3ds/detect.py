@@ -25,6 +25,9 @@ def can_build():
 def get_opts():
     return [
         ('debug_release', 'Add debug symbols to release version', 'no'),
+        # libctru reserves 32 MB of linear memory by default; the rest of the app region goes to
+        # the malloc heap. Godot uses linear memory only for GPU textures/buffers and audio.
+        ('linear_heap_mb', 'Linear heap reserved for GPU/audio buffers, in MB', '12'),
     ]
 
 
@@ -87,6 +90,7 @@ def configure(env):
     arch = ['-march=armv6k', '-mtune=mpcore','-mfloat-abi=hard','-mtp=soft' ]
     env.Append(CCFLAGS=['-g','-Wall','-mword-relocations','-ffunction-sections', '-fno-rtti', '-fno-exceptions'] + arch)
     env.Append(CXXFLAGS=['-std=gnu++11'])
+    env.Append(CPPFLAGS=['-DLINEAR_HEAP_MB=' + str(int(env['linear_heap_mb']))])
     # Godot 2.1 relies on 'if (!this)' checks (Object::cast_to with NO_SAFE_CAST). GCC 6+ deletes
     # them at -O2/-O3, turning cast_to() on a NULL pointer into a crash. Keep the checks.
     env.Append(CCFLAGS=['-fno-delete-null-pointer-checks'])

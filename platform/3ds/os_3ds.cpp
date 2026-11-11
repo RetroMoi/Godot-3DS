@@ -65,6 +65,13 @@ extern "C" {
 #include <3ds/services/hid.h>
 // Big stack thanks to CANVAS_ITEM_Z_MAX among other things
 u32 __stacksize__ = 1024 * 128;
+
+// Overrides libctru's weak default (32 MB). The malloc heap gets the remaining app memory
+// (__ctru_heap_size = 0 means "everything left"). Set with scons linear_heap_mb=N.
+#ifndef LINEAR_HEAP_MB
+#define LINEAR_HEAP_MB 12
+#endif
+u32 __ctru_linear_heap_size = LINEAR_HEAP_MB * 1024 * 1024;
 }
 
 static aptHookCookie apt_hook_cookie;

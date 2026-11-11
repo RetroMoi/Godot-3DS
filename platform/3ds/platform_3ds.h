@@ -58,7 +58,7 @@ public:
 	uint32_t get_heap_peak() const;
 
 	// Keys: heap_used, heap_size, heap_peak, linear_used, linear_size, linear_peak,
-	// vram_used, vram_size, vram_peak, app_region_used, app_region_size, is_new_3ds.
+	// vram_used, vram_size, vram_peak, app_region_used, is_new_3ds.
 	Dictionary get_memory_info() const;
 
 	bool is_new_3ds() const;

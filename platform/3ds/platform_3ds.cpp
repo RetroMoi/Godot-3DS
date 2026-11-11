@@ -80,8 +80,9 @@ Dictionary Platform3DS::get_memory_info() const {
 	d["vram_used"] = (int)(VRAM_TOTAL_SIZE - vramSpaceFree());
 	d["vram_size"] = (int)VRAM_TOTAL_SIZE;
 	d["vram_peak"] = (int)vram_peak;
+	// Everything the app holds: code + data + malloc heap + linear heap + stacks.
+	// (The region *size* reported by the kernel config page is not reliable under emulators.)
 	d["app_region_used"] = (int)osGetMemRegionUsed(MEMREGION_APPLICATION);
-	d["app_region_size"] = (int)osGetMemRegionSize(MEMREGION_APPLICATION);
 	d["is_new_3ds"] = is_new_3ds();
 	return d;
 }

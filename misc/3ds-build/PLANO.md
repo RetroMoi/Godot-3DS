@@ -31,8 +31,10 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - Linha de base (Azahar, modo New 3DS, cena de teste vazia): 60 FPS, quadro 5,4 ms;
   heap 6,3 / 78,9 MB; linear 2,6 / 32 MB; VRAM 2,9 / 6 MB (≈ supersampling 800x480).
   `app_region_size` reportado (96 MB) é menor que o usado (124 MB) → não confiável; usar heap+linear+código.
-- [ ] Rebalancear heap x linear (`__ctru_linear_heap_size`): libctru reserva 32 MB de linear por padrão,
-      mas só ~2,6 MB são usados → no Old 3DS isso tira RAM do heap do jogo.
+- Azahar em modo Old 3DS dá 96 MB ao app (mais que o console real, ~64 MB via Homebrew Launcher):
+  heap 6,3 / 50,9 MB, 60 FPS, quadro 6,0 ms.
+- [x] Rebalancear heap x linear: opção `linear_heap_mb` (padrão 12, era 32 da libctru) → ~20 MB a mais de heap.
+      Rever o valor quando as texturas forem para formatos nativos (Fase 3).
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves

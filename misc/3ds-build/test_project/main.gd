@@ -40,7 +40,8 @@ func _process(delta):
 		texto += "Heap: %s / %s (pico %s)\n" % [mb(m["heap_used"]), mb(m["heap_size"]), mb(m["heap_peak"])]
 		texto += "Linear: %s / %s (pico %s)\n" % [mb(m["linear_used"]), mb(m["linear_size"]), mb(m["linear_peak"])]
 		texto += "VRAM: %s / %s (pico %s)\n" % [mb(m["vram_used"]), mb(m["vram_size"]), mb(m["vram_peak"])]
-		texto += "Regiao do app: %s / %s\n" % [mb(m["app_region_used"]), mb(m["app_region_size"])]
+		texto += "Livre p/ jogo: %s (heap)\n" % mb(m["heap_size"] - m["heap_used"])
+		texto += "Total do app: %s\n" % mb(m["app_region_used"])
 	else:
 		texto += "Mem. estatica: %s\n" % kb(OS.get_static_memory_usage())
 	texto += "Pool dinamico: %s\n" % kb(OS.get_dynamic_memory_usage())
