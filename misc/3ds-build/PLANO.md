@@ -65,12 +65,12 @@ Scripts exportados em modo **compilado** (bytecode) para o 3DS não compilar nad
 - Fora de escopo: lambdas/`Callable`/`Signal` de primeira classe, Audio Buses, AnimationTree/TileMap do 4.x.
 
 ## Fase 2 — Exporter real
-- [~] `EditorExportPlatform3DS` (platform/3ds/export/export.cpp): template `.3dsx` + `data.pck` → RomFS → SMDH
+- [x] `EditorExportPlatform3DS` (platform/3ds/export/export.cpp): template `.3dsx` + `data.pck` → RomFS → SMDH
       (título/descrição/autor/ícone 48x48 e 24x24) → `.3dsx`, sem devkitPro. RomFS/SMDH/3DSX validados byte a
       byte contra 3dsxtool/smdhtool (exceto a redução do ícone 24x24). Template em
       `~/.godot/templates/3ds_release.3dsx` (instalado pelo `build.sh template`). Testado: export headless
       (`-export "Nintendo 3DS"`) gera pck com script compilado (.gdc), cena binária e engine.cfb.
-      Aguardando teste no console e no editor com janela.
+      Testado: exportação pelo editor (WSL) → .3dsx e .cia rodando no New 3DS.
 - [x] `.cia` pelo editor: `binary/format = cia` chama bannertool + makerom (caminhos em Configurações do
       Editor → 3ds, ou PATH). Unique ID derivado do nome do projeto (ou definido), código do produto, banner
       PNG 256x128 + WAV (padrão: ícone sobre fundo azul + silêncio), RSF embutido (`misc/3ds-build/cia/app.rsf`)
