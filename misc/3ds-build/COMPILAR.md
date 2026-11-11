@@ -115,11 +115,46 @@ Também funciona pela linha de comando (útil para scripts):
 bin/godot.x11.opt.tools.64 -path caminho/do/projeto -export "Nintendo 3DS" /caminho/saida/jogo.3dsx
 ```
 
+### Exportar como `.cia` (instalável no menu HOME)
+
+Na exportação, troque `binary/format` para **cia**. O `.cia` aparece no menu HOME com ícone e banner
+(a imagem grande que aparece na tela de cima ao selecionar o jogo) e é instalado com o **FBI**.
+
+Precisa de mais duas coisas:
+
+1. **Template ELF** em `~/.godot/templates/3ds_release.elf` (o `build.sh template` instala junto; ou
+   copie um `3ds_release.elf` pronto para lá).
+2. **Ferramentas `makerom` e `bannertool`.** No WSL, compile uma vez:
+
+   ```bash
+   sudo apt install -y cmake
+   cd ~ && git clone --depth 1 https://github.com/3DSGuy/Project_CTR.git
+   cd Project_CTR/makerom && make deps && make && sudo cp bin/makerom /usr/local/bin/
+   cd ~ && git clone --depth 1 https://github.com/carstene1ns/3ds-bannertool.git
+   cd 3ds-bannertool && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+   sudo cp build/bannertool /usr/local/bin/
+   ```
+
+   Em `/usr/local/bin` o editor as encontra sozinho. Se ficarem em outro lugar (ou no Windows, com
+   `makerom.exe`/`bannertool.exe`), informe os caminhos em **Configurações do Editor → 3ds**.
+
+Opções do CIA na exportação:
+
+| Opção | Para quê | Vazio = |
+|---|---|---|
+| `cia/unique_id` | identifica o jogo instalado (hex, 0x00300–0xF7FFF). **Cada jogo precisa do seu**, senão um substitui o outro | gerado a partir do nome do projeto |
+| `cia/product_code` | código do produto, formato `CTR-P-XXXX` | `CTR-P-GDOT` |
+| `cia/banner_image` | PNG **256x128** do banner | ícone do projeto sobre fundo azul |
+| `cia/banner_audio` | WAV curto (até ~3 s) tocado ao selecionar | silêncio |
+| `cia/custom_rsf` | RSF próprio para o makerom (avançado) | `misc/3ds-build/cia/app.rsf` embutido |
+
 ## 4. Testar
 
 - **Azahar**: Arquivo → Carregar arquivo → `bin/<nome>.3dsx` (no Windows, a pasta do WSL aparece em
   `\\wsl$\Ubuntu\home\<você>\godot-3ds\bin`).
-- **Console**: copie o `.3dsx` para `/3ds/` no cartão SD e abra pelo Homebrew Launcher.
+- **Console**: copie o `.3dsx` para `/3ds/` no cartão SD e abra pelo Homebrew Launcher. Um `.cia`
+  se instala pelo **FBI** (SD → arquivo → *Install CIA*) e aparece no menu HOME; remova pelo FBI → *Titles*.
+- **Azahar** com `.cia`: Arquivo → Instalar CIA.
 
 ## Problemas comuns
 

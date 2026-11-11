@@ -71,11 +71,11 @@ Scripts exportados em modo **compilado** (bytecode) para o 3DS não compilar nad
       `~/.godot/templates/3ds_release.3dsx` (instalado pelo `build.sh template`). Testado: export headless
       (`-export "Nintendo 3DS"`) gera pck com script compilado (.gdc), cena binária e engine.cfb.
       Aguardando teste no console e no editor com janela.
-- [~] `.cia`: makerom + bannertool (Project_CTR / 3ds-bannertool) compilam do código-fonte; RSF em
-      `misc/3ds-build/cia/app.rsf` (Old 3DS 64 MB; New 3DS 124 MB/804 MHz/L2; pilha 256 KB). CIA de teste montado
-      à mão e validado com ctrtool (ExeFS: código/ícone/banner; RomFS: data.pck idêntico). Falta: teste no
-      console/Azahar e integração no exportador (formato 3dsx/cia, banner PNG 256x128 + WAV, Unique ID, código
-      do produto, caminhos das ferramentas nas Configurações do Editor, template `3ds_release.elf`).
+- [x] `.cia` pelo editor: `binary/format = cia` chama bannertool + makerom (caminhos em Configurações do
+      Editor → 3ds, ou PATH). Unique ID derivado do nome do projeto (ou definido), código do produto, banner
+      PNG 256x128 + WAV (padrão: ícone sobre fundo azul + silêncio), RSF embutido (`misc/3ds-build/cia/app.rsf`)
+      ou próprio, template `3ds_release.elf` (sem símbolos de depuração). RSF precisou mapear a memória do DSP
+      e a VRAM (sem isso, ndspInit crashava no CIA). Testado no New 3DS: instala, banner aparece, roda.
 - Opcional: "Run on device" via 3dslink; template de debug.
 
 ## Fase 3 — Assets e validações no editor

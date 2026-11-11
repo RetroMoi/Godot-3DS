@@ -1,5 +1,6 @@
 # makerom RSF for Godot 2.1 3DS games (CIA). Values in $(...) are passed with -DNAME=value.
 # Based on the common homebrew application template.
+# platform/3ds/export/export.cpp embeds a copy as the default RSF: keep both in sync.
 
 BasicInfo:
   Title                   : "$(APP_TITLE)"
