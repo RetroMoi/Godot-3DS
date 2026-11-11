@@ -55,6 +55,13 @@ AccessControlInfo:
   SpecialMemoryArrange    : true
   UseExtSaveData          : false
 
+  # Physical memory the app maps directly. Without the DSP range, ndspInit() crashes writing to
+  # DSP shared memory (0x1FF5xxxx). As a .3dsx these came from the process the launcher took over.
+  IORegisterMapping:
+   - 1ff00000-1ff7ffff   # DSP memory
+  MemoryMapping:
+   - 1f000000-1f5fffff:r # VRAM (end address is inclusive)
+
   FileSystemAccess:
    - Debug
    - DirectSdmc
