@@ -5,6 +5,8 @@
 #   package  : embute um projeto na RomFS -> bin/<nome>.3dsx
 #              PROJECT=<pasta do projeto, relativa à raiz do repo> (padrão: misc/3ds-build/test_project)
 #   WITH_EDITOR=0 misc/3ds-build/build.sh template   -> imagem sem libs X11 (só template 3DS)
+#   editor: compila no Debian do container; para rodar no WSL/Ubuntu prefira compilar nativo
+#           (veja COMPILAR.md), pois o binário pode exigir uma glibc mais nova que a do host.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$(cd "$HERE/../.." && pwd)

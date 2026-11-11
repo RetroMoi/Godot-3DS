@@ -41,15 +41,11 @@ def configure(env):
         env["CXX"] = "clang++"
         env["LD"] = "clang++"
     elif (os.system("gcc --version > /dev/null 2>&1") == 0): # GCC
-        # Hack to prevent building this branch with GCC 6+, which trigger segfaults due to UB when dereferencing pointers in Object::cast_to
-        # This is fixed in the master branch, for 2.1 we just prevent using too recent GCC versions.
-        import subprocess
-        gcc_major = subprocess.check_output(['gcc', '-dumpversion']).decode('ascii').split('.')[0]
-        if (int(gcc_major) > 5):
-            print("Your configured compiler appears to be GCC %s, which triggers issues in release builds for this version of Godot (fixed in Godot 3.0+)." % gcc_major)
-            print("You can use the Clang compiler instead with the `use_llvm=yes` option, or configure another compiler such as GCC 5 using the CC, CXX and LD flags.")
-            print("Aborting..")
-            sys.exit(255)
+        # GCC 6+ deletes the 'if (!this)' checks Godot 2.1 relies on (Object::cast_to on NULL
+        # pointers); keep them instead of refusing modern GCC (same as platform/x11).
+        env.Append(CCFLAGS=['-fno-delete-null-pointer-checks'])
+        env.Append(CFLAGS=['-Wno-error=incompatible-pointer-types', '-Wno-error=int-conversion',
+                           '-Wno-error=implicit-function-declaration', '-Wno-error=implicit-int'])
 
     is64 = sys.maxsize > 2**32
 
