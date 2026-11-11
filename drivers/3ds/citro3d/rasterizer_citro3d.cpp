@@ -37,10 +37,19 @@
 #include "shaders/2d.h"
 #include "shaders/3d.h"
 #define CLEAR_COLOR 0x68B0D8FF
+
+// Top screen, native resolution. Render targets are created rotated (240x400) like the LCD.
+// Rendering used to happen at 800x480 and be downscaled by the display transfer (4x SSAA),
+// which cost ~3 MB of the 6 MB of VRAM and 4x the fill rate.
+#define TOP_SCREEN_WIDTH 400
+#define TOP_SCREEN_HEIGHT 240
+#define TOP_TARGET_CREATE() \
+	C3D_RenderTargetCreate(TOP_SCREEN_HEIGHT, TOP_SCREEN_WIDTH, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8)
+
 #define DISPLAY_TRANSFER_FLAGS \
 	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
 	GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
-	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_XY))
+	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
 /* TEXTURE API */
 
@@ -1949,7 +1958,7 @@ RID RasterizerCitro3d::render_target_create()
 	RenderTarget* rt = memnew(RenderTarget);	
 	Texture *texture = memnew(Texture);
 	
-	rt->target = C3D_RenderTargetCreate(480, 800, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+	rt->target = TOP_TARGET_CREATE();
 	C3D_RenderTargetSetOutput(rt->target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 	C3D_RenderTargetClear(rt->target,C3D_CLEAR_ALL,CLEAR_COLOR,0);
 	rt->texture_ptr = texture;
@@ -2348,7 +2357,7 @@ RID RasterizerCitro3d::canvas_light_shadow_buffer_create(int p_width)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 */
-	cls->renderTarget = C3D_RenderTargetCreate(480, 800, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+	cls->renderTarget = TOP_TARGET_CREATE();
 	C3D_RenderTargetSetOutput(cls->renderTarget, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 	C3D_RenderTargetClear(cls->renderTarget,C3D_CLEAR_ALL,C3D_CLEAR_COLOR,0);
 	
@@ -2438,7 +2447,7 @@ void RasterizerCitro3d::canvas_begin()
 	print("canvas_begin");
 	
 	C3D_Mtx projection;
-	Mtx_OrthoTilt(&projection, 0.0, 800.0, 480.0, 0.0, 0.0, 1.0, true);
+	Mtx_OrthoTilt(&projection, 0.0, TOP_SCREEN_WIDTH, TOP_SCREEN_HEIGHT, 0.0, 0.0, 1.0, true);
 	
 	C3D_BindProgram(&canvas_shader->program);
 	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, canvas_shader->location_projection, &projection);
@@ -2785,8 +2794,8 @@ static void _set_scissor(int x, int y, int w, int h)
 {
 	print("set_scissor %d %d %d %d\n", x, y, w, h);
 	// Keep in mind the sideway 3ds screen, so it seems screwy
-	int bottom = 400 - x;
-	int top = 240 - y;
+	int bottom = TOP_SCREEN_WIDTH - x;
+	int top = TOP_SCREEN_HEIGHT - y;
 	int left = top - h;
 	int right = bottom - w;
 	if (bottom < 0) bottom = 0;
@@ -2810,7 +2819,7 @@ void RasterizerCitro3d::_set_canvas_scissor(CanvasItem* p_item)
 	else
 	{
 		x = p_item->final_clip_rect.pos.x;
-		y = 240 - (p_item->final_clip_rect.pos.y + p_item->final_clip_rect.size.y);
+		y = TOP_SCREEN_HEIGHT - (p_item->final_clip_rect.pos.y + p_item->final_clip_rect.size.y);
 		w = p_item->final_clip_rect.size.x;
 		h = p_item->final_clip_rect.size.y;
 	}
@@ -4729,7 +4738,7 @@ void RasterizerCitro3d::init()
 	base_framebuffer = memnew(RenderTarget);	
 	Texture *texture = memnew(Texture);
 
-	base_framebuffer->target = C3D_RenderTargetCreate(480, 800, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+	base_framebuffer->target = TOP_TARGET_CREATE();
 	C3D_RenderTargetSetOutput(base_framebuffer->target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 	C3D_RenderTargetClear(base_framebuffer->target,C3D_CLEAR_ALL,CLEAR_COLOR,0);
 	base_framebuffer->texture_ptr = texture;

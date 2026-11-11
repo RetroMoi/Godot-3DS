@@ -85,7 +85,7 @@ static void apt_hook_callback(APT_HookType hook, void* param)
 
 
 OS_3DS::OS_3DS()
-: video_mode(800, 480, true, false, false)
+: video_mode(400, 240, true, false, false) // top screen, native resolution
 {	
 	platform_3ds = NULL;
 	gfxInitDefault();
