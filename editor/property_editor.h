@@ -201,6 +201,10 @@ class PropertyEditor : public Control {
 
 	void _item_selected();
 	void _item_edited();
+	// Inline component fields (x/y, x/y/w/h, x/y/z) shown as child rows of Vector2/Rect2/Vector3
+	// properties, so they can be edited directly like in newer Godot versions.
+	void _create_subfields(TreeItem *p_item, const String &p_name, int p_type);
+	void _update_subfields(TreeItem *p_item, int p_type, const Variant &p_value);
 	TreeItem *get_parent_node(String p_path, HashMap<String, TreeItem *> &item_paths, TreeItem *root);
 
 	void set_item_text(TreeItem *p_item, int p_type, const String &p_name, int p_hint = PROPERTY_HINT_NONE, const String &p_hint_text = "");

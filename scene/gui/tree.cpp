@@ -1781,8 +1781,16 @@ void Tree::text_editor_enter(String p_text) {
 	update();
 }
 
+// Unit used by Up/Down and dragging. Unbounded decimal fields (positions, sizes, ...) have a tiny
+// precision step (0.001) that would make both useless, so they move in whole units instead.
+static double _range_edit_unit(double p_step, double p_min, double p_max) {
+	if (p_step > 0 && p_step < 1 && (p_max - p_min) > 100000)
+		return 1.0;
+	return p_step > 0 ? p_step : 1.0;
+}
+
 // Up/Down while typing in a number cell steps the value and applies it live (like newer Godot's spin
-// sliders): one step, Shift = 10 steps, Alt = a tenth of a step (not snapped to the step).
+// sliders): one unit, Shift = 10 units, Alt = a tenth of a unit (not snapped to the step).
 void Tree::_text_editor_input(const InputEvent &p_event) {
 
 	if (p_event.type != InputEvent::KEY || !p_event.key.pressed)
@@ -1796,7 +1804,7 @@ void Tree::_text_editor_input(const InputEvent &p_event) {
 	if (c.mode != TreeItem::CELL_MODE_RANGE && c.mode != TreeItem::CELL_MODE_RANGE_EXPRESSION)
 		return;
 
-	double step = c.step > 0 ? c.step : 1.0;
+	double step = _range_edit_unit(c.step, c.min, c.max);
 	bool fine = p_event.key.mod.alt;
 	if (p_event.key.mod.shift)
 		step *= 10.0;
@@ -1810,7 +1818,7 @@ void Tree::_text_editor_input(const InputEvent &p_event) {
 	val = CLAMP(val, c.min, c.max);
 
 	c.val = val;
-	text_editor->set_text(String::num(val, Math::step_decimals(fine ? c.step * 0.1 : c.step)));
+	text_editor->set_text(String::num(val, Math::step_decimals(fine ? MIN(c.step, step) : c.step)));
 	text_editor->select_all();
 	if (value_editor->is_visible()) {
 		updating_value_editor = true;
@@ -2207,7 +2215,7 @@ void Tree::_input_event(InputEvent p_event) {
 					diff *= 0.1;
 					if (b.mod.shift)
 						diff *= 0.1;
-					range_drag_base = CLAMP(range_drag_base + c.step * diff, c.min, c.max);
+					range_drag_base = CLAMP(range_drag_base + _range_edit_unit(c.step, c.min, c.max) * diff, c.min, c.max);
 					double shown = range_drag_base;
 					if (b.mod.control)
 						shown = CLAMP(Math::round(shown), c.min, c.max);

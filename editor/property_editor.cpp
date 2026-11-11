@@ -2013,6 +2013,114 @@ void PropertyEditor::update_property(const String &p_prop) {
 		_changed_callbacks(obj, p_prop);
 }
 
+/* Inline component fields for Vector2 / Rect2 / Vector3 */
+
+static int _subfield_count(int p_type) {
+	switch (p_type) {
+		case Variant::VECTOR2: return 2;
+		case Variant::RECT2: return 4;
+		case Variant::VECTOR3: return 3;
+		default: return 0;
+	}
+}
+
+// Same names as the value popup, which MultiNodeEdit understands for per-field edits.
+static String _subfield_name(int p_type, int p_idx) {
+	static const char *rect_names[4] = { "x", "y", "w", "h" };
+	static const char *vec_names[3] = { "x", "y", "z" };
+	return p_type == Variant::RECT2 ? rect_names[p_idx] : vec_names[p_idx];
+}
+
+static Color _subfield_color(int p_type, int p_idx) {
+	// x red, y green, z blue (w/h follow x/y), as in newer Godot inspectors.
+	static const Color colors[3] = { Color(1.0, 0.45, 0.45), Color(0.6, 0.95, 0.45), Color(0.45, 0.65, 1.0) };
+	return colors[p_type == Variant::RECT2 ? p_idx % 2 : p_idx];
+}
+
+static double _subfield_get(const Variant &p_value, int p_type, int p_idx) {
+	switch (p_type) {
+		case Variant::VECTOR2: {
+			Vector2 v = p_value;
+			return p_idx == 0 ? v.x : v.y;
+		}
+		case Variant::RECT2: {
+			Rect2 r = p_value;
+			return p_idx == 0 ? r.pos.x : p_idx == 1 ? r.pos.y : p_idx == 2 ? r.size.x : r.size.y;
+		}
+		case Variant::VECTOR3: {
+			Vector3 v = p_value;
+			return v[p_idx];
+		}
+		default: return 0;
+	}
+}
+
+static Variant _subfield_set(const Variant &p_value, int p_type, int p_idx, double p_val) {
+	switch (p_type) {
+		case Variant::VECTOR2: {
+			Vector2 v = p_value;
+			(p_idx == 0 ? v.x : v.y) = p_val;
+			return v;
+		}
+		case Variant::RECT2: {
+			Rect2 r = p_value;
+			if (p_idx == 0)
+				r.pos.x = p_val;
+			else if (p_idx == 1)
+				r.pos.y = p_val;
+			else if (p_idx == 2)
+				r.size.x = p_val;
+			else
+				r.size.y = p_val;
+			return r;
+		}
+		case Variant::VECTOR3: {
+			Vector3 v = p_value;
+			v[p_idx] = p_val;
+			return v;
+		}
+		default: return p_value;
+	}
+}
+
+void PropertyEditor::_create_subfields(TreeItem *p_item, const String &p_name, int p_type) {
+
+	int count = _subfield_count(p_type);
+	Variant value = obj->get(p_name);
+	for (int i = 0; i < count; i++) {
+
+		TreeItem *sub = tree->create_item(p_item);
+		sub->set_text(0, _subfield_name(p_type, i));
+		sub->set_custom_color(0, _subfield_color(p_type, i));
+		sub->set_selectable(0, false);
+		sub->set_editable(0, false);
+		sub->set_cell_mode(1, TreeItem::CELL_MODE_RANGE_EXPRESSION);
+		sub->set_range_config(1, -16777216, 16777216, 0.001);
+		sub->set_range(1, _subfield_get(value, p_type, i));
+		sub->set_editable(1, !read_only);
+
+		Dictionary d;
+		d["name"] = p_name;
+		d["type"] = p_type;
+		d["subfield"] = i;
+		d["hint"] = PROPERTY_HINT_NONE;
+		d["hint_text"] = "";
+		d["usage"] = 0;
+		sub->set_metadata(0, d);
+		// No metadata on column 1: find_item()/_refresh_item() only look at real property rows.
+	}
+}
+
+void PropertyEditor::_update_subfields(TreeItem *p_item, int p_type, const Variant &p_value) {
+
+	for (TreeItem *c = p_item->get_children(); c; c = c->get_next()) {
+		Dictionary d = c->get_metadata(0);
+		if (!d.has("subfield"))
+			continue;
+		c->set_range(1, _subfield_get(p_value, p_type, d["subfield"]));
+	}
+}
+
 void PropertyEditor::set_item_text(TreeItem *p_item, int p_type, const String &p_name, int p_hint, const String &p_hint_text) {
 
 	switch (p_type) {
@@ -2095,6 +2203,8 @@ void PropertyEditor::set_item_text(TreeItem *p_item, int p_type, const String &p
 		case Variant::TRANSFORM: {
 
 			p_item->set_text(1, obj->get(p_name));
+			if (_subfield_count(p_type))
+				_update_subfields(p_item, p_type, obj->get(p_name));
 
 		} break;
 		case Variant::COLOR: {
@@ -3183,6 +3293,7 @@ void PropertyEditor::update_tree() {
 				item->set_text(1, obj->get(p.name));
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Vector2", "EditorIcons"));
+				_create_subfields(item, p.name, p.type);
 
 			} break;
 			case Variant::RECT2: {
@@ -3192,6 +3303,7 @@ void PropertyEditor::update_tree() {
 				item->set_text(1, obj->get(p.name));
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Rect2", "EditorIcons"));
+				_create_subfields(item, p.name, p.type);
 
 			} break;
 			case Variant::VECTOR3: {
@@ -3201,6 +3313,7 @@ void PropertyEditor::update_tree() {
 				item->set_text(1, obj->get(p.name));
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Vector", "EditorIcons"));
+				_create_subfields(item, p.name, p.type);
 
 			} break;
 			case Variant::MATRIX32:
@@ -3506,6 +3619,14 @@ void PropertyEditor::_item_edited() {
 	Dictionary d = item->get_metadata(0);
 
 	String name = d["name"];
+
+	if (d.has("subfield")) {
+		// One component of a Vector2/Rect2/Vector3 edited inline.
+		int t = d["type"];
+		int idx = d["subfield"];
+		_edit_set(name, _subfield_set(obj->get(name), t, idx, item->get_range(1)), _subfield_name(t, idx));
+		return;
+	}
 
 	if (tree->get_edited_column() == 0) {
 		//property checked

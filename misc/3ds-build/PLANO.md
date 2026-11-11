@@ -104,6 +104,8 @@ Tela de baixo como Viewport secundário; 3D estéreo por parallax.
 - [~] Inspector: ↑/↓ no campo numérico (Shift ×10, Alt ×0,1), arraste horizontal (como no Godot 4) ou
       vertical, Shift = arraste fino, Ctrl = inteiros; ↑/↓ também nos campos de Vector2/Rect2/etc.
       Corrigido bug do 2.1 em que o valor decimal digitado no popup era descartado.
+- [~] Vector2/Rect2/Vector3 com campos inline (linhas x/y, x/y/w/h, x/y/z coloridas) abaixo da propriedade,
+      editáveis direto (arraste, digitação, ↑/↓); campos decimais sem limite usam passo 1 no teclado/arraste.
 - CI ignora pushes que só alteram arquivos `.md`.
 
 ## Riscos
