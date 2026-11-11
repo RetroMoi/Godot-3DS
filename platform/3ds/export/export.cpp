@@ -838,7 +838,8 @@ protected:
 	}
 
 	void _get_property_list(List<PropertyInfo> *p_list) const {
-		p_list->push_back(PropertyInfo(Variant::INT, "binary/format", PROPERTY_HINT_ENUM, "3dsx (Homebrew Launcher),cia (installable, needs makerom + bannertool)"));
+		// Enum hint items are comma-separated: no commas inside the labels.
+		p_list->push_back(PropertyInfo(Variant::INT, "binary/format", PROPERTY_HINT_ENUM, "3dsx (Homebrew Launcher),cia (installable - needs makerom + bannertool)"));
 		p_list->push_back(PropertyInfo(Variant::STRING, "custom_template/release", PROPERTY_HINT_GLOBAL_FILE, "3dsx"));
 		p_list->push_back(PropertyInfo(Variant::STRING, "custom_template/release_elf", PROPERTY_HINT_GLOBAL_FILE, "elf"));
 		p_list->push_back(PropertyInfo(Variant::STRING, "cia/unique_id"));
