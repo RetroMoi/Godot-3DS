@@ -28,6 +28,11 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
       `Object::cast_to` → crash com ponteiro nulo). Saída do Godot vai para o log do emulador (svcOutputDebugString).
 - [x] Áudio: driver NDSP com membros inicializados e fallback para driver mudo quando `ndspInit` falha
       (sem `dspfirm.cdc`). Antes, `mix_rate` com lixo de pilha gerava alocação gigante no reverb → crash.
+- Linha de base (Azahar, modo New 3DS, cena de teste vazia): 60 FPS, quadro 5,4 ms;
+  heap 6,3 / 78,9 MB; linear 2,6 / 32 MB; VRAM 2,9 / 6 MB (≈ supersampling 800x480).
+  `app_region_size` reportado (96 MB) é menor que o usado (124 MB) → não confiável; usar heap+linear+código.
+- [ ] Rebalancear heap x linear (`__ctru_linear_heap_size`): libctru reserva 32 MB de linear por padrão,
+      mas só ~2,6 MB são usados → no Old 3DS isso tira RAM do heap do jogo.
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves
