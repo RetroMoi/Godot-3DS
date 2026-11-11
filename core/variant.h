@@ -222,7 +222,9 @@ public:
 	operator DVector<uint8_t>() const;
 	operator DVector<int>() const;
 	operator DVector<real_t>() const;
+#ifdef NEED_LONG_INT // only where int32_t is long (3DS); elsewhere these are ambiguous/wrong
 	operator DVector<long int>() const;
+#endif
 	operator DVector<String>() const;
 	operator DVector<Vector3>() const;
 	operator DVector<Color>() const;
@@ -232,7 +234,9 @@ public:
 	operator Vector<Variant>() const;
 	operator Vector<uint8_t>() const;
 	operator Vector<int>() const;
+#ifdef NEED_LONG_INT // only where int32_t is long (3DS); elsewhere these are ambiguous/wrong
 	operator Vector<long int>() const;
+#endif
 	operator Vector<real_t>() const;
 	operator Vector<String>() const;
 	operator Vector<Vector3>() const;
@@ -291,7 +295,9 @@ public:
 	Variant(const DVector<Plane> &p_array); // helper
 	Variant(const DVector<uint8_t> &p_raw_array);
 	Variant(const DVector<int> &p_int_array);
+#ifdef NEED_LONG_INT // only where int32_t is long (3DS); elsewhere these are ambiguous/wrong
 	Variant(const DVector<long int> &p_int_array);
+#endif
 	Variant(const DVector<real_t> &p_real_array);
 	Variant(const DVector<String> &p_string_array);
 	Variant(const DVector<Vector3> &p_vector3_array);
