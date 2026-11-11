@@ -1,0 +1,185 @@
+# Builds everything needed to make 3DS games with this fork, without WSL/Docker on the user's side:
+#   - 3DS export templates (3ds_release.3dsx / 3ds_release.elf), in the devkitPro container
+#   - the editor for Windows (cross-compiled with MinGW) and for Linux
+#   - makerom.exe / bannertool.exe for .cia export on Windows
+# and packages a portable Windows editor (Godot3DS-windows.zip) with all of it in place.
+name: Godot 3DS builds
+
+on:
+  push:
+    branches: [ "main/2.1" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCONS_WHEEL: misc/3ds-build/vendor/SCons-4.8.1-py3-none-any.whl
+
+jobs:
+  templates-3ds:
+    name: 3DS templates
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SCons (vendored wheel; the image has no pip)
+        run: python3 -m zipfile -e "$SCONS_WHEEL" /opt/scons
+
+      - name: Build template (platform=3ds)
+        run: |
+          export PATH="$DEVKITPRO/tools/bin:$DEVKITARM/bin:$PATH"
+          PYTHONPATH=/opt/scons python3 -c "from SCons.Script.Main import main; main()" \
+            -j$(nproc) platform=3ds target=release tools=no disable_3d=yes optimize=speed
+          arm-none-eabi-size bin/godot.3ds.elf
+          smdhtool --create "Godot 2.1 3DS" "Export template" "Godot" misc/3ds-build/smdh_icon.png bin/godot.smdh
+          3dsxtool bin/godot.3ds.elf bin/3ds_release.3dsx --smdh=bin/godot.smdh
+          arm-none-eabi-strip --strip-debug -o bin/3ds_release.elf bin/godot.3ds.elf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: templates-3ds
+          path: |
+            bin/3ds_release.3dsx
+            bin/3ds_release.elf
+
+  editor-windows:
+    name: Editor (Windows)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+          python3 -m zipfile -e "$SCONS_WHEEL" /tmp/scons
+
+      - name: Build editor (platform=windows, tools=yes)
+        run: |
+          PYTHONPATH=/tmp/scons python3 -c "from SCons.Script.Main import main; main()" \
+            -j$(nproc) platform=windows tools=yes target=release_debug bits=64
+          ls -la bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-windows
+          path: bin/godot.windows.opt.tools.64.exe
+
+  editor-linux:
+    name: Editor (Linux/WSL)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config \
+            libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev \
+            libfreetype6-dev libssl-dev libudev-dev
+          python3 -m zipfile -e "$SCONS_WHEEL" /tmp/scons
+
+      - name: Build editor (platform=x11, tools=yes)
+        run: |
+          PYTHONPATH=/tmp/scons python3 -c "from SCons.Script.Main import main; main()" \
+            -j$(nproc) platform=x11 tools=yes target=release_debug
+          ls -la bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-linux
+          path: bin/godot.x11.opt.tools.64
+
+  tools-windows:
+    name: makerom + bannertool (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Build makerom
+        run: |
+          git clone --depth 1 https://github.com/3DSGuy/Project_CTR.git
+          cd Project_CTR/makerom
+          make deps
+          make LDFLAGS="-static" || make
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp bin/makerom* "$GITHUB_WORKSPACE/out/"
+
+      - name: Build bannertool
+        run: |
+          git clone --depth 1 https://github.com/carstene1ns/3ds-bannertool.git
+          cd 3ds-bannertool
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-static"
+          cmake --build build
+          cp build/bannertool* "$GITHUB_WORKSPACE/out/"
+
+      - name: Check the tools run outside MSYS2 (no missing DLLs)
+        shell: pwsh
+        run: |
+          & "$env:GITHUB_WORKSPACE\out\makerom.exe" 2>&1 | Select-Object -First 3
+          & "$env:GITHUB_WORKSPACE\out\bannertool.exe" 2>&1 | Select-Object -First 3
+          Get-ChildItem "$env:GITHUB_WORKSPACE\out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tools-windows
+          path: out/*.exe
+
+  package-windows:
+    name: Package portable Windows editor
+    runs-on: ubuntu-latest
+    needs: [ templates-3ds, editor-windows, tools-windows ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: misc/3ds-build
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble Godot3DS-windows
+        run: |
+          P=Godot3DS-windows
+          mkdir -p $P/editor_data/templates $P/tools
+          cp artifacts/editor-windows/godot.windows.opt.tools.64.exe $P/Godot3DS.exe
+          touch $P/._sc_   # self-contained mode: settings and templates live in editor_data/
+          cp artifacts/templates-3ds/3ds_release.3dsx artifacts/templates-3ds/3ds_release.elf $P/editor_data/templates/
+          cp artifacts/tools-windows/*.exe $P/tools/
+          cp -r misc/3ds-build/test_project $P/exemplo_test_project
+          cat > $P/LEIA-ME.txt <<'EOF'
+          Godot 2.1 para Nintendo 3DS - editor portatil para Windows
+
+          1. Abra Godot3DS.exe. Configuracoes e templates ficam em editor_data\ (modo portatil:
+             nao apague o arquivo ._sc_). Pode mover a pasta inteira para onde quiser.
+          2. Crie ou importe um projeto (exemplo: exemplo_test_project). Para o 3DS use
+             display/width=400, height=240, stretch_mode=2d.
+          3. Exportar: Cena > Exportar > Nintendo 3DS.
+             - binary/format = 3dsx: abre pelo Homebrew Launcher.
+             - binary/format = cia: instala pelo FBI (usa tools\makerom.exe e tools\bannertool.exe).
+          Mais detalhes: misc/3ds-build/COMPILAR.md no repositorio.
+          EOF
+          sed -i 's/^          //' $P/LEIA-ME.txt
+          find $P -maxdepth 3 | sort
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Godot3DS-windows
+          path: Godot3DS-windows

@@ -301,6 +301,11 @@ def configure(env):
 
         # build using mingw
         env.Append(CCFLAGS=['-DWINVER=%s' % env['target_win_version'], '-D_WIN32_WINNT=%s' % env['target_win_version']])
+        # Modern GCC deletes the 'if (!this)' checks Godot 2.1 relies on (Object::cast_to on NULL);
+        # keep them (same as platform/x11, server and 3ds), and relax GCC 14+ errors in C thirdparty code.
+        env.Append(CCFLAGS=['-fno-delete-null-pointer-checks'])
+        env.Append(CFLAGS=['-Wno-error=incompatible-pointer-types', '-Wno-error=int-conversion',
+                           '-Wno-error=implicit-function-declaration', '-Wno-error=implicit-int'])
         if (os.name == "nt"):
             env['ENV']['TMP'] = os.environ['TMP']  # way to go scons, you can be so stupid sometimes
         else:

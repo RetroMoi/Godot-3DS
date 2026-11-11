@@ -645,9 +645,17 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 		return 0x300 + (name.hash() % (0xF7FFF - 0x300));
 	}
 
-	String _tool_path(const String &p_setting, const String &p_default) const {
+	// Editor setting if set; else tools/<name>[.exe] next to the editor executable (portable package);
+	// else just <name>, found through the PATH.
+	String _tool_path(const String &p_setting, const String &p_name) const {
 		String path = EditorSettings::get_singleton()->get(p_setting);
-		return path != "" ? path : p_default;
+		if (path != "")
+			return path;
+		String exe = p_name + (OS::get_singleton()->get_name() == "Windows" ? ".exe" : "");
+		String bundled = OS::get_singleton()->get_executable_path().get_base_dir().plus_file("tools").plus_file(exe);
+		if (FileAccess::exists(bundled))
+			return bundled;
+		return p_name;
 	}
 
 	// Success is judged by the expected output file: with a captured pipe, OS::execute gets the exit
@@ -667,7 +675,7 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 				cmd += " \"" + E->get() + "\"";
 			print_line("3DS export: " + p_what + " failed: " + cmd + "\n" + output);
 			EditorNode::add_io_error("Failed running " + p_what + " (" + p_tool + ").\n"
-					"Set its path in Editor Settings > 3ds, or put it in the PATH.\n\n" + output);
+					"Set its path in Editor Settings > 3ds, put it in a tools/ folder next to the editor, or in the PATH.\n\n" + output);
 			return err != OK ? err : FAILED;
 		}
 		return OK;
