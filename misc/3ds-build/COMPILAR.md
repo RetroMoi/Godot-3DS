@@ -92,7 +92,30 @@ smdhtool --create "Meu Jogo" "Descrição" "Autor" misc/3ds-build/smdh_icon.png 
 3dsxtool bin/godot.3ds.elf bin/jogo.3dsx --smdh=bin/jogo.smdh --romfs=caminho/do/projeto
 ```
 
-## 3. Testar
+## 3. Exportar pelo editor (Exportar → Nintendo 3DS)
+
+O editor gera o `.3dsx` sozinho, sem Docker nem devkitPro, a partir de um **template**: o motor
+compilado para 3DS. Ele procura o template em `~/.godot/templates/3ds_release.3dsx`.
+
+1. **Instale o template** (uma vez, e de novo sempre que o motor do 3DS mudar):
+   - se compilou com a Opção A, o `build.sh template` já instala sozinho;
+   - ou copie um `godot.3dsx` pronto:
+     `mkdir -p ~/.godot/templates && cp godot.3dsx ~/.godot/templates/3ds_release.3dsx`
+2. No editor, abra o projeto e vá em **Cena → Exportar** (ou **Projeto → Exportar**), escolha
+   **Nintendo 3DS** e preencha as opções:
+   - `application/title`, `description`, `author`: o que aparece no Homebrew Launcher
+     (vazio = nome do projeto / "Made with Godot Engine" / "Unknown");
+   - `application/icon`: PNG do ícone (vazio = ícone do projeto), redimensionado para 48x48;
+   - `custom_template/release`: outro template `.3dsx`, se quiser usar um específico.
+3. Clique em **Exportar** e salve como `meu_jogo.3dsx`.
+
+Também funciona pela linha de comando (útil para scripts):
+
+```bash
+bin/godot.x11.opt.tools.64 -path caminho/do/projeto -export "Nintendo 3DS" /caminho/saida/jogo.3dsx
+```
+
+## 4. Testar
 
 - **Azahar**: Arquivo → Carregar arquivo → `bin/<nome>.3dsx` (no Windows, a pasta do WSL aparece em
   `\\wsl$\Ubuntu\home\<você>\godot-3ds\bin`).

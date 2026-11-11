@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Compila o Godot 2.1 para 3DS (e opcionalmente o editor Linux) dentro do container devkitPro.
 # Uso (a partir de qualquer pasta): misc/3ds-build/build.sh [template|editor|package|all]
-#   template : compila bin/godot.3ds.elf e gera bin/godot.3dsx (sem jogo)
+#   template : compila bin/godot.3ds.elf, gera bin/godot.3dsx (sem jogo) e o instala como template
+#              do editor em ~/.godot/templates/3ds_release.3dsx (INSTALL_TEMPLATE=0 para não instalar)
 #              OPTIMIZE=max|speed|size (-O3/-O2/-Os; padrão speed)
 #   package  : embute um projeto na RomFS -> bin/<nome>.3dsx
 #              PROJECT=<pasta do projeto, relativa à raiz do repo> (padrão: misc/3ds-build/test_project)
@@ -23,6 +24,12 @@ if [[ $WHAT == template || $WHAT == all ]]; then
     && arm-none-eabi-size bin/godot.3ds.elf \
     && smdhtool --create 'Godot 2.1 3DS' 'Template' 'Homebrodot' misc/3ds-build/smdh_icon.png bin/godot.smdh \
     && 3dsxtool bin/godot.3ds.elf bin/godot.3dsx --smdh=bin/godot.smdh"
+  # Install as the editor's export template (Exportar -> Nintendo 3DS).
+  if [[ "${INSTALL_TEMPLATE:-1}" == 1 ]]; then
+    mkdir -p "$HOME/.godot/templates"
+    cp "$SRC/bin/godot.3dsx" "$HOME/.godot/templates/3ds_release.3dsx"
+    echo "Template instalado em $HOME/.godot/templates/3ds_release.3dsx"
+  fi
 fi
 if [[ $WHAT == package || $WHAT == all ]]; then
   PROJECT=${PROJECT:-misc/3ds-build/test_project}

@@ -65,8 +65,13 @@ Scripts exportados em modo **compilado** (bytecode) para o 3DS não compilar nad
 - Fora de escopo: lambdas/`Callable`/`Signal` de primeira classe, Audio Buses, AnimationTree/TileMap do 4.x.
 
 ## Fase 2 — Exporter real
-`EditorExportPlatform3DS` em C++: assets → `data.pck` → RomFS → SMDH (título/autor/ícone 48x48) → `.3dsx`.
-Opcional: `.cia` via makerom + bannertool; "Run on device" via 3dslink.
+- [~] `EditorExportPlatform3DS` (platform/3ds/export/export.cpp): template `.3dsx` + `data.pck` → RomFS → SMDH
+      (título/descrição/autor/ícone 48x48 e 24x24) → `.3dsx`, sem devkitPro. RomFS/SMDH/3DSX validados byte a
+      byte contra 3dsxtool/smdhtool (exceto a redução do ícone 24x24). Template em
+      `~/.godot/templates/3ds_release.3dsx` (instalado pelo `build.sh template`). Testado: export headless
+      (`-export "Nintendo 3DS"`) gera pck com script compilado (.gdc), cena binária e engine.cfb.
+      Aguardando teste no console e no editor com janela.
+- Opcional: `.cia` via makerom + bannertool; "Run on device" via 3dslink; template de debug.
 
 ## Fase 3 — Assets e validações no editor
 Conversão para formatos nativos já em tiles (reaproveitar módulo ETC1), fontes dinâmicas → bitmap,
