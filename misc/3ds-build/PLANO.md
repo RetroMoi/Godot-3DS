@@ -10,7 +10,9 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - [x] Empacotamento `.3dsx` + SMDH (3dsxtool/smdhtool).
       Medição: código (`.text`) = **13,4 MB** (~21% da RAM do Old 3DS) → reduzir na Fase 1/4.
 - [ ] Compilar o editor (`platform=x11 tools=yes`) — corrigir Python 3/GCC novos.
-- [ ] Projeto de teste (Sprite + Label) rodando no Azahar e no console (Luma3DS); medir FPS e memória.
+- [x] Projeto de teste `misc/3ds-build/test_project` (Sprite girando + Label com FPS/memória/botões) e
+      empacotamento com RomFS: `build.sh package` → `bin/test_project.3dsx`.
+- [ ] Rodar no Azahar e no console (Luma3DS); anotar FPS e memória.
 
 ## Fase 1 — Template correto
 - Render nativo 400x240 (remover supersampling 480x800 que gasta ~3 MB de VRAM).
