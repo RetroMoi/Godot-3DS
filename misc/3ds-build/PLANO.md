@@ -38,6 +38,8 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
   heap 6,3 / 50,9 MB, 60 FPS, quadro 6,0 ms.
 - [x] Rebalancear heap x linear: opção `linear_heap_mb` (padrão 12, era 32 da libctru) → ~20 MB a mais de heap.
       Rever o valor quando as texturas forem para formatos nativos (Fase 3).
+- [x] 1º teste em New 3DS real: svcBreak antes do main (heap de ~99 MB > área de heap de 96 MB).
+      Corrigido com `__system_allocateHeaps` próprio: heap limitado a 96 MB, excedente vai para a linear.
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves

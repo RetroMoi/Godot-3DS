@@ -68,12 +68,71 @@ extern "C" {
 // Big stack thanks to CANVAS_ITEM_Z_MAX among other things
 u32 __stacksize__ = 1024 * 128;
 
-// Overrides libctru's weak default (32 MB). The malloc heap gets the remaining app memory
-// (__ctru_heap_size = 0 means "everything left"). Set with scons linear_heap_mb=N.
+}
+
+// ---------------------------------------------------------------------------------------------
+// Memory split between the malloc heap and the linear heap (GPU textures/buffers, audio).
+//
+// libctru's default gives linear memory up to 32 MB, which Godot doesn't need. Setting
+// __ctru_linear_heap_size alone is not enough: libctru then hands *all* the remaining memory to
+// the heap, but the heap must fit in the 96 MB heap area (0x08000000-0x0E000000). On a New 3DS
+// (~124 MB for the app) that request fails and libctru calls svcBreak before main().
+//
+// So we replace libctru's weak __system_allocateHeaps (same steps as libctru 2.7, different
+// sizes): linear gets LINEAR_HEAP_MB, the heap gets the rest capped to the heap area, and any
+// memory left over goes back to the linear heap. Set with scons linear_heap_mb=N.
+// ---------------------------------------------------------------------------------------------
 #ifndef LINEAR_HEAP_MB
 #define LINEAR_HEAP_MB 12
 #endif
-u32 __ctru_linear_heap_size = LINEAR_HEAP_MB * 1024 * 1024;
+
+extern "C" {
+#include <3ds/os.h>
+#include <3ds/allocator/mappable.h>
+
+extern u32 __ctru_heap, __ctru_heap_size, __ctru_linear_heap, __ctru_linear_heap_size;
+extern char *fake_heap_start, *fake_heap_end;
+
+void __system_allocateHeaps(void)
+{
+	Handle reslimit = 0;
+	if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+		svcBreak(USERBREAK_PANIC);
+
+	s64 max_commit = 0, current_commit = 0;
+	ResourceLimitType type = RESLIMIT_COMMIT;
+	svcGetResourceLimitLimitValues(&max_commit, reslimit, &type, 1);
+	svcGetResourceLimitCurrentValues(&current_commit, reslimit, &type, 1);
+	svcCloseHandle(reslimit);
+
+	u32 remaining = (u32)(max_commit - current_commit) & ~0xFFF;
+	u32 linear = (LINEAR_HEAP_MB * 1024 * 1024) & ~0xFFF;
+	if (linear >= remaining)
+		svcBreak(USERBREAK_PANIC);
+
+	const u32 heap_area = OS_HEAP_AREA_END - OS_HEAP_AREA_BEGIN;
+	u32 heap = remaining - linear;
+	if (heap > heap_area) {
+		linear += heap - heap_area;
+		heap = heap_area;
+	}
+
+	__ctru_heap_size = heap;
+	__ctru_linear_heap_size = linear;
+
+	if (R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
+			MEMOP_ALLOC, (MemPerm)(MEMPERM_READ | MEMPERM_WRITE))))
+		svcBreak(USERBREAK_PANIC);
+
+	if (R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size,
+			MEMOP_ALLOC_LINEAR, (MemPerm)(MEMPERM_READ | MEMPERM_WRITE))))
+		svcBreak(USERBREAK_PANIC);
+
+	mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+	fake_heap_start = (char *)__ctru_heap;
+	fake_heap_end = fake_heap_start + __ctru_heap_size;
+}
 }
 
 static aptHookCookie apt_hook_cookie;
