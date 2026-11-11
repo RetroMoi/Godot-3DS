@@ -174,7 +174,9 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	AudioDriverManagerSW::get_driver(0)->set_singleton();
 	if (AudioDriverManagerSW::get_driver(0)->init()!=OK)
 	{
-		ERR_PRINT("Initializing audio failed.");
+		ERR_PRINT("Initializing NDSP audio failed; continuing without sound.");
+		audio_driver_dummy.set_singleton();
+		audio_driver_dummy.init();
 	}
 
 	sample_manager = memnew( SampleManagerMallocSW );

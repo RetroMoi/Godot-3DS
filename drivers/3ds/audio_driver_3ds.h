@@ -36,6 +36,7 @@
 
 extern "C" {
 #include <3ds/types.h>
+#include <3ds/result.h>
 #include <3ds/ndsp/ndsp.h>
 #include <3ds/ndsp/channel.h>
 #include <3ds/allocator/linear.h>
@@ -68,6 +69,7 @@ class AudioDriver3ds : public AudioDriverSW {
 	bool thread_exited;
 	mutable bool exit_thread;
 	bool pcm_open;
+	bool ndsp_ready;
 
 public:
 

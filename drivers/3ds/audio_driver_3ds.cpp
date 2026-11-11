@@ -32,13 +32,20 @@
 #include "globals.h"
 #include "os/os.h"
 #include <string.h>
+#include <stdio.h>
 
 static int channel_num = 1;
 
 
 Error AudioDriver3ds::init() {
-	if (ndspInit() < 0)
+	Result res = ndspInit();
+	if (R_FAILED(res)) {
+		// Usually means the DSP firmware is missing: on hardware, dump it with DSP1
+		// (sdmc:/3ds/dspfirm.cdc); in Azahar/Citra, copy that file to the virtual SD card.
+		fprintf(stderr, "NDSP init failed (0x%08lX): is sdmc:/3ds/dspfirm.cdc present?\n", (unsigned long)res);
 		return FAILED;
+	}
+	ndsp_ready = true;
 
 	active=false;
 	thread_exited=false;
@@ -165,14 +172,31 @@ void AudioDriver3ds::finish() {
 	if (mutex)
 		memdelete(mutex);
 	thread = NULL;
-	
-	ndspExit();
+	mutex = NULL;
+
+	if (ndsp_ready) {
+		ndspExit();
+		ndsp_ready = false;
+	}
 };
 
 AudioDriver3ds::AudioDriver3ds() {
 
+	// Everything must be valid even if init() fails: the audio server may query the
+	// driver (e.g. get_mix_rate) before falling back.
 	mutex = NULL;
 	thread = NULL;
+	samples_in = NULL;
+	buffer_size = 0;
+	mix_rate = 44100;
+	output_format = OUTPUT_STEREO;
+	channels = 2;
+	active = false;
+	thread_exited = false;
+	exit_thread = false;
+	pcm_open = false;
+	ndsp_ready = false;
+	memset(ndsp_buffers, 0, sizeof(ndsp_buffers));
 };
 
 AudioDriver3ds::~AudioDriver3ds() {

@@ -68,6 +68,7 @@ class OS_3DS : public OS {
 	SpatialSound2DServerSW *spatial_sound_2d_server;
 	
 	AudioDriver3ds audio_driver;
+	AudioDriverDummy audio_driver_dummy; // silent fallback when NDSP is unavailable
 
 	Platform3DS *platform_3ds;
 	

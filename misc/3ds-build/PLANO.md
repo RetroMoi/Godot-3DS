@@ -26,6 +26,8 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
       com picos, `is_new_3ds`) e `OS.get_static_memory_*` reportando o heap real.
 - [x] Correção crítica: `-fno-delete-null-pointer-checks` (GCC 6+ removia os `if (!this)` de
       `Object::cast_to` → crash com ponteiro nulo). Saída do Godot vai para o log do emulador (svcOutputDebugString).
+- [x] Áudio: driver NDSP com membros inicializados e fallback para driver mudo quando `ndspInit` falha
+      (sem `dspfirm.cdc`). Antes, `mix_rate` com lixo de pilha gerava alocação gigante no reverb → crash.
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves
