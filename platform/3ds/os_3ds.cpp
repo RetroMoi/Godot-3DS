@@ -54,6 +54,8 @@
 // #include "packet_peer_udp_posix.h"
 
 #include "main/main.h"
+#include "globals.h"
+#include "platform_3ds.h"
 
 extern "C" {
 #include <3ds/svc.h>
@@ -78,6 +80,7 @@ static void apt_hook_callback(APT_HookType hook, void* param)
 OS_3DS::OS_3DS()
 : video_mode(800, 480, true, false, false)
 {	
+	platform_3ds = NULL;
 	gfxInitDefault();
 	//consoleInit(GFX_BOTTOM, NULL);
 	gfxSetDoubleBuffering(GFX_TOP, true);
@@ -102,8 +105,13 @@ void OS_3DS::run()
 		return;
 	
 	main_loop->init();
+	unsigned int frame = 0;
 	while (aptMainLoop())
 	{
+		// Sample memory peaks about once per second (mallinfo walks the heap).
+		if ((frame++ % 60) == 0)
+			platform_3ds->update_peaks();
+
 		processInput();
 		
 		if (hidKeysDown() & KEY_SELECT)
@@ -185,6 +193,9 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	physics_2d_server->init();
 
 	input = memnew( InputDefault );
+
+	platform_3ds = memnew( Platform3DS );
+	Globals::get_singleton()->add_singleton(Globals::Singleton("Platform3DS", platform_3ds));
 }
 
 void OS_3DS::delete_main_loop()
@@ -227,6 +238,9 @@ void OS_3DS::finalize()
 
 	physics_2d_server->finish();
 	memdelete(physics_2d_server);
+
+	memdelete(platform_3ds);
+	platform_3ds = NULL;
 }
 
 void OS_3DS::finalize_core()
@@ -245,6 +259,21 @@ void OS_3DS::vprint(const char* p_format, va_list p_list,bool p_stder)
 		vprintf(p_format,p_list);
 		fflush(stdout);
 	}
+}
+
+int OS_3DS::get_static_memory_usage() const
+{
+	return platform_3ds ? platform_3ds->get_heap_used() : 0;
+}
+
+int OS_3DS::get_static_memory_peak_usage() const
+{
+	return platform_3ds ? platform_3ds->get_heap_peak() : 0;
+}
+
+int OS_3DS::get_free_static_memory() const
+{
+	return platform_3ds ? platform_3ds->get_heap_size() - platform_3ds->get_heap_used() : 0;
 }
 
 void OS_3DS::alert(const String& p_alert,const String& p_title)

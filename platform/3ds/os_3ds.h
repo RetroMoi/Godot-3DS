@@ -50,6 +50,8 @@
 	@author Thomas Edvalson <machin3@gmail.com>
 */
 
+class Platform3DS;
+
 class OS_3DS : public OS {
 	
 	MainLoop *main_loop;
@@ -66,6 +68,8 @@ class OS_3DS : public OS {
 	SpatialSound2DServerSW *spatial_sound_2d_server;
 	
 	AudioDriver3ds audio_driver;
+
+	Platform3DS *platform_3ds;
 	
 	Point2i last_mouse_pos;
 	VideoMode video_mode;
@@ -213,10 +217,11 @@ public:
 // 	virtual void print_resources_in_use(bool p_short=false);
 // 	virtual void print_all_resources(String p_to_file="");
 
-// 	virtual int get_static_memory_usage() const;
-// 	virtual int get_static_memory_peak_usage() const;
+	// Release builds don't track Memory::alloc_static; report the real malloc heap instead.
+	virtual int get_static_memory_usage() const;
+	virtual int get_static_memory_peak_usage() const;
 // 	virtual int get_dynamic_memory_usage() const;
-// 	virtual int get_free_static_memory() const;
+	virtual int get_free_static_memory() const;
 
 // 	RenderThreadMode get_render_thread_mode() const { return RENDER_THREAD_UNSAFE; }
 
