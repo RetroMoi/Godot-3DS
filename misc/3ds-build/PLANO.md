@@ -74,6 +74,10 @@ Conversão para formatos nativos já em tiles (reaproveitar módulo ETC1), fonte
 sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas.
 
 ## Fase 4 — Desempenho
+0. Antes de otimizar, medir (adiado da Fase 1): cronômetro por etapa do quadro (lógica, física, montagem
+   do desenho, espera de GPU, vsync) + contadores de draw calls/vértices/trocas de textura via Platform3DS;
+   benchmark em cenários isolados (só desenho, sprites por GDScript, por nós nativos, só matemática,
+   limite de sprites a 60/30 FPS) com turbo on/off automático, gravando CSV em user://.
 Batching no canvas, ring buffer de vértices, atlas, física 2D a 30 Hz.
 
 ## Fase 5 — Extras
