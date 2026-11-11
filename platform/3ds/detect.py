@@ -87,6 +87,9 @@ def configure(env):
     arch = ['-march=armv6k', '-mtune=mpcore','-mfloat-abi=hard','-mtp=soft' ]
     env.Append(CCFLAGS=['-g','-Wall','-mword-relocations','-ffunction-sections', '-fno-rtti', '-fno-exceptions'] + arch)
     env.Append(CXXFLAGS=['-std=gnu++11'])
+    # Godot 2.1 relies on 'if (!this)' checks (Object::cast_to with NO_SAFE_CAST). GCC 6+ deletes
+    # them at -O2/-O3, turning cast_to() on a NULL pointer into a crash. Keep the checks.
+    env.Append(CCFLAGS=['-fno-delete-null-pointer-checks'])
     # GCC 14+ turns these into hard errors; the bundled C thirdparty code (opus, etc.) triggers them.
     env.Append(CFLAGS=['-Wno-error=incompatible-pointer-types', '-Wno-error=int-conversion',
                        '-Wno-error=implicit-function-declaration', '-Wno-error=implicit-int'])

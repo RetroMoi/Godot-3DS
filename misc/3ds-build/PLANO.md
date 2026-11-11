@@ -24,6 +24,8 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - Entrada: Circle Pad, C-Stick, touch; remover SELECT = sair; overlay de memória livre.
 - [x] Medição real de memória: singleton `Platform3DS.get_memory_info()` (heap/linear/VRAM/região do app,
       com picos, `is_new_3ds`) e `OS.get_static_memory_*` reportando o heap real.
+- [x] Correção crítica: `-fno-delete-null-pointer-checks` (GCC 6+ removia os `if (!this)` de
+      `Object::cast_to` → crash com ponteiro nulo). Saída do Godot vai para o log do emulador (svcOutputDebugString).
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves

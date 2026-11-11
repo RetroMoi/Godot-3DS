@@ -82,6 +82,9 @@ OS_3DS::OS_3DS()
 {	
 	platform_3ds = NULL;
 	gfxInitDefault();
+	// Send stderr to svcOutputDebugString (shown in the Azahar/Citra log and by debuggers);
+	// stdout is redirected to stderr in vprint() below.
+	consoleDebugInit(debugDevice_SVC);
 	//consoleInit(GFX_BOTTOM, NULL);
 	gfxSetDoubleBuffering(GFX_TOP, true);
 	aptHook(&apt_hook_cookie, apt_hook_callback, this);
@@ -252,13 +255,9 @@ void OS_3DS::finalize_core()
 
 void OS_3DS::vprint(const char* p_format, va_list p_list,bool p_stder)
 {
-	if (p_stder) {
-		vfprintf(stderr,p_format,p_list);
-		fflush(stderr);
-	} else {
-		vprintf(p_format,p_list);
-		fflush(stdout);
-	}
+	// Without a console, libctru discards stdout; stderr goes to the debug device.
+	vfprintf(stderr,p_format,p_list);
+	fflush(stderr);
 }
 
 int OS_3DS::get_static_memory_usage() const

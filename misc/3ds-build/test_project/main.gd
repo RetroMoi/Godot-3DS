@@ -17,7 +17,7 @@ func kb(bytes):
 	return str(bytes / 1024) + " KB"
 
 func mb(bytes):
-	return str(stepify(bytes / 1048576.0, 0.01)) + " MB"
+	return "%.1f MB" % (bytes / 1048576.0)
 
 func _process(delta):
 	tempo += delta
