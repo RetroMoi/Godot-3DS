@@ -85,7 +85,11 @@ def configure(env):
     env["AS"] = devkitarm_path + "/bin/arm-none-eabi-as"
 
     arch = ['-march=armv6k', '-mtune=mpcore','-mfloat-abi=hard','-mtp=soft' ]
-    env.Append(CCFLAGS=['-g','-Wall','-mword-relocations','-ffunction-sections', '-fno-rtti', '-fno-exceptions', '-std=gnu++11'] + arch)
+    env.Append(CCFLAGS=['-g','-Wall','-mword-relocations','-ffunction-sections', '-fno-rtti', '-fno-exceptions'] + arch)
+    env.Append(CXXFLAGS=['-std=gnu++11'])
+    # GCC 14+ turns these into hard errors; the bundled C thirdparty code (opus, etc.) triggers them.
+    env.Append(CFLAGS=['-Wno-error=incompatible-pointer-types', '-Wno-error=int-conversion',
+                       '-Wno-error=implicit-function-declaration', '-Wno-error=implicit-int'])
     env.Append(CCFLAGS=['-D_3DS', '-DARM11','-DNEED_LONG_INT', '-DLIBC_FILEIO_ENABLED','-DNO_SAFE_CAST'])
     env.Append(CPPPATH=[devkitpro_path+"/portlibs/armv6k/include", devkitpro_path +
                "/portlibs/3ds/include", ctrulib_path + "/include", devkitarm_path + "/arm-none-eabi/include"])
