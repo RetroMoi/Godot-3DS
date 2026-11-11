@@ -40,6 +40,7 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
       Rever o valor quando as texturas forem para formatos nativos (Fase 3).
 - [x] 1º teste em New 3DS real: svcBreak antes do main (heap de ~99 MB > área de heap de 96 MB).
       Corrigido com `__system_allocateHeaps` próprio: heap limitado a 96 MB, excedente vai para a linear.
+- [x] New 3DS real: 60 FPS; heap 6,4 / 96,0 MB; linear 2,7 / 14,9 MB; VRAM 0,7 / 6,0 MB; app 124 MB.
 - Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves

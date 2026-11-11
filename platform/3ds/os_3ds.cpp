@@ -527,12 +527,12 @@ void OS_3DS::processInput()
 	circlePosition circle;
 	hidCircleRead(&circle);
 	_send_axis(JOY_ANALOG_0_X, _stick_value(circle.dx));
-	_send_axis(JOY_ANALOG_0_Y, -_stick_value(circle.dy));
+	_send_axis(JOY_ANALOG_0_Y, 0.0f - _stick_value(circle.dy));
 
 	circlePosition cstick;
 	hidCstickRead(&cstick); // New 3DS only; reads 0 on Old 3DS
 	_send_axis(JOY_ANALOG_1_X, _stick_value(cstick.dx));
-	_send_axis(JOY_ANALOG_1_Y, -_stick_value(cstick.dy));
+	_send_axis(JOY_ANALOG_1_Y, 0.0f - _stick_value(cstick.dy));
 
 	// Touch screen (bottom screen, 320x240 pixels) as touch index 0.
 	if (kDown & KEY_TOUCH)
