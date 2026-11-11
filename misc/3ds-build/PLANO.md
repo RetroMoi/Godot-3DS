@@ -12,7 +12,10 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - [ ] Compilar o editor (`platform=x11 tools=yes`) — corrigir Python 3/GCC novos.
 - [x] Projeto de teste `misc/3ds-build/test_project` (Sprite girando + Label com FPS/memória/botões) e
       empacotamento com RomFS: `build.sh package` → `bin/test_project.3dsx`.
-- [ ] Rodar no Azahar e no console (Luma3DS); anotar FPS e memória.
+- [x] Azahar 2126.2: roda a **60 FPS** estáveis (sprite girando + Label).
+      Obs.: "memória estática" aparece 0 KB porque o build release não rastreia memória
+      (`DEBUG_MEMORY_ENABLED` desligado) → medir pela libctru (`osGetMemRegionUsed`) na Fase 1.
+- [ ] Rodar no console (Luma3DS), de preferência Old 3DS; anotar FPS e memória.
 
 ## Fase 1 — Template correto
 - Render nativo 400x240 (remover supersampling 480x800 que gasta ~3 MB de VRAM).
