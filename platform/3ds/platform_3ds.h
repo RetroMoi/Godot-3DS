@@ -42,6 +42,7 @@ class Platform3DS : public Object {
 	mutable uint32_t heap_peak;
 	mutable uint32_t linear_peak;
 	mutable uint32_t vram_peak;
+	bool cpu_speedup;
 
 protected:
 	static void _bind_methods();
@@ -62,6 +63,16 @@ public:
 	Dictionary get_memory_info() const;
 
 	bool is_new_3ds() const;
+
+	// New 3DS only: 804 MHz + L2 cache when enabled (default), 268 MHz like an Old 3DS when not.
+	void set_cpu_speedup(bool p_enabled);
+	bool get_cpu_speedup() const;
+
+	// Optimization level the engine was built with (scons optimize=...): "max", "speed" or "size".
+	String get_build_optimization() const;
+
+	// Microsecond timer (OS.get_ticks_usec is not exposed to scripts in 2.1).
+	uint64_t get_ticks_usec() const;
 
 	Platform3DS();
 	~Platform3DS();

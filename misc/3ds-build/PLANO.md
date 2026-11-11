@@ -44,7 +44,10 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
 - [x] 1º teste em New 3DS real: svcBreak antes do main (heap de ~99 MB > área de heap de 96 MB).
       Corrigido com `__system_allocateHeaps` próprio: heap limitado a 96 MB, excedente vai para a linear.
 - [x] New 3DS real: 60 FPS; heap 6,4 / 96,0 MB; linear 2,7 / 14,9 MB; VRAM 0,7 / 6,0 MB; app 124 MB.
-- Reduzir binário: desligar módulos não usados, `-Os`, `--gc-sections`, LTO.
+- [~] Reduzir binário: módulos mpc/opus/webp/gridmap/ik/cscript desligados (13,45 → 13,11 MB de código);
+      opção `optimize`: max (-O3) 13,11 MB · speed (-O2) 11,85 MB · size (-Os) 8,26 MB.
+      Benchmark `misc/3ds-build/bench_project` (sprites + laço GDScript, A = turbo on/off) para escolher
+      o padrão com números do console. `--gc-sections` já vem do 3dsx.specs. LTO: a avaliar.
 
 ## Fase 1.5 — "GDScript 2.1+" e backports leves
 Princípio: o que roda no PC (parser, editor, exportação) é barato; o que roda no console precisa caber em RAM/CPU.

@@ -29,6 +29,7 @@
 #include "platform_3ds.h"
 
 #include <malloc.h>
+#include "os/os.h"
 
 extern "C" {
 #include <3ds/types.h>
@@ -93,9 +94,34 @@ bool Platform3DS::is_new_3ds() const {
 	return n3ds;
 }
 
+void Platform3DS::set_cpu_speedup(bool p_enabled) {
+	osSetSpeedupEnable(p_enabled);
+	cpu_speedup = p_enabled;
+}
+
+bool Platform3DS::get_cpu_speedup() const {
+	return cpu_speedup;
+}
+
+String Platform3DS::get_build_optimization() const {
+#ifdef GODOT_3DS_OPTIMIZE
+	return GODOT_3DS_OPTIMIZE;
+#else
+	return "unknown";
+#endif
+}
+
+uint64_t Platform3DS::get_ticks_usec() const {
+	return OS::get_singleton()->get_ticks_usec();
+}
+
 void Platform3DS::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_memory_info"), &Platform3DS::get_memory_info);
 	ObjectTypeDB::bind_method(_MD("is_new_3ds"), &Platform3DS::is_new_3ds);
+	ObjectTypeDB::bind_method(_MD("set_cpu_speedup", "enabled"), &Platform3DS::set_cpu_speedup);
+	ObjectTypeDB::bind_method(_MD("get_cpu_speedup"), &Platform3DS::get_cpu_speedup);
+	ObjectTypeDB::bind_method(_MD("get_build_optimization"), &Platform3DS::get_build_optimization);
+	ObjectTypeDB::bind_method(_MD("get_ticks_usec"), &Platform3DS::get_ticks_usec);
 }
 
 Platform3DS::Platform3DS() {
@@ -103,6 +129,7 @@ Platform3DS::Platform3DS() {
 	heap_peak = 0;
 	linear_peak = 0;
 	vram_peak = 0;
+	cpu_speedup = true; // OS_3DS enables it at startup
 }
 
 Platform3DS::~Platform3DS() {

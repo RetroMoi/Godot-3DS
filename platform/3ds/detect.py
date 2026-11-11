@@ -28,6 +28,8 @@ def get_opts():
         # libctru reserves 32 MB of linear memory by default; the rest of the app region goes to
         # the malloc heap. Godot uses linear memory only for GPU textures/buffers and audio.
         ('linear_heap_mb', 'Linear heap reserved for GPU/audio buffers, in MB', '12'),
+        # Code size matters on 3DS: it is loaded into the same RAM the game uses.
+        ('optimize', 'Release optimization: max (-O3), speed (-O2) or size (-Os)', 'max'),
     ]
 
 
@@ -46,7 +48,13 @@ def get_flags():
 		('builtin_libwebp', 'yes'),
         ('builtin_zlib', 'yes'),
         ("module_openssl_enabled", "no"),
-        ('module_musepack_enabled', 'no'),
+        # Not useful on 3DS (2D only, no networking/encryption, limited RAM):
+        ('module_mpc_enabled', 'no'),      # Musepack audio (was misnamed module_musepack_enabled)
+        ('module_opus_enabled', 'no'),     # Opus audio: OGG Vorbis covers music
+        ('module_webp_enabled', 'no'),     # WebP images: textures are imported, not loaded raw
+        ('module_gridmap_enabled', 'no'),  # 3D
+        ('module_ik_enabled', 'no'),       # 3D inverse kinematics
+        ('module_cscript_enabled', 'no'),  # unused script language stub
     ]
 
 
@@ -91,6 +99,7 @@ def configure(env):
     env.Append(CCFLAGS=['-g','-Wall','-mword-relocations','-ffunction-sections', '-fno-rtti', '-fno-exceptions'] + arch)
     env.Append(CXXFLAGS=['-std=gnu++11'])
     env.Append(CPPFLAGS=['-DLINEAR_HEAP_MB=' + str(int(env['linear_heap_mb']))])
+    env.Append(CPPFLAGS=['-DGODOT_3DS_OPTIMIZE=\\"' + env['optimize'] + '\\"'])
     # Godot 2.1 relies on 'if (!this)' checks (Object::cast_to with NO_SAFE_CAST). GCC 6+ deletes
     # them at -O2/-O3, turning cast_to() on a NULL pointer into a crash. Keep the checks.
     env.Append(CCFLAGS=['-fno-delete-null-pointer-checks'])
@@ -113,7 +122,7 @@ def configure(env):
         if (env["debug_release"] == "yes"):
             env.Append(CCFLAGS=['-g2'])
         else:
-            env.Append(CCFLAGS=['-O3'])
+            env.Append(CCFLAGS=[{'max': '-O3', 'speed': '-O2', 'size': '-Os'}[env['optimize']]])
     elif (env["target"] == "release_debug"):
         env.Append(CCFLAGS=['-O2', '-ffast-math', '-DDEBUG_ENABLED'])
         if (env["debug_release"] == "yes"):
