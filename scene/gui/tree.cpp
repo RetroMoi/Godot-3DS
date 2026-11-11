@@ -1781,6 +1781,47 @@ void Tree::text_editor_enter(String p_text) {
 	update();
 }
 
+// Up/Down while typing in a number cell steps the value and applies it live (like newer Godot's spin
+// sliders): one step, Shift = 10 steps, Alt = a tenth of a step (not snapped to the step).
+void Tree::_text_editor_input(const InputEvent &p_event) {
+
+	if (p_event.type != InputEvent::KEY || !p_event.key.pressed)
+		return;
+	if (p_event.key.scancode != KEY_UP && p_event.key.scancode != KEY_DOWN)
+		return;
+	if (!popup_edited_item || popup_edited_item_col < 0 || popup_edited_item_col >= columns.size())
+		return;
+
+	TreeItem::Cell &c = popup_edited_item->cells[popup_edited_item_col];
+	if (c.mode != TreeItem::CELL_MODE_RANGE && c.mode != TreeItem::CELL_MODE_RANGE_EXPRESSION)
+		return;
+
+	double step = c.step > 0 ? c.step : 1.0;
+	bool fine = p_event.key.mod.alt;
+	if (p_event.key.mod.shift)
+		step *= 10.0;
+	else if (fine)
+		step *= 0.1;
+
+	double val = (c.mode == TreeItem::CELL_MODE_RANGE_EXPRESSION && evaluator) ? double(evaluator->eval(text_editor->get_text())) : text_editor->get_text().to_double();
+	val += p_event.key.scancode == KEY_UP ? step : -step;
+	if (!fine && c.step > 0)
+		val = Math::stepify(val, c.step);
+	val = CLAMP(val, c.min, c.max);
+
+	c.val = val;
+	text_editor->set_text(String::num(val, Math::step_decimals(fine ? c.step * 0.1 : c.step)));
+	text_editor->select_all();
+	if (value_editor->is_visible()) {
+		updating_value_editor = true;
+		value_editor->set_val(val);
+		updating_value_editor = false;
+	}
+	item_edited(popup_edited_item_col, popup_edited_item);
+	update();
+	text_editor->accept_event();
+}
+
 void Tree::value_editor_changed(double p_value) {
 
 	if (updating_value_editor) {
@@ -2159,11 +2200,18 @@ void Tree::_input_event(InputEvent p_event) {
 				} else {
 
 					TreeItem::Cell &c = popup_edited_item->cells[popup_edited_item_col];
-					float diff_y = -b.relative_y;
-					diff_y = Math::pow(ABS(diff_y), 1.8) * SGN(diff_y);
-					diff_y *= 0.1;
-					range_drag_base = CLAMP(range_drag_base + c.step * diff_y, c.min, c.max);
-					popup_edited_item->set_range(popup_edited_item_col, range_drag_base);
+					// Drag right/up to increase (horizontal like newer Godot, vertical as in 2.1).
+					// Shift: precise (1/10 speed). Ctrl: snap to whole numbers.
+					float diff = ABS(b.relative_x) >= ABS(b.relative_y) ? b.relative_x : -b.relative_y;
+					diff = Math::pow(ABS(diff), 1.8) * SGN(diff);
+					diff *= 0.1;
+					if (b.mod.shift)
+						diff *= 0.1;
+					range_drag_base = CLAMP(range_drag_base + c.step * diff, c.min, c.max);
+					double shown = range_drag_base;
+					if (b.mod.control)
+						shown = CLAMP(Math::round(shown), c.min, c.max);
+					popup_edited_item->set_range(popup_edited_item_col, shown);
 					item_edited(popup_edited_item_col, popup_edited_item);
 				}
 			}
@@ -3373,6 +3421,7 @@ void Tree::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("_popup_select"), &Tree::popup_select);
 	ObjectTypeDB::bind_method(_MD("_text_editor_enter"), &Tree::text_editor_enter);
 	ObjectTypeDB::bind_method(_MD("_text_editor_modal_close"), &Tree::_text_editor_modal_close);
+	ObjectTypeDB::bind_method(_MD("_text_editor_input"), &Tree::_text_editor_input);
 	ObjectTypeDB::bind_method(_MD("_value_editor_changed"), &Tree::value_editor_changed);
 	ObjectTypeDB::bind_method(_MD("_scroll_moved"), &Tree::_scroll_moved);
 
@@ -3488,6 +3537,7 @@ Tree::Tree() {
 	v_scroll->connect("value_changed", this, "_scroll_moved");
 	text_editor->connect("text_entered", this, "_text_editor_enter");
 	text_editor->connect("modal_close", this, "_text_editor_modal_close");
+	text_editor->connect("input_event", this, "_text_editor_input");
 	popup_menu->connect("item_pressed", this, "_popup_select");
 	value_editor->connect("value_changed", this, "_value_editor_changed");
 

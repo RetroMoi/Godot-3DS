@@ -504,6 +504,10 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 	set("global/hidpi_mode", 0);
 	hints["global/hidpi_mode"] = PropertyInfo(Variant::INT, "global/hidpi_mode", PROPERTY_HINT_ENUM, "Auto,LoDPI,HiDPI", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_RESTART_IF_CHANGED);
 	set("global/show_script_in_scene_tabs", false);
+
+	// Godot 3DS fork: the 3DS template is built without 3D (disable_3d), so 3D nodes in a scene fail
+	// to load on the console. Hide the 3D workspace and 3D nodes unless enabled (restart to apply).
+	set("3ds/show_3d", false);
 	set("global/font_size", 14);
 	hints["global/font_size"] = PropertyInfo(Variant::INT, "global/font_size", PROPERTY_HINT_RANGE, "10,40,1", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_RESTART_IF_CHANGED);
 	set("global/source_font_size", 14);

@@ -6228,6 +6228,13 @@ EditorNode::EditorNode() {
 	//more visually meaningful to have this later
 	raise_bottom_panel_item(AnimationPlayerEditor::singleton);
 
+	if (!bool(EDITOR_DEF("3ds/show_3d", false))) {
+		for (int i = 0; i < main_editor_buttons.size(); i++) {
+			if (main_editor_buttons[i]->get_text() == "3D")
+				main_editor_buttons[i]->hide();
+		}
+	}
+
 	add_editor_plugin(memnew(ShaderGraphEditorPlugin(this, true)));
 	add_editor_plugin(memnew(ShaderGraphEditorPlugin(this, false)));
 	add_editor_plugin(memnew(ShaderEditorPlugin(this, true)));

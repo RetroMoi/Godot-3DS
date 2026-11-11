@@ -730,6 +730,29 @@ void ProjectSettings::_item_checked(const String &p_item, bool p_check) {
 	undo_redo->commit_action();
 }
 
+// Revert button (replaces the old "persist" checkbox): go back to the engine default when known and
+// stop saving the setting in engine.cfg. Settings without a known default are only un-saved.
+void ProjectSettings::_item_reverted(const String &p_item) {
+
+	String full_item = globals_editor->get_full_item_path(p_item);
+	Globals *g = Globals::get_singleton();
+	if (!g->has(full_item))
+		return;
+
+	undo_redo->create_action(TTR("Revert Setting"));
+	if (g->has_initial_value(full_item)) {
+		undo_redo->add_do_method(g, "set", full_item, g->get_initial_value(full_item));
+		undo_redo->add_undo_method(g, "set", full_item, g->get(full_item));
+	}
+	undo_redo->add_do_method(g, "set_persisting", full_item, false);
+	undo_redo->add_undo_method(g, "set_persisting", full_item, g->is_persisting(full_item));
+	undo_redo->add_do_method(this, "_settings_changed");
+	undo_redo->add_undo_method(this, "_settings_changed");
+	undo_redo->add_do_method(globals_editor->get_property_editor(), "update_tree");
+	undo_redo->add_undo_method(globals_editor->get_property_editor(), "update_tree");
+	undo_redo->commit_action();
+}
+
 void ProjectSettings::_save() {
 
 	Error err = Globals::get_singleton()->save();
@@ -1167,6 +1190,7 @@ void ProjectSettings::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("_item_adds"), &ProjectSettings::_item_adds);
 	ObjectTypeDB::bind_method(_MD("_item_del"), &ProjectSettings::_item_del);
 	ObjectTypeDB::bind_method(_MD("_item_checked"), &ProjectSettings::_item_checked);
+	ObjectTypeDB::bind_method(_MD("_item_reverted"), &ProjectSettings::_item_reverted);
 	ObjectTypeDB::bind_method(_MD("_save"), &ProjectSettings::_save);
 	ObjectTypeDB::bind_method(_MD("_action_add"), &ProjectSettings::_action_add);
 	ObjectTypeDB::bind_method(_MD("_action_adds"), &ProjectSettings::_action_adds);
@@ -1297,7 +1321,9 @@ ProjectSettings::ProjectSettings(EditorData *p_data) {
 	globals_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	globals_editor->get_property_editor()->register_text_enter(search_box);
 	globals_editor->get_property_editor()->get_scene_tree()->connect("cell_selected", this, "_item_selected");
+	globals_editor->get_property_editor()->set_checkable_as_revert(true);
 	globals_editor->get_property_editor()->connect("property_toggled", this, "_item_checked", varray(), CONNECT_DEFERRED);
+	globals_editor->get_property_editor()->connect("property_revert_requested", this, "_item_reverted", varray(), CONNECT_DEFERRED);
 	globals_editor->get_property_editor()->connect("property_edited", this, "_settings_prop_edited");
 
 	/*

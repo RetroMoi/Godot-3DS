@@ -1290,7 +1290,7 @@ void CustomPropertyEditor::_modified(String p_string) {
 
 			if (hint != PROPERTY_HINT_EXP_EASING) {
 				if (evaluator)
-					evaluator->eval(value_editor[0]->get_text());
+					v = evaluator->eval(value_editor[0]->get_text());
 				else
 					v = value_editor[0]->get_text().to_double();
 				emit_signal("variant_changed");
@@ -1563,6 +1563,52 @@ void CustomPropertyEditor::_focus_enter() {
 	}
 }
 
+// Up/Down in a numeric field of the value popup (Vector2, Rect2, Vector3, Matrix32, ...) steps the value
+// and applies it live, like the spin sliders of newer Godot. Up/Down: 1, Shift: 10, Alt: 0.1.
+void CustomPropertyEditor::_value_editor_input(const InputEvent &p_event, int p_idx) {
+
+	if (p_event.type != InputEvent::KEY || !p_event.key.pressed)
+		return;
+	if (p_event.key.scancode != KEY_UP && p_event.key.scancode != KEY_DOWN)
+		return;
+	switch (type) {
+		case Variant::REAL:
+		case Variant::VECTOR2:
+		case Variant::RECT2:
+		case Variant::VECTOR3:
+		case Variant::PLANE:
+		case Variant::QUAT:
+		case Variant::_AABB:
+		case Variant::MATRIX32:
+		case Variant::MATRIX3:
+		case Variant::TRANSFORM:
+			break;
+		default:
+			return;
+	}
+	if (type == Variant::REAL && hint == PROPERTY_HINT_EXP_EASING)
+		return;
+	ERR_FAIL_INDEX(p_idx, MAX_VALUE_EDITORS);
+
+	LineEdit *le = value_editor[p_idx];
+	double step = p_event.key.mod.shift ? 10.0 : (p_event.key.mod.alt ? 0.1 : 1.0);
+	double val = evaluator ? double(evaluator->eval(le->get_text())) : le->get_text().to_double();
+	val += p_event.key.scancode == KEY_UP ? step : -step;
+	val = Math::stepify(val, 0.0001); // avoid 0.30000000000000004-like noise from repeated 0.1 steps
+
+	String text = String::num(val, 4);
+	if (text.find(".") != -1) {
+		while (text.ends_with("0"))
+			text = text.substr(0, text.length() - 1);
+		if (text.ends_with("."))
+			text = text.substr(0, text.length() - 1);
+	}
+	le->set_text(text);
+	le->select_all();
+	_modified(text);
+	le->accept_event();
+}
+
 void CustomPropertyEditor::_focus_exit() {
 	switch (type) {
 		case Variant::REAL:
@@ -1641,6 +1687,7 @@ void CustomPropertyEditor::_bind_methods() {
 
 	ObjectTypeDB::bind_method("_focus_enter", &CustomPropertyEditor::_focus_enter);
 	ObjectTypeDB::bind_method("_focus_exit", &CustomPropertyEditor::_focus_exit);
+	ObjectTypeDB::bind_method("_value_editor_input", &CustomPropertyEditor::_value_editor_input);
 	ObjectTypeDB::bind_method("_modified", &CustomPropertyEditor::_modified);
 	ObjectTypeDB::bind_method("_range_modified", &CustomPropertyEditor::_range_modified);
 	ObjectTypeDB::bind_method("_scroll_modified", &CustomPropertyEditor::_scroll_modified);
@@ -1674,6 +1721,7 @@ CustomPropertyEditor::CustomPropertyEditor() {
 		value_editor[i]->connect("text_entered", this, "_modified");
 		value_editor[i]->connect("focus_enter", this, "_focus_enter");
 		value_editor[i]->connect("focus_exit", this, "_focus_exit");
+		value_editor[i]->connect("input_event", this, "_value_editor_input", varray(i));
 	}
 	focused_value_editor = -1;
 
@@ -2743,10 +2791,17 @@ void PropertyEditor::update_tree() {
 
 		if (p.usage & PROPERTY_USAGE_CHECKABLE) {
 
-			item->set_cell_mode(0, TreeItem::CELL_MODE_CHECK);
-			item->set_selectable(0, true);
-			item->set_editable(0, true);
-			item->set_checked(0, p.usage & PROPERTY_USAGE_CHECKED);
+			if (checkable_as_revert) {
+				// Checked means "customized/saved": offer a revert button instead of a checkbox,
+				// which looked like a duplicate of the value's own checkbox for bools.
+				if (p.usage & PROPERTY_USAGE_CHECKED)
+					item->add_button(1, get_icon("ReloadSmall", "EditorIcons"), 6);
+			} else {
+				item->set_cell_mode(0, TreeItem::CELL_MODE_CHECK);
+				item->set_selectable(0, true);
+				item->set_editable(0, true);
+				item->set_checked(0, p.usage & PROPERTY_USAGE_CHECKED);
+			}
 		}
 
 		item->set_text(0, name);
@@ -3686,6 +3741,11 @@ void PropertyEditor::_edit_button(Object *p_item, int p_column, int p_button) {
 			return;
 		String prop = d["name"];
 		emit_signal("property_keyed", prop, obj->get(prop), false);
+	} else if (p_button == 6) {
+
+		if (!d.has("name"))
+			return;
+		emit_signal("property_revert_requested", String(d["name"]));
 	} else if (p_button == 5) {
 		print_line("PB5");
 		if (!d.has("name"))
@@ -3908,6 +3968,7 @@ void PropertyEditor::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("drop_data_fw"), &PropertyEditor::drop_data_fw);
 
 	ADD_SIGNAL(MethodInfo("property_toggled", PropertyInfo(Variant::STRING, "property"), PropertyInfo(Variant::BOOL, "value")));
+	ADD_SIGNAL(MethodInfo("property_revert_requested", PropertyInfo(Variant::STRING, "property")));
 	ADD_SIGNAL(MethodInfo("resource_selected", PropertyInfo(Variant::OBJECT, "res"), PropertyInfo(Variant::STRING, "prop")));
 	ADD_SIGNAL(MethodInfo("object_id_selected", PropertyInfo(Variant::INT, "id")));
 	ADD_SIGNAL(MethodInfo("property_keyed", PropertyInfo(Variant::STRING, "property")));
@@ -4049,6 +4110,7 @@ PropertyEditor::PropertyEditor() {
 
 	capitalize_paths = true;
 	autoclear = false;
+	checkable_as_revert = false;
 	tree->set_column_titles_visible(false);
 	tree->add_constant_override("button_margin", 0);
 

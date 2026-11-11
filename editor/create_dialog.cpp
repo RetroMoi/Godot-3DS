@@ -224,6 +224,7 @@ void CreateDialog::_update_search() {
 
 	List<StringName>::Element *I = type_list.front();
 	TreeItem *to_select = search_box->get_text() == base_type ? root : NULL;
+	bool show_3d = EDITOR_DEF("3ds/show_3d", false);
 
 	for (; I; I = I->next()) {
 
@@ -234,6 +235,9 @@ void CreateDialog::_update_search() {
 
 		if (!ObjectTypeDB::can_instance(type))
 			continue; // cant create what can't be instanced
+
+		if (!show_3d && ObjectTypeDB::is_type(type, "Spatial"))
+			continue; // Godot 3DS fork: the 3DS template has no 3D (see editor setting 3ds/show_3d)
 
 		if (search_box->get_text() == "") {
 			add_type(type, types, root, &to_select);

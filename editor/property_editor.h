@@ -117,6 +117,7 @@ class CustomPropertyEditor : public Popup {
 	void _file_selected(String p_file);
 	void _scroll_modified(double p_value);
 	void _modified(String p_string);
+	void _value_editor_input(const InputEvent &p_event, int p_idx);
 	void _range_modified(double p_value);
 	void _focus_enter();
 	void _focus_exit();
@@ -175,6 +176,7 @@ class PropertyEditor : public Control {
 	bool changing;
 	bool update_tree_pending;
 	bool autoclear;
+	bool checkable_as_revert;
 	bool keying;
 	bool read_only;
 	bool show_categories;
@@ -271,6 +273,9 @@ public:
 	bool is_capitalize_paths_enabled() const;
 	void set_enable_capitalize_paths(bool p_capitalize);
 	void set_autoclear(bool p_enable);
+	// Show a revert button on checked (saved) properties instead of a checkbox for every
+	// PROPERTY_USAGE_CHECKABLE property; emits "property_revert_requested". Used by Project Settings.
+	void set_checkable_as_revert(bool p_enable) { checkable_as_revert = p_enable; }
 
 	void set_show_categories(bool p_show);
 	void set_use_doc_hints(bool p_enable) { use_doc_hints = p_enable; }

@@ -66,11 +66,14 @@ protected:
 		Variant variant;
 		bool hide_from_editor;
 		bool overrided;
+		Variant initial; // default value given to GLOBAL_DEF, used by the editor to revert settings
+		bool has_initial;
 		VariantContainer() {
 			order = 0;
 			hide_from_editor = false;
 			persist = false;
 			overrided = false;
+			has_initial = false;
 		}
 		VariantContainer(const Variant &p_variant, int p_order, bool p_persist = false) {
 			variant = p_variant;
@@ -78,6 +81,7 @@ protected:
 			hide_from_editor = false;
 			persist = p_persist;
 			overrided = false;
+			has_initial = false;
 		}
 	};
 
@@ -120,6 +124,10 @@ public:
 
 	void set_persisting(const String &p_name, bool p_persist);
 	bool is_persisting(const String &p_name) const;
+
+	void set_initial_value(const String &p_name, const Variant &p_value);
+	bool has_initial_value(const String &p_name) const;
+	Variant get_initial_value(const String &p_name) const;
 
 	String get_resource_path() const;
 

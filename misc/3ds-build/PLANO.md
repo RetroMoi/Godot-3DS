@@ -93,5 +93,18 @@ Batching no canvas, ring buffer de vértices, atlas, física 2D a 30 Hz.
 ## Fase 5 — Extras
 Tela de baixo como Viewport secundário; 3D estéreo por parallax.
 
+## Editor (UI) — limpeza e usabilidade
+- [~] Configurações do Projeto: a caixinha de "salvar no engine.cfg" (que parecia duplicar o valor nas
+      propriedades booleanas) virou um botão de reverter (valor padrão + parar de salvar, com desfazer).
+      `Globals` guarda o padrão de cada `GLOBAL_DEF`.
+- [~] Exportação/Configurações: plataformas sem uso aqui ocultas (Android, BlackBerry 10, HTML5, iOS, PSP,
+      Windows Universal) — lista `hidden_editor_platforms` no SConstruct. Ficam 3DS, Windows, Linux e macOS.
+- [~] 3D oculto por padrão (aba 3D e nós Spatial no Criar Nó), já que o template do 3DS não tem 3D;
+      Configurações do Editor → 3ds → Show 3D traz de volta.
+- [~] Inspector: ↑/↓ no campo numérico (Shift ×10, Alt ×0,1), arraste horizontal (como no Godot 4) ou
+      vertical, Shift = arraste fino, Ctrl = inteiros; ↑/↓ também nos campos de Vector2/Rect2/etc.
+      Corrigido bug do 2.1 em que o valor decimal digitado no popup era descartado.
+- CI ignora pushes que só alteram arquivos `.md`.
+
 ## Riscos
 Desempenho do GDScript 2.x no Old 3DS; efeitos limitados sem fragment shaders; manter o editor 2.1 compilando em toolchains modernas.

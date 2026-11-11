@@ -24,6 +24,10 @@ active_platform_ids = []
 platform_exporters = []
 global_defaults = []
 
+# Godot 3DS fork: only show export targets (and their per-platform project settings sections) that
+# make sense for this editor: Nintendo 3DS plus desktop. Remove a name here to bring a platform back.
+hidden_editor_platforms = ['android', 'bb10', 'iphone', 'javascript', 'psp', 'winrt']
+
 for x in glob.glob("platform/*"):
     if (not os.path.isdir(x) or not os.path.exists(x + "/detect.py")):
         continue
@@ -32,9 +36,9 @@ for x in glob.glob("platform/*"):
     sys.path.append(tmppath)
     import detect
 
-    if (os.path.exists(x + "/export/export.cpp")):
+    if (os.path.exists(x + "/export/export.cpp") and x[9:] not in hidden_editor_platforms):
         platform_exporters.append(x[9:])
-    if (os.path.exists(x + "/globals/global_defaults.cpp")):
+    if (os.path.exists(x + "/globals/global_defaults.cpp") and x[9:] not in hidden_editor_platforms):
         global_defaults.append(x[9:])
     if (detect.is_active()):
         active_platforms.append(detect.get_name())

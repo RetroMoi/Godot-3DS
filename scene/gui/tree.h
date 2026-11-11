@@ -337,6 +337,7 @@ private:
 	int propagate_mouse_event(const Point2i &p_pos, int x_ofs, int y_ofs, bool p_doubleclick, TreeItem *p_item, int p_button, const InputModifierState &p_mod);
 	void text_editor_enter(String p_text);
 	void _text_editor_modal_close();
+	void _text_editor_input(const InputEvent &p_event);
 	void value_editor_changed(double p_value);
 
 	void popup_select(int p_option);

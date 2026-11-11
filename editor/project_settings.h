@@ -106,6 +106,7 @@ class ProjectSettings : public AcceptDialog {
 	void _device_input_add();
 
 	void _item_checked(const String &p_item, bool p_check);
+	void _item_reverted(const String &p_item);
 	void _action_selected();
 	void _action_edited();
 	void _action_button_pressed(Object *p_obj, int p_column, int p_id);

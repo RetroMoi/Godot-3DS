@@ -722,6 +722,17 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF("display/resizable", video_mode.resizable);
 	GLOBAL_DEF("display/borderless_window", video_mode.borderless_window);
 	GLOBAL_DEF("display/always_on_top", video_mode.always_on_top);
+	{
+		// The values above come from the project itself (or the editor window), so record the OS
+		// defaults as the "revert" values shown in Project Settings.
+		OS::VideoMode vm_default = OS::get_singleton()->get_default_video_mode();
+		globals->set_initial_value("display/width", vm_default.width);
+		globals->set_initial_value("display/height", vm_default.height);
+		globals->set_initial_value("display/fullscreen", vm_default.fullscreen);
+		globals->set_initial_value("display/resizable", vm_default.resizable);
+		globals->set_initial_value("display/borderless_window", vm_default.borderless_window);
+		globals->set_initial_value("display/always_on_top", vm_default.always_on_top);
+	}
 	use_vsync = GLOBAL_DEF("display/use_vsync", use_vsync);
 	GLOBAL_DEF("display/test_width", 0);
 	GLOBAL_DEF("display/test_height", 0);

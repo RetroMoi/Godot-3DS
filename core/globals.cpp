@@ -107,6 +107,24 @@ bool Globals::is_persisting(const String &p_name) const {
 	return props[p_name].persist;
 }
 
+void Globals::set_initial_value(const String &p_name, const Variant &p_value) {
+
+	ERR_FAIL_COND(!props.has(p_name));
+	props[p_name].initial = p_value;
+	props[p_name].has_initial = true;
+}
+
+bool Globals::has_initial_value(const String &p_name) const {
+
+	return props.has(p_name) && props[p_name].has_initial;
+}
+
+Variant Globals::get_initial_value(const String &p_name) const {
+
+	ERR_FAIL_COND_V(!props.has(p_name), Variant());
+	return props[p_name].initial;
+}
+
 String Globals::globalize_path(const String &p_path) const {
 
 	if (p_path.begins_with("res://")) {
@@ -1274,10 +1292,18 @@ Error Globals::save_custom(const String &p_path, const CustomMap &p_custom, cons
 
 Variant _GLOBAL_DEF(const String &p_var, const Variant &p_default) {
 
-	if (Globals::get_singleton()->has(p_var))
-		return Globals::get_singleton()->get(p_var);
-	Globals::get_singleton()->set(p_var, p_default);
-	return p_default;
+	Variant ret;
+	if (Globals::get_singleton()->has(p_var)) {
+		ret = Globals::get_singleton()->get(p_var);
+	} else {
+		Globals::get_singleton()->set(p_var, p_default);
+		ret = p_default;
+	}
+	// Remember the default so the editor can offer "revert" for changed settings. The first definition
+	// wins: later GLOBAL_DEFs are often just reads with a fallback (e.g. GLOBAL_DEF("display/width", 0)).
+	if (!Globals::get_singleton()->has_initial_value(p_var))
+		Globals::get_singleton()->set_initial_value(p_var, p_default);
+	return ret;
 }
 
 void Globals::add_singleton(const Singleton &p_singleton) {
@@ -1367,6 +1393,9 @@ void Globals::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_order", "name"), &Globals::get_order);
 	ObjectTypeDB::bind_method(_MD("set_persisting", "name", "enable"), &Globals::set_persisting);
 	ObjectTypeDB::bind_method(_MD("is_persisting", "name"), &Globals::is_persisting);
+	ObjectTypeDB::bind_method(_MD("set_initial_value", "name", "value"), &Globals::set_initial_value);
+	ObjectTypeDB::bind_method(_MD("has_initial_value", "name"), &Globals::has_initial_value);
+	ObjectTypeDB::bind_method(_MD("get_initial_value", "name"), &Globals::get_initial_value);
 	ObjectTypeDB::bind_method(_MD("add_property_info", "hint"), &Globals::_add_property_info_bind);
 	ObjectTypeDB::bind_method(_MD("clear", "name"), &Globals::clear);
 	ObjectTypeDB::bind_method(_MD("localize_path", "path"), &Globals::localize_path);
