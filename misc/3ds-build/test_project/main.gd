@@ -5,13 +5,25 @@ extends Node2D
 
 var tempo = 0.0
 var acumulado = 0.0
+var impresso = 0.0
 var plat = null
+var toque = "-"
 
 func _ready():
 	if Globals.has_singleton("Platform3DS"):
 		plat = Globals.get_singleton("Platform3DS")
 	set_process(true)
+	set_process_input(true)
 	print("Teste 3DS iniciado; video mode: ", OS.get_video_mode_size(), " viewport: ", get_viewport_rect().size)
+
+func _input(ev):
+	if ev.type == InputEvent.SCREEN_TOUCH:
+		toque = ("%d,%d" % [ev.x, ev.y]) if ev.pressed else "-"
+	elif ev.type == InputEvent.SCREEN_DRAG:
+		toque = "%d,%d (arrasto)" % [ev.x, ev.y]
+
+func eixo(i):
+	return "%.2f" % Input.get_joy_axis(0, i)
 
 func kb(bytes):
 	return str(bytes / 1024) + " KB"
@@ -24,7 +36,7 @@ func _process(delta):
 	get_node("Sprite").set_rot(tempo)
 
 	acumulado += delta
-	if acumulado < 0.5:
+	if acumulado < 0.1:
 		return
 	acumulado = 0.0
 
@@ -45,6 +57,11 @@ func _process(delta):
 	else:
 		texto += "Mem. estatica: %s\n" % kb(OS.get_static_memory_usage())
 	texto += "Pool dinamico: %s\n" % kb(OS.get_dynamic_memory_usage())
-	texto += "Botoes: %s" % botoes
+	texto += "Botoes: %s\n" % botoes
+	texto += "Circle: %s,%s  C-Stick: %s,%s\n" % [eixo(0), eixo(1), eixo(2), eixo(3)]
+	texto += "Toque: %s" % toque
 	get_node("Label").set_text(texto)
-	print(texto.replace("\n", " | "))
+	impresso += 0.1
+	if impresso >= 1.0:
+		impresso = 0.0
+		print(texto.replace("\n", " | "))

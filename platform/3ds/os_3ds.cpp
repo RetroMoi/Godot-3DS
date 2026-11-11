@@ -63,6 +63,8 @@ extern "C" {
 #include <3ds/console.h>
 #include <3ds/services/apt.h>
 #include <3ds/services/hid.h>
+// C-Stick / ZL / ZR on New 3DS: hidInit() starts IRRST there and hidScanInput() merges it.
+#include <3ds/services/irrst.h>
 // Big stack thanks to CANVAS_ITEM_Z_MAX among other things
 u32 __stacksize__ = 1024 * 128;
 
@@ -88,6 +90,7 @@ OS_3DS::OS_3DS()
 : video_mode(400, 240, true, false, false) // top screen, native resolution
 {	
 	platform_3ds = NULL;
+	touch_pressed = false;
 	gfxInitDefault();
 	// Send stderr to svcOutputDebugString (shown in the Azahar/Citra log and by debuggers);
 	// stdout is redirected to stderr in vprint() below.
@@ -123,10 +126,7 @@ void OS_3DS::run()
 			platform_3ds->update_peaks();
 
 		processInput();
-		
-		if (hidKeysDown() & KEY_SELECT)
-			break;
-		
+
 		if (Main::iteration()==true)
 			break;
 		
@@ -205,6 +205,7 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	physics_2d_server->init();
 
 	input = memnew( InputDefault );
+	input->joy_connection_changed(0, true, "Nintendo 3DS");
 
 	platform_3ds = memnew( Platform3DS );
 	Globals::get_singleton()->add_singleton(Globals::Singleton("Platform3DS", platform_3ds));
@@ -404,37 +405,124 @@ int OS_3DS::get_processor_count() const
 	return 1;
 }
 
-static u32 buttons[16] = {
-	KEY_B,
-	KEY_A,
-	KEY_Y,
-	KEY_X,
-	KEY_L,
-	KEY_R,
-	KEY_ZL,    // L2
-	KEY_ZR,    // R2
-	KEY_TOUCH, // L3 substitute
-	KEY_TOUCH, // R3 substitute
-	KEY_SELECT,
-	KEY_START,
-	KEY_DUP,
-	KEY_DDOWN,
-	KEY_DLEFT,
-	KEY_DRIGHT,
+// Godot joystick button index -> 3DS key. Indices follow Godot's layout (JOY_BUTTON_0 = bottom
+// face button, 12-15 = D-pad), so the default ui_* actions work out of the box.
+static const u32 buttons[16] = {
+	KEY_B,      // 0  JOY_BUTTON_0 (bottom)
+	KEY_A,      // 1  JOY_BUTTON_1 (right)
+	KEY_Y,      // 2  JOY_BUTTON_2 (left)
+	KEY_X,      // 3  JOY_BUTTON_3 (top)
+	KEY_L,      // 4  L
+	KEY_R,      // 5  R
+	KEY_ZL,     // 6  L2 (New 3DS)
+	KEY_ZR,     // 7  R2 (New 3DS)
+	0,          // 8  L3: no stick click on 3DS
+	0,          // 9  R3: no stick click on 3DS
+	KEY_SELECT, // 10 SELECT
+	KEY_START,  // 11 START
+	KEY_DUP,    // 12 D-pad up
+	KEY_DDOWN,  // 13 D-pad down
+	KEY_DLEFT,  // 14 D-pad left
+	KEY_DRIGHT, // 15 D-pad right
 };
+
+// Circle Pad / C-Stick raw range is about +-156; ignore small noise around the center.
+#define STICK_RANGE 156.0f
+#define STICK_DEADZONE 15
+
+static float _stick_value(s16 raw)
+{
+	if (raw > -STICK_DEADZONE && raw < STICK_DEADZONE)
+		return 0.0f;
+	float v = raw / STICK_RANGE;
+	return v > 1.0f ? 1.0f : (v < -1.0f ? -1.0f : v);
+}
+
+void OS_3DS::_send_axis(int p_axis, float p_value)
+{
+	InputDefault::JoyAxis jx;
+	jx.min = -1;
+	jx.value = p_value;
+	last_id = input->joy_axis(last_id, 0, p_axis, jx);
+}
 
 void OS_3DS::processInput()
 {
 	hidScanInput();
 	u32 kDown = hidKeysDown();
 	u32 kUp = hidKeysUp();
+	u32 kHeld = hidKeysHeld();
 	last_id++;
-	
+
 	for (int i = 0; i < 16; ++i)
 	{
+		if (!buttons[i])
+			continue;
 		if (buttons[i] & kDown)
 			last_id = input->joy_button(last_id, 0, i, true);
 		else if (buttons[i] & kUp)
 			last_id = input->joy_button(last_id, 0, i, false);
+	}
+
+	// Analog sticks: Y is up-positive on 3DS, down-positive in Godot.
+	circlePosition circle;
+	hidCircleRead(&circle);
+	_send_axis(JOY_ANALOG_0_X, _stick_value(circle.dx));
+	_send_axis(JOY_ANALOG_0_Y, -_stick_value(circle.dy));
+
+	circlePosition cstick;
+	hidCstickRead(&cstick); // New 3DS only; reads 0 on Old 3DS
+	_send_axis(JOY_ANALOG_1_X, _stick_value(cstick.dx));
+	_send_axis(JOY_ANALOG_1_Y, -_stick_value(cstick.dy));
+
+	// Touch screen (bottom screen, 320x240 pixels) as touch index 0.
+	if (kDown & KEY_TOUCH)
+	{
+		touchPosition t;
+		hidTouchRead(&t);
+		touch_pos = Point2(t.px, t.py);
+		touch_pressed = true;
+
+		InputEvent ev;
+		ev.type = InputEvent::SCREEN_TOUCH;
+		ev.ID = ++last_id;
+		ev.screen_touch.index = 0;
+		ev.screen_touch.pressed = true;
+		ev.screen_touch.x = touch_pos.x;
+		ev.screen_touch.y = touch_pos.y;
+		input->parse_input_event(ev);
+	}
+	else if ((kHeld & KEY_TOUCH) && touch_pressed)
+	{
+		touchPosition t;
+		hidTouchRead(&t);
+		Point2 pos(t.px, t.py);
+		if (pos != touch_pos)
+		{
+			InputEvent ev;
+			ev.type = InputEvent::SCREEN_DRAG;
+			ev.ID = ++last_id;
+			ev.screen_drag.index = 0;
+			ev.screen_drag.x = pos.x;
+			ev.screen_drag.y = pos.y;
+			ev.screen_drag.relative_x = pos.x - touch_pos.x;
+			ev.screen_drag.relative_y = pos.y - touch_pos.y;
+			input->parse_input_event(ev);
+			touch_pos = pos;
+		}
+	}
+	else if ((kUp & KEY_TOUCH) && touch_pressed)
+	{
+		// hidTouchRead returns 0,0 once released, so report the last known position.
+		touch_pressed = false;
+
+		InputEvent ev;
+		ev.type = InputEvent::SCREEN_TOUCH;
+		ev.ID = ++last_id;
+		ev.screen_touch.index = 0;
+		ev.screen_touch.pressed = false;
+		ev.screen_touch.x = touch_pos.x;
+		ev.screen_touch.y = touch_pos.y;
+		input->parse_input_event(ev);
 	}
 }

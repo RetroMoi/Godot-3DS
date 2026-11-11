@@ -22,7 +22,9 @@ Meta de hardware: limites do **Old 3DS/2DS** (ARM11 268 MHz, ~64 MB RAM para o a
       400x240, video mode 400x240. Azahar (Old 3DS): VRAM 2,9 → 0,7 MB; quadro 5,55 → 4,80 ms.
 - Texturas sem cópia na RAM; formatos nativos (RGB565, RGBA4, L8/A8, ETC1).
 - `main_pack` lido de `romfs:/data.pck`; `user://` no SD; hooks de sleep/HOME (APT).
-- Entrada: Circle Pad, C-Stick, touch; remover SELECT = sair; overlay de memória livre.
+- [~] Entrada: Circle Pad → eixos 0/1, C-Stick → eixos 2/3 (New 3DS), touch da tela de baixo →
+      SCREEN_TOUCH/SCREEN_DRAG (pixels 320x240), SELECT deixou de fechar o app (sair = HOME ou quit()).
+      Aguardando teste.
 - [x] Medição real de memória: singleton `Platform3DS.get_memory_info()` (heap/linear/VRAM/região do app,
       com picos, `is_new_3ds`) e `OS.get_static_memory_*` reportando o heap real.
 - [x] Correção crítica: `-fno-delete-null-pointer-checks` (GCC 6+ removia os `if (!this)` de

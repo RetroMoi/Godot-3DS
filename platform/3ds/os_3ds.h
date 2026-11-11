@@ -73,6 +73,8 @@ class OS_3DS : public OS {
 	Platform3DS *platform_3ds;
 	
 	Point2i last_mouse_pos;
+	Point2 touch_pos;
+	bool touch_pressed;
 	VideoMode video_mode;
 	
 	bool use_vsync;
@@ -242,7 +244,7 @@ public:
 // 	virtual void set_no_window_mode(bool p_enable);
 // 	virtual bool is_no_window_mode_enabled() const;
 
-// 	virtual bool has_touchscreen_ui_hint() const;
+	virtual bool has_touchscreen_ui_hint() const { return true; }
 
 
 // 	virtual void set_screen_orientation(ScreenOrientation p_orientation);
@@ -293,6 +295,7 @@ public:
 
 	void run();
 	void processInput();
+	void _send_axis(int p_axis, float p_value);
 
 	OS_3DS();
 	virtual ~OS_3DS();
