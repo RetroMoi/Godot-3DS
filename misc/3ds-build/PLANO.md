@@ -86,7 +86,7 @@ sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas
 ## Renderizador 3DS — pendências conhecidas
 - [x] Texturas fora de potência de 2 (ex.: splash 400x240 → 512x256) saíam espremidas: UV usava o tamanho
       alocado como área da imagem; NinePatch/StyleBox tinham o erro inverso. Corrigido.
-- [ ] `canvas_draw_primitive` e `canvas_draw_polygon` vazios: draw_line/draw_circle/draw_polygon, Polygon2D,
+- [~] `canvas_draw_primitive` e `canvas_draw_polygon` vazios (em andamento): draw_line/draw_circle/draw_polygon, Polygon2D,
       Line e partículas desenhadas como polígonos não aparecem no console.
 - [ ] Tela de baixo não é desenhada (Fase 5); toque chega como SCREEN_TOUCH/DRAG em coordenadas que o
       viewport de cima interpreta. Botões (Control) não respondem a toque (só mouse).
@@ -98,8 +98,21 @@ sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas
    limite de sprites a 60/30 FPS) com turbo on/off automático, gravando CSV em user://.
 Batching no canvas, ring buffer de vértices, atlas, física 2D a 30 Hz.
 
-## Fase 5 — Extras
-Tela de baixo como Viewport secundário; 3D estéreo por parallax.
+## Fase 5 — Tela de baixo e toque
+Tela de baixo como Viewport secundário (320x240) com o toque entregue nas coordenadas dele (TouchScreenButton
+e Area2D funcionando onde aparecem); converter toque em mouse para Buttons/Controls; 3D estéreo por parallax
+(opcional).
+
+## Fase 6 — Rede
+- Jogo local sem fio (UDS, até 8 consoles): singleton `LocalWireless` (host/scan/join/send/get_packets).
+  O RSF já libera `nwm::UDS`; funciona em .3dsx e .cia.
+- Wi-Fi/Internet: reativar sockets do Godot 2.1 (HTTPClient, StreamPeerTCP, PacketPeerUDP) sobre o soc:U.
+
+## Fase 7 — StreetPass (experimental)
+CECD pouco documentado e sem API pronta na libctru; só CIA; ID de StreetPass no SMDH. Fazer por último.
+
+**Ordem combinada:** renderizador (linhas/polígonos) → Fase 5 → Fase 6 → Fase 7, com Fases 1.5/3/4 intercaladas
+conforme a necessidade dos jogos.
 
 ## Editor (UI) — limpeza e usabilidade
 - [~] Configurações do Projeto: a caixinha de "salvar no engine.cfg" (que parecia duplicar o valor nas
