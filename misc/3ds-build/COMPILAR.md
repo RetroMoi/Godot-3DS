@@ -170,6 +170,31 @@ O jogo passa a ter uma área de 400x480:
 - HUD fixo na tela de baixo com câmera andando no mundo: coloque a interface num `CanvasLayer`.
 - Exemplo: `misc/3ds-build/dual_screen_test` (no pacote do Windows: `exemplo_duas_telas`).
 
+## Jogo local sem fio (LocalWireless)
+
+Singleton `LocalWireless` (só no 3DS: confira com `Globals.has_singleton("LocalWireless")`). Um console
+cria a sala, os outros procuram e entram; até 16 jogadores. Só o mesmo jogo (mesmo `application/name`)
+enxerga as salas.
+
+```gdscript
+var lw = Globals.get_singleton("LocalWireless")
+lw.host(4, "Sala do fulano")          # quem cria
+lw.start_scan()                       # quem procura; depois, quando lw.is_scanning() == false:
+var salas = lw.get_rooms()            # [{host_name, players, max_players, info}]
+lw.join(0)
+lw.send_var([pos.x, pos.y])           # para todos (ou send_var(v, id_do_jogador))
+while lw.get_packet_count() > 0:
+	var v = lw.get_var()
+	var quem = lw.get_packet_sender()   # 1 = host
+lw.leave()
+```
+
+Para testar sem dois consoles: dois Azahar no mesmo PC, um com **Multijogador → Criar sala** e o outro com
+**Conectar diretamente à sala** (127.0.0.1). A sala exige nome, ID do console e MAC diferentes: faça uma
+cópia da pasta do Azahar, crie uma pasta `user` vazia ao lado do `azahar.exe` dessa cópia e, nela, em
+**Emulação → Configurar → Sistema**, troque o nome de usuário e clique em **Regenerar** no ID do console e
+no endereço MAC. Exemplo: `misc/3ds-build/local_wireless_test` (no pacote: `exemplo_jogo_local`).
+
 ## 4. Testar
 
 - **Azahar**: Arquivo → Carregar arquivo → `bin/<nome>.3dsx` (no Windows, a pasta do WSL aparece em
