@@ -45,6 +45,11 @@
 #define TOP_SCREEN_HEIGHT 240
 #define TOP_TARGET_CREATE() \
 	C3D_RenderTargetCreate(TOP_SCREEN_HEIGHT, TOP_SCREEN_WIDTH, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8)
+// Bottom screen (dual screen mode): 320x240, shown centered under the top one, so it covers
+// x 40-360, y 240-480 of the 400x480 canvas. 2D only: no depth buffer.
+#define BOTTOM_SCREEN_WIDTH 320
+#define BOTTOM_SCREEN_HEIGHT 240
+#define BOTTOM_SCREEN_X ((TOP_SCREEN_WIDTH - BOTTOM_SCREEN_WIDTH) / 2)
 
 #define DISPLAY_TRANSFER_FLAGS \
 	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
@@ -2099,13 +2104,18 @@ void RasterizerCitro3d::clear_viewport(const Color& p_color)
 	c <<= 8;
 	c |= (u8)(p_color.a*255);
 	C3D_RenderTargetClear(rt->target,C3D_CLEAR_ALL,c,0);
+	if (!current_rt && bottom_framebuffer)
+		C3D_RenderTargetClear(bottom_framebuffer->target,C3D_CLEAR_COLOR,c,0);
 };
 
 void RasterizerCitro3d::set_viewport(const VS::ViewportRect& p_viewport)
 {
 	print("set_viewport %d %d %d %d\n", p_viewport.x, p_viewport.y, p_viewport.width, p_viewport.height);
-	u32 top = p_viewport.height - p_viewport.y;
-	//C3D_SetViewport(top, p_viewport.x, p_viewport.height, p_viewport.width);
+	if (!current_rt) {
+		// The screens: in dual screen mode the viewport is 400x480 but the framebuffers are not.
+		_canvas_draw_on_screen(0);
+		return;
+	}
 	C3D_SetViewport(0, 0, p_viewport.height, p_viewport.width);
 }
 
@@ -2279,6 +2289,10 @@ void RasterizerCitro3d::end_frame()
 	
 	RenderTarget* rt = current_rt ? current_rt : base_framebuffer;
 	C3D_FrameBufTransfer(&rt->target->frameBuf,rt->target->screen,rt->target->side,rt->target->transferFlags);
+	if (bottom_framebuffer) {
+		C3D_RenderTarget *bt = bottom_framebuffer->target;
+		C3D_FrameBufTransfer(&bt->frameBuf, bt->screen, bt->side, bt->transferFlags);
+	}
 	// vertexArrays are freed at the next begin_frame, once the GPU is done with them.
 	
 	OS::get_singleton()->swap_buffers();
@@ -2519,11 +2533,10 @@ void RasterizerCitro3d::canvas_begin()
 {
 	print("canvas_begin");
 	
-	C3D_Mtx projection;
-	Mtx_OrthoTilt(&projection, 0.0, TOP_SCREEN_WIDTH, TOP_SCREEN_HEIGHT, 0.0, 0.0, 1.0, true);
-	
 	C3D_BindProgram(&canvas_shader->program);
-	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, canvas_shader->location_projection, &projection);
+	// Projection of the top screen (or of the render target being drawn).
+	_canvas_draw_on_screen(0);
+	canvas_modulate = Color(1, 1, 1, 1);
 	
 	_set_uniform(canvas_shader->location_modelview, Matrix32());
 	_set_uniform(canvas_shader->location_extra, Matrix32());
@@ -2622,7 +2635,7 @@ void RasterizerCitro3d::canvas_draw_line(const Point2& p_from, const Point2& p_t
 	Vector2 points[4] = { p_from + n, p_to + n, p_to - n, p_from - n };
 
 	_canvas_setup_texenv(RID());
-	C3D_FixedAttribSet(2, p_color.r, p_color.g, p_color.b, p_color.a * canvas_opacity);
+	_set_canvas_color(p_color);
 	_draw_canvas_triangles(GPU_TRIANGLE_FAN, 4, NULL, points, NULL, NULL, NULL);
 	_rinfo.ci_draw_commands++;
 }
@@ -2630,7 +2643,7 @@ void RasterizerCitro3d::canvas_draw_line(const Point2& p_from, const Point2& p_t
 void RasterizerCitro3d::canvas_draw_rect(const Rect2& p_rect, int p_flags, const Rect2& p_source,RID p_texture,const Color& p_modulate)
 {
 	// Set the fixed attribute (color)
-	C3D_FixedAttribSet(2, p_modulate.r, p_modulate.g, p_modulate.b, p_modulate.a * canvas_opacity);
+	_set_canvas_color(p_modulate);
 
 	Texture *texture = _canvas_setup_texenv(p_texture);
 
@@ -2761,7 +2774,7 @@ void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src
 
 void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& p_src_region, RID p_texture,const float *p_margin, bool p_draw_center,const Color& p_modulate)
 {
-	C3D_FixedAttribSet(2, p_modulate.r, p_modulate.g, p_modulate.b, p_modulate.a * canvas_opacity);
+	_set_canvas_color(p_modulate);
 
 	// Also sets the texture combiner: after an untextured draw it would still be "color only".
 	Texture* texture=_canvas_setup_texenv(p_texture);
@@ -2836,7 +2849,7 @@ void RasterizerCitro3d::canvas_draw_primitive(const Vector<Point2>& p_points, co
 	// One color per point, or one color for all (white if none).
 	const Color *colors = p_colors.size() == count ? p_colors.ptr() : NULL;
 	Color single = p_colors.size() ? p_colors[0] : Color(1, 1, 1);
-	C3D_FixedAttribSet(2, single.r, single.g, single.b, single.a * canvas_opacity);
+	_set_canvas_color(single);
 
 	Texture *texture = _canvas_setup_texenv(p_texture);
 	const Vector2 *uvs = (texture && p_uvs.size() == count) ? p_uvs.ptr() : NULL;
@@ -2887,9 +2900,9 @@ void RasterizerCitro3d::canvas_draw_polygon(int p_vertex_count, const int* p_ind
 
 	const Color *colors = NULL;
 	if (p_colors && p_singlecolor) {
-		C3D_FixedAttribSet(2, p_colors->r, p_colors->g, p_colors->b, p_colors->a * canvas_opacity);
+		_set_canvas_color(*p_colors);
 	} else if (!p_colors) {
-		C3D_FixedAttribSet(2, 1.0f, 1.0f, 1.0f, canvas_opacity);
+		_set_canvas_color(Color(1, 1, 1));
 	} else {
 		colors = p_colors;
 	}
@@ -2967,10 +2980,10 @@ void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int 
 			v[i].texcoord[0] = p_uvs ? p_uvs[idx].x * uv_scale.x : 0.0f;
 			v[i].texcoord[1] = p_uvs ? p_uvs[idx].y * uv_scale.y : 0.0f;
 			const Color &c = p_colors[idx];
-			v[i].color[0] = c.r;
-			v[i].color[1] = c.g;
-			v[i].color[2] = c.b;
-			v[i].color[3] = c.a * canvas_opacity;
+			v[i].color[0] = c.r * canvas_modulate.r;
+			v[i].color[1] = c.g * canvas_modulate.g;
+			v[i].color[2] = c.b * canvas_modulate.b;
+			v[i].color[3] = c.a * canvas_modulate.a * canvas_opacity;
 		}
 
 		_canvas_set_vertex_colors(true);
@@ -3118,15 +3131,19 @@ void RasterizerCitro3d::canvas_set_transform(const Matrix32& p_transform)
 	_set_uniform(canvas_shader->location_extra, p_transform);
 }
 
-static void _set_scissor(int x, int y, int w, int h)
+static void _set_scissor(const Rect2& p_screen, int x, int y, int w, int h)
 {
-	// (x, y, w, h) is a top-down rect on the 400x240 landscape screen. The top screen's
-	// framebuffer is 240x400 and rotated (see Mtx_OrthoTilt in canvas_begin): screen x runs
-	// along the framebuffer's y axis and screen y is reversed along its x axis.
-	int x0 = CLAMP(x, 0, TOP_SCREEN_WIDTH);
-	int x1 = CLAMP(x + w, 0, TOP_SCREEN_WIDTH);
-	int y0 = CLAMP(y, 0, TOP_SCREEN_HEIGHT);
-	int y1 = CLAMP(y + h, 0, TOP_SCREEN_HEIGHT);
+	// (x, y, w, h) is a top-down rect in canvas coordinates; p_screen is the part of the canvas
+	// shown by the screen being drawn. Framebuffers are rotated (see Mtx_OrthoTilt in
+	// _canvas_draw_on_screen): screen x runs along the framebuffer's y axis and screen y is
+	// reversed along its x axis.
+	int sw = p_screen.size.width, sh = p_screen.size.height;
+	x -= p_screen.pos.x;
+	y -= p_screen.pos.y;
+	int x0 = CLAMP(x, 0, sw);
+	int x1 = CLAMP(x + w, 0, sw);
+	int y0 = CLAMP(y, 0, sh);
+	int y1 = CLAMP(y + h, 0, sh);
 
 	if (x1 <= x0 || y1 <= y0) {
 		// Empty clip: a box that rejects every pixel (right/bottom are exclusive).
@@ -3134,13 +3151,44 @@ static void _set_scissor(int x, int y, int w, int h)
 		return;
 	}
 
-	C3D_SetScissor(GPU_SCISSOR_NORMAL, TOP_SCREEN_HEIGHT - y1, TOP_SCREEN_WIDTH - x1, TOP_SCREEN_HEIGHT - y0, TOP_SCREEN_WIDTH - x0);
+	C3D_SetScissor(GPU_SCISSOR_NORMAL, sh - y1, sw - x1, sh - y0, sw - x0);
 }
 
 void RasterizerCitro3d::_set_canvas_scissor(CanvasItem* p_item)
 {
 	const Rect2 &r = p_item->final_clip_rect;
-	_set_scissor(Math::floor(r.pos.x), Math::floor(r.pos.y), Math::ceil(r.pos.x + r.size.x) - Math::floor(r.pos.x), Math::ceil(r.pos.y + r.size.y) - Math::floor(r.pos.y));
+	Rect2 screen = current_rt ? _screen_region(0) : _screen_region(canvas_screen);
+	_set_scissor(screen, Math::floor(r.pos.x), Math::floor(r.pos.y), Math::ceil(r.pos.x + r.size.x) - Math::floor(r.pos.x), Math::ceil(r.pos.y + r.size.y) - Math::floor(r.pos.y));
+}
+
+Rect2 RasterizerCitro3d::_screen_region(int p_screen)
+{
+	if (p_screen == 1)
+		return Rect2(BOTTOM_SCREEN_X, TOP_SCREEN_HEIGHT, BOTTOM_SCREEN_WIDTH, BOTTOM_SCREEN_HEIGHT);
+	return Rect2(0, 0, TOP_SCREEN_WIDTH, TOP_SCREEN_HEIGHT);
+}
+
+void RasterizerCitro3d::_canvas_draw_on_screen(int p_screen)
+{
+	canvas_screen = p_screen;
+	Rect2 r = _screen_region(p_screen);
+
+	if (!current_rt) {
+		RenderTarget *rt = (p_screen == 1 && bottom_framebuffer) ? bottom_framebuffer : base_framebuffer;
+		C3D_SetFrameBuf(&rt->target->frameBuf);
+		C3D_SetViewport(0, 0, r.size.height, r.size.width); // rotated, like the LCDs
+	}
+
+	C3D_Mtx projection;
+	Mtx_OrthoTilt(&projection, r.pos.x, r.pos.x + r.size.width, r.pos.y + r.size.height, r.pos.y, 0.0, 1.0, true);
+	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, canvas_shader->location_projection, &projection);
+	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+}
+
+void RasterizerCitro3d::_set_canvas_color(const Color& p_color)
+{
+	const Color &m = canvas_modulate;
+	C3D_FixedAttribSet(2, p_color.r * m.r, p_color.g * m.g, p_color.b * m.b, p_color.a * m.a * canvas_opacity);
 }
 
 template<bool use_normalmap>
@@ -3273,44 +3321,42 @@ void RasterizerCitro3d::_canvas_item_render_commands(CanvasItem *p_item,CanvasIt
 
 void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,const Color& p_modulate,CanvasLight *p_light)
 {
-// 	print("canvas_render_items Z:%d\n", p_z);
-	
+	canvas_modulate = p_modulate;
+
+	if (dual_screen && !current_rt) {
+		// The 400x480 canvas is drawn once per screen, each with its own projection, scissor and
+		// culling. Bottom first, so the top screen is current afterwards like in single mode.
+		for (int s = 1; s >= 0; s--) {
+			_canvas_draw_on_screen(s);
+			Rect2 region = _screen_region(s);
+			_canvas_render_item_list(p_item_list, p_modulate, &region);
+		}
+	} else {
+		_canvas_render_item_list(p_item_list, p_modulate, NULL);
+	}
+
+	canvas_modulate = Color(1, 1, 1, 1);
+}
+
+void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const Color& p_modulate, const Rect2 *p_cull)
+{
 	canvas_opacity=1.0;
-// 	canvas_use_modulate=p_modulate!=Color(1,1,1,1);
-// 	canvas_modulate=p_modulate;
-	
-// 	C3D_FixedAttribSet(2, p_modulate.r, p_modulate.g, p_modulate.b, canvas_opacity);
-// 	C3D_FixedAttribSet(2, 1.f, 1.f, 1.f, 1.f);
 	
 	CanvasItem *current_clip = NULL;
+	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	
-	while(p_item_list)
+	for (CanvasItem *ci = p_item_list; ci; ci = ci->next)
 	{
-		CanvasItem *ci = p_item_list;
-		
+		// Not on this screen.
+		if (p_cull && !p_cull->intersects(ci->global_rect_cache))
+			continue;
+
 		// Handle clipping (scissor test)
 		if (current_clip != ci->final_clip_owner)
 		{
 			current_clip = ci->final_clip_owner;
 			if (current_clip)
-			{
-// 				int x, y, w, h;
-// 				
-// 				if (current_rt) {
-// 					x = current_clip->final_clip_rect.pos.x;
-// 					y = current_clip->final_clip_rect.pos.y;
-// 					w = current_clip->final_clip_rect.size.x;
-// 					h = current_clip->final_clip_rect.size.y;
-// 				}
-// 				else {
-// 					x = current_clip->final_clip_rect.pos.x;
-// 					y = 240 - (current_clip->final_clip_rect.pos.y + current_clip->final_clip_rect.size.y);
-// 					w = current_clip->final_clip_rect.size.x;
-// 					h = current_clip->final_clip_rect.size.y;
-// 				}
-// 				_set_scissor(x, y, w, h);
 				_set_canvas_scissor(current_clip);
-			}
 			else
 				C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 		}
@@ -3326,8 +3372,7 @@ void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,cons
 		
 		bool reclip=false;
 		
-		if (ci==p_item_list || ci->blend_mode!=canvas_blend_mode)
-			canvas_set_blend_mode(ci->blend_mode);
+		canvas_set_blend_mode(ci->blend_mode);
 
 		canvas_opacity = ci->final_opacity;
 		
@@ -3338,8 +3383,6 @@ void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,cons
 		{
 			_set_canvas_scissor(current_clip);
 		}
-		
-		p_item_list = p_item_list->next;
 	}
 	
 	if (current_clip)
@@ -5062,6 +5105,14 @@ void RasterizerCitro3d::init()
 	C3D_RenderTargetClear(base_framebuffer->target,C3D_CLEAR_ALL,CLEAR_COLOR,0);
 	base_framebuffer->texture_ptr = texture;
 	base_framebuffer->texture = texture_owner.make_rid( texture );
+
+	if (dual_screen) {
+		bottom_framebuffer = memnew(RenderTarget);
+		bottom_framebuffer->texture_ptr = NULL;
+		bottom_framebuffer->target = C3D_RenderTargetCreate(BOTTOM_SCREEN_HEIGHT, BOTTOM_SCREEN_WIDTH, GPU_RB_RGBA8, -1);
+		C3D_RenderTargetSetOutput(bottom_framebuffer->target, GFX_BOTTOM, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+		C3D_RenderTargetClear(bottom_framebuffer->target,C3D_CLEAR_COLOR,CLEAR_COLOR,0);
+	}
 	
 	// Frag lighting
 	C3D_LightEnvInit(&lightEnv);
@@ -5102,6 +5153,11 @@ void RasterizerCitro3d::finish()
 	memdelete(scene_shader);
 	memdelete(base_framebuffer->texture_ptr);
 	memdelete(base_framebuffer);
+	if (bottom_framebuffer) {
+		C3D_RenderTargetDelete(bottom_framebuffer->target);
+		memdelete(bottom_framebuffer);
+		bottom_framebuffer = NULL;
+	}
 	
 	_free_frame_resources();
 	C3D_Fini();
@@ -5183,6 +5239,10 @@ void RasterizerCitro3d::restore_framebuffer()
 RasterizerCitro3d::RasterizerCitro3d()
 : current_rt (NULL)
 {
+	dual_screen = false;
+	bottom_framebuffer = NULL;
+	canvas_screen = 0;
+	canvas_modulate = Color(1, 1, 1, 1);
 	canvas_vertex_colors = false;
 	canvas_opacity = 1.0;
 	

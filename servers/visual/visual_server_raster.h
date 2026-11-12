@@ -579,6 +579,15 @@ class VisualServerRaster : public VisualServer {
 	bool light_discard_enabled;
 	bool shadows_enabled;
 	int black_margin[4];
+
+public:
+	// Nintendo 3DS dual screen layout (display/3ds_dual_screen) while running the game, not the
+	// editor: the boot splash goes on the top screen, and on the PC the parts of the 400x480 area
+	// the console's bottom screen doesn't show are blacked out. Set by Main.
+	static bool dual_screen_game;
+	static bool dual_screen_preview;
+
+private:
 	RID black_image[4];
 
 	Vector<Vector3> aabb_random_points;

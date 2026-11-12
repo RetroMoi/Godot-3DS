@@ -1990,9 +1990,33 @@ void CanvasItemEditor::_viewport_draw() {
 		transform.xform(Vector2(0, screen_size.height))
 	};
 
-	for (int i = 0; i < 4; i++) {
+	if (Globals::get_singleton()->has("display/3ds_dual_screen") && bool(Globals::get_singleton()->get("display/3ds_dual_screen"))) {
 
-		VisualServer::get_singleton()->canvas_item_add_line(ci, screen_endpoints[i], screen_endpoints[(i + 1) % 4], area_axis_color);
+		// Nintendo 3DS with both screens: top screen 400x240, bottom screen 320x240 centered below
+		// it. The strips beside the bottom screen are not shown on the console: shade them.
+		Rect2 screens[2] = { Rect2(0, 0, 400, 240), Rect2(40, 240, 320, 240) };
+		for (int s = 0; s < 2; s++) {
+			Vector2 p[4] = {
+				transform.xform(screens[s].pos),
+				transform.xform(screens[s].pos + Vector2(screens[s].size.width, 0)),
+				transform.xform(screens[s].pos + screens[s].size),
+				transform.xform(screens[s].pos + Vector2(0, screens[s].size.height))
+			};
+			for (int i = 0; i < 4; i++)
+				VisualServer::get_singleton()->canvas_item_add_line(ci, p[i], p[(i + 1) % 4], area_axis_color);
+		}
+		Rect2 hidden[2] = { Rect2(0, 240, 40, 240), Rect2(360, 240, 40, 240) };
+		for (int i = 0; i < 2; i++) {
+			Vector2 from = transform.xform(hidden[i].pos);
+			Vector2 to = transform.xform(hidden[i].pos + hidden[i].size);
+			VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(from, to - from), Color(0, 0, 0, 0.4));
+		}
+	} else {
+
+		for (int i = 0; i < 4; i++) {
+
+			VisualServer::get_singleton()->canvas_item_add_line(ci, screen_endpoints[i], screen_endpoints[(i + 1) % 4], area_axis_color);
+		}
 	}
 
 	for (List<LockList>::Element *E = lock_list.front(); E; E = E->next()) {

@@ -75,6 +75,11 @@ class OS_3DS : public OS {
 	Point2i last_mouse_pos;
 	Point2 touch_pos;
 	bool touch_pressed;
+	bool dual_screen;
+	int mouse_button_state;
+	Point2 _touch_to_canvas(int p_x, int p_y) const;
+	void _send_mouse_motion(const Point2 &p_pos, int p_button_mask);
+	void _send_mouse_button(const Point2 &p_pos, bool p_pressed);
 	mutable bool data_dir_created;
 	VideoMode video_mode;
 	
@@ -129,7 +134,7 @@ public:
 
 // 	virtual void warp_mouse_pos(const Point2& p_to)  {}
 	virtual Point2 get_mouse_pos() const { return last_mouse_pos; }
-	virtual int get_mouse_button_state() const { return 0; }
+	virtual int get_mouse_button_state() const { return mouse_button_state; }
 	virtual void set_window_title(const String& p_title) {};
 
 	virtual void set_video_mode(const VideoMode& p_video_mode,int p_screen=0) {}

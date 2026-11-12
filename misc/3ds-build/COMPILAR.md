@@ -148,6 +148,28 @@ Opções do CIA na exportação:
 | `cia/banner_audio` | WAV curto (até ~3 s) tocado ao selecionar | silêncio |
 | `cia/custom_rsf` | RSF próprio para o makerom (avançado) | `misc/3ds-build/cia/app.rsf` embutido |
 
+## Duas telas (tela de baixo e toque)
+
+Em **Configurações do Projeto → display** marque `3ds_dual_screen` e use `width=400`, `height=480`.
+O jogo passa a ter uma área de 400x480:
+
+```
++------------------400------------------+  y 0
+|            tela de cima 400x240        |
++----+-----------------------------+----+  y 240
+|    |  tela de baixo 320x240      |    |
+|    |  (toque)                    |    |
++----+-----------------------------+----+  y 480
+    x 40                         x 360
+```
+
+- O toque chega como `SCREEN_TOUCH`/`SCREEN_DRAG` nas coordenadas dessa área **e** como clique do botão
+  esquerdo do mouse, então Button, Slider, ScrollContainer etc. funcionam tocando.
+- As faixas x 0–40 e 360–400 abaixo de y 240 não aparecem no console: o editor as sombreia e, ao rodar no
+  PC, elas ficam pretas.
+- HUD fixo na tela de baixo com câmera andando no mundo: coloque a interface num `CanvasLayer`.
+- Exemplo: `misc/3ds-build/dual_screen_test` (no pacote do Windows: `exemplo_duas_telas`).
+
 ## 4. Testar
 
 - **Azahar**: Arquivo → Carregar arquivo → `bin/<nome>.3dsx` (no Windows, a pasta do WSL aparece em

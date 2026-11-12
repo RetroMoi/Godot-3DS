@@ -785,6 +785,16 @@ class RasterizerCitro3d : public Rasterizer {
 
 	
 	RenderTarget* base_framebuffer;
+	// Dual screen mode (display/3ds_dual_screen): the canvas is 400x480, the top screen shows
+	// y 0-240 and the bottom screen x 40-360, y 240-480.
+	bool dual_screen;
+	RenderTarget* bottom_framebuffer;
+	int canvas_screen; // screen being drawn: 0 = top, 1 = bottom
+	Color canvas_modulate; // CanvasModulate of the canvas being drawn
+	static Rect2 _screen_region(int p_screen);
+	void _canvas_draw_on_screen(int p_screen);
+	void _canvas_render_item_list(CanvasItem *p_item_list, const Color& p_modulate, const Rect2 *p_cull);
+	void _set_canvas_color(const Color& p_color);
 	RenderTarget* current_rt;
 	bool current_rt_transparent;
 	bool current_rt_vflip;
@@ -1209,6 +1219,8 @@ public:
 	virtual void canvas_set_transform(const Matrix32& p_transform);
 
 	virtual void canvas_render_items(CanvasItem *p_item_list,int p_z,const Color& p_modulate,CanvasLight *p_light);
+	void set_dual_screen(bool p_enable) { dual_screen = p_enable; }
+	bool is_dual_screen() const { return dual_screen; }
 
 	virtual RID canvas_light_occluder_create();
 	virtual void canvas_light_occluder_set_polylines(RID p_occluder, const DVector<Vector2>& p_lines);

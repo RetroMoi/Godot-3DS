@@ -29,6 +29,7 @@
 /*************************************************************************/
 
 #include "main.h"
+#include "servers/visual/visual_server_raster.h"
 #include "core/register_core_types.h"
 #include "drivers/register_driver_types.h"
 #include "globals.h"
@@ -722,6 +723,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF("display/resizable", video_mode.resizable);
 	GLOBAL_DEF("display/borderless_window", video_mode.borderless_window);
 	GLOBAL_DEF("display/always_on_top", video_mode.always_on_top);
+	// Nintendo 3DS: use both screens. The game area is then 400x480 (set width=400, height=480):
+	// the top screen shows y 0-240, the bottom screen x 40-360, y 240-480, and touching the bottom
+	// screen also acts as the mouse there.
+	if (GLOBAL_DEF("display/3ds_dual_screen", false) && (int(globals->get("display/width")) != 400 || int(globals->get("display/height")) != 480))
+		WARN_PRINT("display/3ds_dual_screen is on: set display/width=400 and display/height=480.");
 	{
 		// The values above come from the project itself (or the editor window), so record the OS
 		// defaults as the "revert" values shown in Project Settings.
@@ -884,6 +890,13 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	}
 
 	OS::get_singleton()->initialize(video_mode, video_driver_idx, audio_driver_idx);
+
+	// Nintendo 3DS with both screens: when running the game (not the editor).
+	if (!editor && bool(GLOBAL_DEF("display/3ds_dual_screen", false))) {
+		VisualServerRaster::dual_screen_game = true;
+		VisualServerRaster::dual_screen_preview = OS::get_singleton()->get_name() != "3DS";
+	}
+
 	if (init_use_custom_pos) {
 		OS::get_singleton()->set_window_position(init_custom_pos);
 	}

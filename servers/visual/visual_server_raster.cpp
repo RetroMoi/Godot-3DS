@@ -6924,6 +6924,16 @@ void VisualServerRaster::_draw_cursors_and_margins() {
 		rasterizer->canvas_draw_rect(Rect2(0, window_h - black_margin[MARGIN_BOTTOM], window_w, black_margin[MARGIN_BOTTOM]), 0, Rect2(0, 0, 1, 1), RID(), Color(0, 0, 0));
 	}
 
+	if (dual_screen_preview) {
+		// Running a Nintendo 3DS dual screen game (400x480) on the PC: hide what the console's
+		// bottom screen (320 px wide, centered) won't show.
+		Rect2 game(black_margin[MARGIN_LEFT], black_margin[MARGIN_TOP], window_w - black_margin[MARGIN_LEFT] - black_margin[MARGIN_RIGHT], window_h - black_margin[MARGIN_TOP] - black_margin[MARGIN_BOTTOM]);
+		float strip = Math::ceil(game.size.width * 40.0 / 400.0);
+		float y = game.pos.y + Math::floor(game.size.height * 0.5);
+		rasterizer->canvas_draw_rect(Rect2(game.pos.x, y, strip, game.pos.y + game.size.height - y), 0, Rect2(0, 0, 1, 1), RID(), Color(0, 0, 0));
+		rasterizer->canvas_draw_rect(Rect2(game.pos.x + game.size.width - strip, y, strip, game.pos.y + game.size.height - y), 0, Rect2(0, 0, 1, 1), RID(), Color(0, 0, 0));
+	}
+
 	rasterizer->canvas_end_rect();
 };
 
@@ -6975,6 +6985,9 @@ void VisualServerRaster::set_time_scale(float p_scale) {
 	rasterizer->set_time_scale(p_scale);
 }
 
+bool VisualServerRaster::dual_screen_game = false;
+bool VisualServerRaster::dual_screen_preview = false;
+
 void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_color, bool p_scale) {
 
 	if (p_image.empty())
@@ -6986,6 +6999,8 @@ void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_col
 
 	int window_w = OS::get_singleton()->get_video_mode(0).width;
 	int window_h = OS::get_singleton()->get_video_mode(0).height;
+	if (dual_screen_game)
+		window_h /= 2; // Nintendo 3DS with both screens: the splash goes on the top one
 	ViewportRect vr;
 	vr.x = 0;
 	vr.y = 0;
@@ -7017,7 +7032,7 @@ void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_col
 	} else {
 
 		screenrect = imgrect;
-		screenrect.pos += ((Size2(vr.width, vr.height) - screenrect.size) / 2.0).floor();
+		screenrect.pos += ((Size2(window_w, window_h) - screenrect.size) / 2.0).floor();
 	}
 	rasterizer->canvas_draw_rect(screenrect, 0, imgrect, texture, Color(1, 1, 1, 1));
 	rasterizer->canvas_end_rect();

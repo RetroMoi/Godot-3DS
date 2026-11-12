@@ -169,6 +169,8 @@ OS_3DS::OS_3DS()
 {	
 	platform_3ds = NULL;
 	touch_pressed = false;
+	dual_screen = false;
+	mouse_button_state = 0;
 	data_dir_created = false;
 	gfxInitDefault();
 	// Send stderr to svcOutputDebugString (shown in the Azahar/Citra log and by debuggers);
@@ -289,8 +291,16 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 {
 	main_loop=NULL;
 	
-	rasterizer = memnew( RasterizerCitro3d );
-// 	rasterizer = memnew( RasterizerDummy );
+	// Both screens (project setting display/3ds_dual_screen): the game area becomes 400x480.
+	dual_screen = Globals::get_singleton()->has("display/3ds_dual_screen") && bool(Globals::get_singleton()->get("display/3ds_dual_screen"));
+	if (dual_screen) {
+		video_mode.height = 480;
+		gfxSetDoubleBuffering(GFX_BOTTOM, true);
+	}
+
+	RasterizerCitro3d *rasterizer_citro3d = memnew( RasterizerCitro3d );
+	rasterizer_citro3d->set_dual_screen(dual_screen);
+	rasterizer = rasterizer_citro3d;
 	
 	visual_server = memnew( VisualServerRaster(rasterizer) );
 	
@@ -512,6 +522,54 @@ uint64_t OS_3DS::get_system_time_secs() const
 	return uint64_t(tv_now.tv_sec);
 }
 
+Point2 OS_3DS::_touch_to_canvas(int p_x, int p_y) const
+{
+	if (dual_screen)
+		return Point2(p_x + (400 - 320) / 2, p_y + 240);
+	return Point2(p_x, p_y);
+}
+
+void OS_3DS::_send_mouse_motion(const Point2 &p_pos, int p_button_mask)
+{
+	InputEvent ev;
+	ev.type = InputEvent::MOUSE_MOTION;
+	ev.ID = ++last_id;
+	ev.device = 0;
+	ev.mouse_motion.button_mask = p_button_mask;
+	ev.mouse_motion.x = p_pos.x;
+	ev.mouse_motion.y = p_pos.y;
+	ev.mouse_motion.global_x = p_pos.x;
+	ev.mouse_motion.global_y = p_pos.y;
+	input->set_mouse_pos(p_pos);
+	ev.mouse_motion.speed_x = input->get_mouse_speed().x;
+	ev.mouse_motion.speed_y = input->get_mouse_speed().y;
+	ev.mouse_motion.relative_x = p_pos.x - last_mouse_pos.x;
+	ev.mouse_motion.relative_y = p_pos.y - last_mouse_pos.y;
+	last_mouse_pos = p_pos;
+	input->parse_input_event(ev);
+}
+
+void OS_3DS::_send_mouse_button(const Point2 &p_pos, bool p_pressed)
+{
+	mouse_button_state = p_pressed ? BUTTON_MASK_LEFT : 0;
+
+	InputEvent ev;
+	ev.type = InputEvent::MOUSE_BUTTON;
+	ev.ID = ++last_id;
+	ev.device = 0;
+	ev.mouse_button.button_mask = mouse_button_state;
+	ev.mouse_button.x = p_pos.x;
+	ev.mouse_button.y = p_pos.y;
+	ev.mouse_button.global_x = p_pos.x;
+	ev.mouse_button.global_y = p_pos.y;
+	ev.mouse_button.button_index = BUTTON_LEFT;
+	ev.mouse_button.pressed = p_pressed;
+	ev.mouse_button.doubleclick = false;
+	ev.mouse_button.factor = 1.0;
+	last_mouse_pos = p_pos;
+	input->parse_input_event(ev);
+}
+
 void OS_3DS::swap_buffers()
 {
  	//gfxFlushBuffers();
@@ -595,12 +653,14 @@ void OS_3DS::processInput()
 	_send_axis(JOY_ANALOG_1_X, _stick_value(cstick.dx));
 	_send_axis(JOY_ANALOG_1_Y, 0.0f - _stick_value(cstick.dy));
 
-	// Touch screen (bottom screen, 320x240 pixels) as touch index 0.
+	// Touch screen (bottom screen, 320x240 pixels) as touch index 0. In dual screen mode the
+	// bottom screen shows x 40-360, y 240-480 of the canvas: the touch is moved there and also
+	// sent as the left mouse button, so Buttons and other Controls work by touch.
 	if (kDown & KEY_TOUCH)
 	{
 		touchPosition t;
 		hidTouchRead(&t);
-		touch_pos = Point2(t.px, t.py);
+		touch_pos = _touch_to_canvas(t.px, t.py);
 		touch_pressed = true;
 
 		InputEvent ev;
@@ -611,12 +671,17 @@ void OS_3DS::processInput()
 		ev.screen_touch.x = touch_pos.x;
 		ev.screen_touch.y = touch_pos.y;
 		input->parse_input_event(ev);
+
+		if (dual_screen) {
+			_send_mouse_motion(touch_pos, 0);
+			_send_mouse_button(touch_pos, true);
+		}
 	}
 	else if ((kHeld & KEY_TOUCH) && touch_pressed)
 	{
 		touchPosition t;
 		hidTouchRead(&t);
-		Point2 pos(t.px, t.py);
+		Point2 pos = _touch_to_canvas(t.px, t.py);
 		if (pos != touch_pos)
 		{
 			InputEvent ev;
@@ -629,6 +694,9 @@ void OS_3DS::processInput()
 			ev.screen_drag.relative_y = pos.y - touch_pos.y;
 			input->parse_input_event(ev);
 			touch_pos = pos;
+
+			if (dual_screen)
+				_send_mouse_motion(pos, BUTTON_MASK_LEFT);
 		}
 	}
 	else if ((kUp & KEY_TOUCH) && touch_pressed)
@@ -644,5 +712,8 @@ void OS_3DS::processInput()
 		ev.screen_touch.x = touch_pos.x;
 		ev.screen_touch.y = touch_pos.y;
 		input->parse_input_event(ev);
+
+		if (dual_screen)
+			_send_mouse_button(touch_pos, false);
 	}
 }
