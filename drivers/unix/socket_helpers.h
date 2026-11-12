@@ -42,6 +42,55 @@
 
 // helpers for sockaddr -> IP_Address and back, should work for posix and winsock. All implementations should use this
 
+#ifdef _3DS
+// Nintendo 3DS: the system's sockets are IPv4 only (no sockaddr_in6, AF_INET6 sockets fail).
+#include <arpa/inet.h>
+
+static size_t _set_sockaddr(struct sockaddr_storage *p_addr, const IP_Address &p_ip, int p_port, IP::Type p_sock_type = IP::TYPE_ANY) {
+
+	memset(p_addr, 0, sizeof(struct sockaddr_storage));
+	ERR_FAIL_COND_V(!p_ip.is_valid() || !p_ip.is_ipv4(), 0);
+
+	struct sockaddr_in *addr4 = (struct sockaddr_in *)p_addr;
+	addr4->sin_family = AF_INET;
+	addr4->sin_port = htons(p_port);
+	copymem(&addr4->sin_addr.s_addr, p_ip.get_ipv4(), 4);
+	return sizeof(sockaddr_in);
+}
+
+static size_t _set_listen_sockaddr(struct sockaddr_storage *p_addr, int p_port, IP::Type p_sock_type, const IP_Address p_bind_address) {
+
+	memset(p_addr, 0, sizeof(struct sockaddr_storage));
+	struct sockaddr_in *addr4 = (struct sockaddr_in *)p_addr;
+	addr4->sin_family = AF_INET;
+	addr4->sin_port = htons(p_port);
+	if (p_bind_address.is_valid() && p_bind_address.is_ipv4())
+		copymem(&addr4->sin_addr.s_addr, p_bind_address.get_ipv4(), 4);
+	else
+		addr4->sin_addr.s_addr = INADDR_ANY;
+	return sizeof(sockaddr_in);
+}
+
+static int _socket_create(IP::Type &p_type, int type, int protocol) {
+
+	ERR_FAIL_COND_V(p_type > IP::TYPE_ANY || p_type < IP::TYPE_NONE, ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(p_type == IP::TYPE_IPV6, -1);
+
+	p_type = IP::TYPE_IPV4;
+	int sockfd = socket(AF_INET, type, protocol);
+	ERR_FAIL_COND_V(sockfd == -1, -1);
+	return sockfd;
+}
+
+static void _set_ip_addr_port(IP_Address &r_ip, int &r_port, struct sockaddr_storage *p_addr) {
+
+	struct sockaddr_in *addr4 = (struct sockaddr_in *)p_addr;
+	r_ip.set_ipv4((uint8_t *)&(addr4->sin_addr.s_addr));
+	r_port = ntohs(addr4->sin_port);
+}
+
+#else
+
 static size_t _set_sockaddr(struct sockaddr_storage *p_addr, const IP_Address &p_ip, int p_port, IP::Type p_sock_type = IP::TYPE_ANY) {
 
 	memset(p_addr, 0, sizeof(struct sockaddr_storage));
@@ -146,5 +195,7 @@ static void _set_ip_addr_port(IP_Address &r_ip, int &r_port, struct sockaddr_sto
 		r_port = ntohs(addr6->sin6_port);
 	};
 };
+
+#endif // _3DS
 
 #endif

@@ -28,7 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 
 #ifndef STREAM_PEER_TCP_POSIX_H
 #define STREAM_PEER_TCP_POSIX_H

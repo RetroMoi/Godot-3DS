@@ -195,6 +195,13 @@ cópia da pasta do Azahar, crie uma pasta `user` vazia ao lado do `azahar.exe` d
 **Emulação → Configurar → Sistema**, troque o nome de usuário e clique em **Regenerar** no ID do console e
 no endereço MAC. Exemplo: `misc/3ds-build/local_wireless_test` (no pacote: `exemplo_jogo_local`).
 
+## Internet / Wi-Fi
+
+As classes de rede normais do Godot 2.1 funcionam no 3DS: `IP`, `HTTPClient`, `StreamPeerTCP`,
+`TCP_Server` e `PacketPeerUDP`. Limites: só IPv4 e só HTTP (sem HTTPS). O serviço de rede do 3DS reserva
+1 MB de RAM e é ligado na primeira vez que o jogo usa rede. Não use ao mesmo tempo que o `LocalWireless`.
+Exemplo: `misc/3ds-build/network_test` (no pacote: `exemplo_rede`).
+
 ## 4. Testar
 
 - **Azahar**: Arquivo → Carregar arquivo → `bin/<nome>.3dsx` (no Windows, a pasta do WSL aparece em

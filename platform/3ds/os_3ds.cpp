@@ -58,6 +58,7 @@
 #include "globals.h"
 #include "platform_3ds.h"
 #include "local_wireless_3ds.h"
+#include "network_3ds.h"
 
 extern "C" {
 #include <3ds/svc.h>
@@ -280,10 +281,8 @@ void OS_3DS::initialize_core()
 	DirAccess::make_default<DirAccessUnix>(DirAccess::ACCESS_FILESYSTEM);
 
 #ifndef NO_NETWORK
-// 	TCPServerPosix::make_default();
-// 	StreamPeerTCPPosix::make_default();
-// 	PacketPeerUDPPosix::make_default();
-// 	IP_Unix::make_default();
+	// TCP, UDP, TCP server and hostname resolution over Wi-Fi (SOC started on first use).
+	Network3DS::make_default();
 #endif
 
 	ticks_start=svcGetSystemTick();
@@ -389,6 +388,7 @@ void OS_3DS::finalize()
 
 	memdelete(local_wireless);
 	local_wireless = NULL;
+	Network3DS::finish();
 	memdelete(platform_3ds);
 	platform_3ds = NULL;
 }

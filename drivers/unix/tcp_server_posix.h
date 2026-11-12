@@ -31,7 +31,7 @@
 #ifndef TCP_SERVER_POSIX_H
 #define TCP_SERVER_POSIX_H
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 #include "core/io/tcp_server.h"
 
 class TCPServerPosix : public TCP_Server {

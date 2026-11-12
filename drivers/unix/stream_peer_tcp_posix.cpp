@@ -28,7 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 
 #include "stream_peer_tcp_posix.h"
 
@@ -370,10 +370,17 @@ Error StreamPeerTCPPosix::get_partial_data(uint8_t *p_buffer, int p_bytes, int &
 
 int StreamPeerTCPPosix::get_available_bytes() const {
 
+#ifdef _3DS
+	// No FIONREAD on the 3DS: peek at what is waiting (up to the buffer size).
+	static uint8_t peek_buffer[4096];
+	int ret = recv(sockfd, peek_buffer, sizeof(peek_buffer), MSG_PEEK | MSG_DONTWAIT);
+	return ret > 0 ? ret : 0;
+#else
 	unsigned long len;
 	int ret = ioctl(sockfd, FIONREAD, &len);
 	ERR_FAIL_COND_V(ret == -1, 0)
 	return len;
+#endif
 }
 IP_Address StreamPeerTCPPosix::get_connected_host() const {
 

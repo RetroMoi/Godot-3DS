@@ -31,7 +31,7 @@
 #include "tcp_server_posix.h"
 #include "stream_peer_tcp_posix.h"
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 
 #include <poll.h>
 

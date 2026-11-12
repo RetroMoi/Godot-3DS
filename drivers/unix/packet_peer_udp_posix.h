@@ -31,7 +31,7 @@
 #ifndef PACKET_PEER_UDP_POSIX_H
 #define PACKET_PEER_UDP_POSIX_H
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 
 #include "io/packet_peer_udp.h"
 #include "ring_buffer.h"

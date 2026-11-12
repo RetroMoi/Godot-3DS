@@ -133,7 +133,11 @@ mostra y 0–240; a de baixo, x 40–360 e y 240–480 (320x240 centrada).
   Teste: `misc/3ds-build/local_wireless_test` — validado com dois Azahar numa sala multijogador
   (sincronização em tempo real). No Azahar, cada instância precisa de nome de usuário, ID do console
   e MAC próprios (segunda cópia portátil com pasta `user` + Sistema → Regenerar).
-- Wi-Fi/Internet: reativar sockets do Godot 2.1 (HTTPClient, StreamPeerTCP, PacketPeerUDP) sobre o soc:U.
+- [~] Wi-Fi/Internet: sockets do Godot 2.1 ligados no 3DS (estavam fora por `UNIX_ENABLED`): `IP`
+  (resolve_hostname, get_local_addresses via gethostid), `StreamPeerTCP`, `TCP_Server`, `PacketPeerUDP` e,
+  por cima, `HTTPClient`. Só IPv4 (o 3DS não tem IPv6). O serviço SOC (1 MB de RAM) só é iniciado no
+  primeiro uso. Sem HTTPS por enquanto (módulo openssl desligado; o SSL do sistema é antigo).
+  Teste: `misc/3ds-build/network_test`. Não usar Wi-Fi e LocalWireless ao mesmo tempo.
 
 ## Fase 7 — StreetPass (experimental)
 CECD pouco documentado e sem API pronta na libctru; só CIA; ID de StreetPass no SMDH. Fazer por último.

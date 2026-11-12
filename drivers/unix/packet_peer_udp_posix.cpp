@@ -30,7 +30,7 @@
 
 #include "packet_peer_udp_posix.h"
 
-#ifdef UNIX_ENABLED
+#if defined(UNIX_ENABLED) || defined(_3DS)
 
 #include <errno.h>
 #include <netdb.h>
@@ -195,6 +195,7 @@ Error PacketPeerUDPPosix::_poll(bool p_wait) {
 			rb.write((uint8_t *)&sin_from->sin_addr, 4);
 			port = ntohs(sin_from->sin_port);
 
+#ifndef _3DS // IPv4 only there
 		} else if (from.ss_family == AF_INET6) {
 
 			uint8_t type = (uint8_t)IP::TYPE_IPV6;
@@ -204,7 +205,7 @@ Error PacketPeerUDPPosix::_poll(bool p_wait) {
 			rb.write((uint8_t *)&s6_from->sin6_addr, 16);
 
 			port = ntohs(s6_from->sin6_port);
-
+#endif
 		} else {
 			// WARN_PRINT("Ignoring packet with unknown address family");
 			uint8_t type = (uint8_t)IP::TYPE_NONE;

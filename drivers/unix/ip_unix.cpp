@@ -30,7 +30,7 @@
 
 #include "ip_unix.h"
 
-#if defined(UNIX_ENABLED) || defined(WINDOWS_ENABLED) && !defined(PSP_ENABLED)
+#if defined(UNIX_ENABLED) || defined(WINDOWS_ENABLED) && !defined(PSP_ENABLED) || defined(_3DS)
 
 #include <string.h>
 
@@ -63,7 +63,9 @@
 #ifdef __FreeBSD__
 #include <sys/types.h>
 #endif
+#ifndef _3DS
 #include <ifaddrs.h>
+#endif
 #endif
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -78,9 +80,11 @@ static IP_Address _sockaddr2ip(struct sockaddr *p_addr) {
 	if (p_addr->sa_family == AF_INET) {
 		struct sockaddr_in *addr = (struct sockaddr_in *)p_addr;
 		ip.set_ipv4((uint8_t *)&(addr->sin_addr));
+#ifndef _3DS // IPv4 only there
 	} else if (p_addr->sa_family == AF_INET6) {
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)p_addr;
 		ip.set_ipv6(addr6->sin6_addr.s6_addr);
+#endif
 	};
 
 	return ip;
@@ -98,8 +102,12 @@ void IP_Unix::_resolve_hostname(List<IP_Address> &r_addresses, const String &p_h
 		hints.ai_family = AF_INET6;
 		hints.ai_flags = 0;
 	} else {
+#ifdef _3DS
+		hints.ai_family = AF_INET; // no IPv6 on the 3DS
+#else
 		hints.ai_family = AF_UNSPEC;
 		hints.ai_flags = AI_ADDRCONFIG;
+#endif
 	};
 	hints.ai_flags &= !AI_NUMERICHOST;
 
@@ -214,6 +222,21 @@ void IP_Unix::get_local_addresses(List<IP_Address> *r_addresses) const {
 };
 
 #endif
+
+#elif defined(_3DS)
+
+extern "C" long gethostid(void);
+
+void IP_Unix::get_local_addresses(List<IP_Address> *r_addresses) const {
+
+	// The 3DS has one interface (Wi-Fi), IPv4 only; gethostid() is its address.
+	uint32_t ip = (uint32_t)gethostid();
+	if (ip == 0)
+		return;
+	IP_Address addr;
+	addr.set_ipv4((uint8_t *)&ip);
+	r_addresses->push_back(addr);
+}
 
 #else
 
