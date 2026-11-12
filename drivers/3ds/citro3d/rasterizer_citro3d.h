@@ -68,11 +68,21 @@ class RasterizerCitro3d : public Rasterizer {
 		C3D_Tex tex;
 		Image::Format format;
 		Image image[6];
+		// The GPU texture is a power of two. Normally the image sits in its top-left corner
+		// (padding to the right and below); a repeating (TEXTURE_FLAG_REPEAT) non-power-of-two
+		// image is scaled to fill it instead, so the hardware can repeat it.
+		bool scaled;
 		Texture() {
 			tex.data = NULL;
 			flags=width=height=0;
 			format=Image::FORMAT_GRAYSCALE;
+			scaled=false;
 		}
+
+		// Size in image pixels that corresponds to UV 1.0.
+		Size2 uv_size() const { return scaled ? Size2(width, height) : Size2(tex.width, tex.height); }
+		// The whole GPU texture is image (no padding): hardware repeat works.
+		bool fills_texture() const { return scaled || (width == tex.width && height == tex.height); }
 
 		~Texture() {
 
@@ -812,6 +822,14 @@ class RasterizerCitro3d : public Rasterizer {
 // 		Color   color;
 	};
 	
+	// Vertex with its own color, for gradients / per-vertex colored polygons. Plain floats so the
+	// layout matches the GPU loaders exactly (3 + 2 + 4 floats, 36 bytes).
+	struct ColorVertex {
+		float position[3];
+		float texcoord[2];
+		float color[4];
+	};
+
 	struct VertexArray {
 		Vertex *vertices;
 // 		int count;
@@ -819,12 +837,19 @@ class RasterizerCitro3d : public Rasterizer {
 // 			count = vertexCount;
 			vertices = reinterpret_cast<Vertex*>(linearAlloc(sizeof(Vertex) * vertexCount));
 		}
+		// Raw buffer of p_bytes (for other vertex layouts); freed the same way at end of frame.
+		VertexArray(size_t p_bytes, bool) {
+			vertices = reinterpret_cast<Vertex*>(linearAlloc(p_bytes));
+		}
 		~VertexArray() {
 			linearFree(vertices);
 		}
 	};
 	
 	Vector<VertexArray*> vertexArrays;
+	Vector<C3D_Tex> textures_to_free;
+	void _free_frame_resources();
+	void _texture_release(C3D_Tex &p_tex);
 	
 	Error _surface_set_arrays(Surface *p_surface, uint8_t *p_mem,uint8_t *p_index_mem,const Array& p_arrays,bool p_main);
 	
@@ -847,6 +872,15 @@ class RasterizerCitro3d : public Rasterizer {
 	void _render_list_forward(RenderList *p_render_list,const Transform& p_view_transform,const Transform& p_view_transform_inverse, const CameraMatrix& p_projection,bool p_reverse_cull=false,bool p_fragment_light=false,bool p_alpha_pass=false);
 	
 	void _draw_quad(const Rect2& p_rect);
+	void _texture_upload(Texture *p_texture);
+	void _texture_apply_params(Texture *p_texture);
+	void _draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src_region, const Texture *p_texture, bool p_h_flip, bool p_v_flip);
+	// 2D triangles from points (optionally indexed), with optional UVs (normalized to the image
+	// size, rescaled here for the power-of-two padding) and optional per-vertex colors.
+	void _canvas_set_vertex_colors(bool p_enable);
+	Texture *_canvas_setup_texenv(const RID& p_texture);
+	void _draw_canvas_triangles(GPU_Primitive_t p_primitive, int p_count, const int *p_indices, const Vector2 *p_points, const Vector2 *p_uvs, const Texture *p_texture, const Color *p_colors);
+	bool canvas_vertex_colors;
 	void _draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip=false, bool p_v_flip=false, bool p_transpose=false);
 	
 	template<bool use_normalmap>

@@ -71,11 +71,14 @@ void RasterizerCitro3d::texture_allocate(RID p_texture,int p_width, int p_height
 	Texture *texture = texture_owner.get( p_texture );
 	ERR_FAIL_COND(!texture);
 	ERR_FAIL_COND(w > 1024 || h > 1024);
+	_texture_release(texture->tex); // re-allocation (e.g. ImageTexture resized)
 	ERR_FAIL_COND(!C3D_TexInit(&texture->tex, w, h, GPU_RGBA8));
 	texture->width=p_width;
 	texture->height=p_height;
 	texture->format=p_format;
 	texture->flags=p_flags;
+	texture->scaled=false;
+	_texture_apply_params(texture);
 }
 
 void RasterizerCitro3d::texture_set_data(RID p_texture,const Image& p_image,VS::CubeMapSide p_cube_side)
@@ -88,13 +91,51 @@ void RasterizerCitro3d::texture_set_data(RID p_texture,const Image& p_image,VS::
 	image = p_image;
 	image.convert(Image::FORMAT_RGBA);
 	ERR_FAIL_COND(image.get_format() != Image::FORMAT_RGBA);
-	
-	DVector<uint8_t> d = image.get_data();
-	const u32* imagedata = reinterpret_cast<const u32*>(d.read().ptr());
 
-	texture_tile_sw(&texture->tex, imagedata, texture->width, texture->height);
+	_texture_upload(texture);
+}
 
-// 	texture->image[p_cube_side]=image;
+void RasterizerCitro3d::_texture_upload(Texture *p_texture)
+{
+	const Image &image = p_texture->image[0];
+	if (image.empty() || !p_texture->tex.data)
+		return;
+
+	C3D_Tex &tex = p_texture->tex;
+	bool pot = p_texture->width == tex.width && p_texture->height == tex.height;
+	p_texture->scaled = !pot && (p_texture->flags & VS::TEXTURE_FLAG_REPEAT);
+
+	if (p_texture->scaled) {
+		// Repeating textures must fill the whole power-of-two texture (as GLES2 does on GPUs
+		// without NPOT support). Power-of-two images repeat pixel-perfectly.
+		Image full = image;
+		full.resize(tex.width, tex.height, (p_texture->flags & VS::TEXTURE_FLAG_FILTER) ? Image::INTERPOLATE_BILINEAR : Image::INTERPOLATE_NEAREST);
+		DVector<uint8_t> d = full.get_data();
+		texture_tile_sw(&tex, d.read().ptr(), tex.width, tex.height);
+	} else {
+		DVector<uint8_t> d = image.get_data();
+		texture_tile_sw(&tex, d.read().ptr(), p_texture->width, p_texture->height);
+	}
+
+	_texture_apply_params(p_texture);
+}
+
+void RasterizerCitro3d::_texture_apply_params(Texture *p_texture)
+{
+	if (!p_texture->tex.data)
+		return;
+
+	GPU_TEXTURE_FILTER_PARAM filter = (p_texture->flags & VS::TEXTURE_FLAG_FILTER) ? GPU_LINEAR : GPU_NEAREST;
+	C3D_TexSetFilter(&p_texture->tex, filter, filter);
+
+	GPU_TEXTURE_WRAP_PARAM wrap = GPU_CLAMP_TO_EDGE;
+	if (p_texture->fills_texture()) {
+		if (p_texture->flags & VS::TEXTURE_FLAG_MIRRORED_REPEAT)
+			wrap = GPU_MIRRORED_REPEAT;
+		else if (p_texture->flags & VS::TEXTURE_FLAG_REPEAT)
+			wrap = GPU_REPEAT;
+	}
+	C3D_TexSetWrap(&p_texture->tex, wrap, wrap);
 }
 
 Image RasterizerCitro3d::texture_get_data(RID p_texture,VS::CubeMapSide p_cube_side) const
@@ -112,7 +153,17 @@ void RasterizerCitro3d::texture_set_flags(RID p_texture,uint32_t p_flags)
 	Texture *texture = texture_owner.get( p_texture );
 	ERR_FAIL_COND(!texture);
 	uint32_t cube = texture->flags & VS::TEXTURE_FLAG_CUBEMAP;
+	bool was_repeat = texture->flags & VS::TEXTURE_FLAG_REPEAT;
+	bool was_filter = texture->flags & VS::TEXTURE_FLAG_FILTER;
 	texture->flags=p_flags|cube; // can't remove a cube from being a cube
+
+	bool repeat = texture->flags & VS::TEXTURE_FLAG_REPEAT;
+	bool filter = texture->flags & VS::TEXTURE_FLAG_FILTER;
+	bool pot = texture->width == texture->tex.width && texture->height == texture->tex.height;
+	if (!pot && (repeat != was_repeat || (texture->scaled && filter != was_filter)))
+		_texture_upload(texture); // switches between padded and scaled-to-fill
+	else
+		_texture_apply_params(texture);
 }
 uint32_t RasterizerCitro3d::texture_get_flags(RID p_texture) const {
 	Texture * texture = texture_owner.get(p_texture);
@@ -2003,6 +2054,31 @@ void RasterizerCitro3d::begin_frame()
 	last_time=time;
 	frame++;
 	C3D_FrameBegin(0);
+
+	// C3D_FrameBegin waits for the GPU to finish the previous frame: only now is it safe to free
+	// the vertex buffers it drew from and the textures deleted since then.
+	_free_frame_resources();
+}
+
+void RasterizerCitro3d::_free_frame_resources()
+{
+	VertexArray **varray = vertexArrays.ptr();
+	for (int i = 0; i < vertexArrays.size(); ++i)
+		memdelete(*varray++);
+	vertexArrays.clear();
+
+	for (int i = 0; i < textures_to_free.size(); i++)
+		C3D_TexDelete(&textures_to_free[i]);
+	textures_to_free.clear();
+}
+
+void RasterizerCitro3d::_texture_release(C3D_Tex &p_tex)
+{
+	// The GPU may still be reading it for the frame in flight: delete at the next begin_frame.
+	if (!p_tex.data)
+		return;
+	textures_to_free.push_back(p_tex);
+	p_tex.data = NULL;
 }
 
 void RasterizerCitro3d::capture_viewport(Image* r_capture) {
@@ -2203,10 +2279,7 @@ void RasterizerCitro3d::end_frame()
 	
 	RenderTarget* rt = current_rt ? current_rt : base_framebuffer;
 	C3D_FrameBufTransfer(&rt->target->frameBuf,rt->target->screen,rt->target->side,rt->target->transferFlags);
-	VertexArray **varray = vertexArrays.ptr();
-	for (int i = 0; i < vertexArrays.size(); ++i)
-		memdelete(*varray++);
-	vertexArrays.clear();
+	// vertexArrays are freed at the next begin_frame, once the GPU is done with them.
 	
 	OS::get_singleton()->swap_buffers();
 }
@@ -2460,7 +2533,11 @@ void RasterizerCitro3d::canvas_begin()
 	AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0=position
 	AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 2); // v1=texcoord
 	AttrInfo_AddFixed(attrInfo, 2); // v2=color
-	
+	canvas_vertex_colors = false;
+
+	// Polygons and lines come in any winding: never cull in 2D.
+	C3D_CullFace(GPU_CULL_NONE);
+
 	canvas_opacity = 1.0;
 	
 	canvas_blend_mode = VS::MATERIAL_BLEND_MODE_MIX;
@@ -2535,71 +2612,159 @@ void RasterizerCitro3d::canvas_end_rect()
 
 void RasterizerCitro3d::canvas_draw_line(const Point2& p_from, const Point2& p_to, const Color& p_color, float p_width)
 {
-	print("canvas_draw_line\n");
+	// The PICA200 has no line primitive: draw the line as a thin quad (at least 1 pixel wide).
+	Vector2 dir = p_to - p_from;
+	float len = dir.length();
+	if (len < CMP_EPSILON)
+		return;
+
+	Vector2 n = Vector2(-dir.y, dir.x) * (MAX(p_width, 1.0f) * 0.5f / len);
+	Vector2 points[4] = { p_from + n, p_to + n, p_to - n, p_from - n };
+
+	_canvas_setup_texenv(RID());
+	C3D_FixedAttribSet(2, p_color.r, p_color.g, p_color.b, p_color.a * canvas_opacity);
+	_draw_canvas_triangles(GPU_TRIANGLE_FAN, 4, NULL, points, NULL, NULL, NULL);
+	_rinfo.ci_draw_commands++;
 }
 
 void RasterizerCitro3d::canvas_draw_rect(const Rect2& p_rect, int p_flags, const Rect2& p_source,RID p_texture,const Color& p_modulate)
 {
-// 	print("canvas_draw_rect %.1f %.1f %.1f %.1f\n", p_rect.pos.x, p_rect.pos.y, p_rect.size.width, p_rect.size.height);
-	
 	// Set the fixed attribute (color)
 	C3D_FixedAttribSet(2, p_modulate.r, p_modulate.g, p_modulate.b, p_modulate.a * canvas_opacity);
-// 	C3D_FixedAttribSet(2, 1.f, 1.f, 1.f, 1.f);
-	C3D_TexEnv* env = C3D_GetTexEnv(0);
-	
-	
-	if (p_texture.is_valid())
+
+	Texture *texture = _canvas_setup_texenv(p_texture);
+
+	if (texture)
 	{
-		Texture* texture = texture_owner.get(p_texture);
-// 		ERR_FAIL_COND(!texture);
-		
+		bool flip_h = p_flags & CANVAS_RECT_FLIP_H;
+		bool flip_v = p_flags & CANVAS_RECT_FLIP_V;
+		bool untile = false;
+
 		if (p_flags & CANVAS_RECT_TILE && !(texture->flags & VS::TEXTURE_FLAG_REPEAT))
 		{
-			
+			if (texture->fills_texture()) {
+				// Power-of-two image: the hardware repeats it, just for this draw (the wrap
+				// mode is read when the draw is queued, so it can be restored right after).
+				C3D_TexSetWrap(&texture->tex, GPU_REPEAT, GPU_REPEAT);
+				C3D_TexBind(0, &texture->tex);
+				untile = true;
+			} else {
+				// Padded texture: hardware repeat would repeat the padding too.
+				_draw_tiled_quad(p_rect, p_source, texture, flip_h, flip_v);
+				_rinfo.ci_draw_commands++;
+				return;
+			}
 		}
-		
-		C3D_TexBind(0, &texture->tex);
-		
-		C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR);
-        C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvOpAlpha(env,GPU_TEVOP_A_SRC_ALPHA);
-        C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
-		
+
 		if (!(p_flags&CANVAS_RECT_REGION)) {
 
 			// Textures are padded to a power of two (e.g. 400x240 -> 512x256): sample only the image
 			// part, not the padding, or non-power-of-two images come out squashed.
 			Rect2 region = Rect2(0,0,texture->width,texture->height);
-			_draw_textured_quad(p_rect,region,Size2(texture->tex.width,texture->tex.height),p_flags&CANVAS_RECT_FLIP_H,p_flags&CANVAS_RECT_FLIP_V,p_flags&CANVAS_RECT_TRANSPOSE);
+			_draw_textured_quad(p_rect,region,texture->uv_size(),flip_h,flip_v,p_flags&CANVAS_RECT_TRANSPOSE);
 
 		} else {
 
-			_draw_textured_quad(p_rect, p_source, Size2(texture->tex.width,texture->tex.height),p_flags&CANVAS_RECT_FLIP_H,p_flags&CANVAS_RECT_FLIP_V,p_flags&CANVAS_RECT_TRANSPOSE);
+			_draw_textured_quad(p_rect, p_source, texture->uv_size(),flip_h,flip_v,p_flags&CANVAS_RECT_TRANSPOSE);
 
 		}
+
+		if (untile)
+			_texture_apply_params(texture);
 	}
 	else
 	{
-		C3D_TexBind(0, NULL);
-		
-		C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvOpAlpha(env,GPU_TEVOP_A_SRC_ALPHA);
-		C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-		
 		_draw_quad(p_rect);
 	}
+
+	_rinfo.ci_draw_commands++;
 }
+
+void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src_region, const Texture *p_texture, bool p_h_flip, bool p_v_flip)
+{
+	// Repeat by hand: one quad per texture period, all in a single draw.
+	const int MAX_SEGMENTS = 128;
+	float sx0[MAX_SEGMENTS], sx1[MAX_SEGMENTS], dx0[MAX_SEGMENTS], dx1[MAX_SEGMENTS];
+	float sy0[MAX_SEGMENTS], sy1[MAX_SEGMENTS], dy0[MAX_SEGMENTS], dy1[MAX_SEGMENTS];
+
+	struct Axis {
+		// Splits [p_from, p_from + p_len) (image pixels) at multiples of p_period.
+		static int split(float p_from, float p_len, float p_period, float *r_s0, float *r_s1, float *r_d0, float *r_d1) {
+			if (p_len <= 0 || p_period <= 0)
+				return 0;
+			int n = 0;
+			float pos = p_from, end = p_from + p_len;
+			while (pos < end - 0.001f && n < MAX_SEGMENTS) {
+				float k = Math::floor(pos / p_period + 0.0001f);
+				float next = MIN(end, (k + 1) * p_period);
+				if (next <= pos)
+					next = MIN(end, pos + p_period);
+				r_s0[n] = pos - k * p_period;
+				r_s1[n] = next - k * p_period;
+				r_d0[n] = (pos - p_from) / p_len;
+				r_d1[n] = (next - p_from) / p_len;
+				n++;
+				pos = next;
+			}
+			return n;
+		}
+	};
+
+	int nx = Axis::split(p_src_region.pos.x, p_src_region.size.x, p_texture->width, sx0, sx1, dx0, dx1);
+	int ny = Axis::split(p_src_region.pos.y, p_src_region.size.y, p_texture->height, sy0, sy1, dy0, dy1);
+	if (!nx || !ny)
+		return;
+
+	Size2 uv = p_texture->uv_size();
+	int count = nx * ny * 6;
+	_canvas_set_vertex_colors(false);
+	VertexArray *varray = memnew(VertexArray(count));
+	Vertex *v = varray->vertices;
+	if (!v) {
+		memdelete(varray);
+		ERR_FAIL();
+	}
+
+	for (int j = 0; j < ny; j++) {
+		float y0 = p_v_flip ? 1.0f - dy0[j] : dy0[j];
+		float y1 = p_v_flip ? 1.0f - dy1[j] : dy1[j];
+		y0 = p_rect.pos.y + y0 * p_rect.size.y;
+		y1 = p_rect.pos.y + y1 * p_rect.size.y;
+		float t0 = sy0[j] / uv.height, t1 = sy1[j] / uv.height;
+
+		for (int i = 0; i < nx; i++) {
+			float x0 = p_h_flip ? 1.0f - dx0[i] : dx0[i];
+			float x1 = p_h_flip ? 1.0f - dx1[i] : dx1[i];
+			x0 = p_rect.pos.x + x0 * p_rect.size.x;
+			x1 = p_rect.pos.x + x1 * p_rect.size.x;
+			float s0 = sx0[i] / uv.width, s1 = sx1[i] / uv.width;
+
+			Vertex quad[6] = {
+				{ Vector3(x0, y0, 0.5f), Vector2(s0, t0) },
+				{ Vector3(x1, y0, 0.5f), Vector2(s1, t0) },
+				{ Vector3(x1, y1, 0.5f), Vector2(s1, t1) },
+				{ Vector3(x0, y0, 0.5f), Vector2(s0, t0) },
+				{ Vector3(x1, y1, 0.5f), Vector2(s1, t1) },
+				{ Vector3(x0, y1, 0.5f), Vector2(s0, t1) },
+			};
+			memcpy(v, quad, sizeof(quad));
+			v += 6;
+		}
+	}
+
+	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+	BufInfo_Init(bufInfo);
+	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
+	C3D_DrawArrays(GPU_TRIANGLES, 0, count);
+	vertexArrays.push_back(varray);
+}
+
 void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& p_src_region, RID p_texture,const float *p_margin, bool p_draw_center,const Color& p_modulate)
 {
-	print("canvas_draw_style_box\n");
-	
-// 	Color m = p_modulate;
-// 	m.a*=canvas_opacity;
-// 	_set_color_attrib(m);
 	C3D_FixedAttribSet(2, p_modulate.r, p_modulate.g, p_modulate.b, p_modulate.a * canvas_opacity);
 
-	Texture* texture=_bind_texture(p_texture);
+	// Also sets the texture combiner: after an untextured draw it would still be "color only".
+	Texture* texture=_canvas_setup_texenv(p_texture);
 	ERR_FAIL_COND(!texture);
 
 	Rect2 region = p_src_region;
@@ -2611,23 +2776,23 @@ void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& 
 	_draw_textured_quad( // top left
 		Rect2( p_rect.pos, Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_TOP])),
 		Rect2( region.pos, Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_TOP])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	_draw_textured_quad( // top right
 		Rect2( Point2( p_rect.pos.x + p_rect.size.width - p_margin[MARGIN_RIGHT], p_rect.pos.y), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_TOP])),
 		Rect2( Point2(region.pos.x+region.size.width-p_margin[MARGIN_RIGHT], region.pos.y), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_TOP])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 
 	_draw_textured_quad( // bottom left
 		Rect2( Point2(p_rect.pos.x,p_rect.pos.y + p_rect.size.height - p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(region.pos.x, region.pos.y+region.size.height-p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_BOTTOM])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	_draw_textured_quad( // bottom right
 		Rect2( Point2( p_rect.pos.x + p_rect.size.width - p_margin[MARGIN_RIGHT], p_rect.pos.y + p_rect.size.height - p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(region.pos.x+region.size.width-p_margin[MARGIN_RIGHT], region.pos.y+region.size.height-p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_BOTTOM])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	Rect2 rect_center( p_rect.pos+Point2( p_margin[MARGIN_LEFT], p_margin[MARGIN_TOP]), Size2( p_rect.size.width - p_margin[MARGIN_LEFT] - p_margin[MARGIN_RIGHT], p_rect.size.height - p_margin[MARGIN_TOP] - p_margin[MARGIN_BOTTOM] ));
 
@@ -2637,41 +2802,202 @@ void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& 
 	_draw_textured_quad( // top
 		Rect2( Point2(rect_center.pos.x,p_rect.pos.y),Size2(rect_center.size.width,p_margin[MARGIN_TOP])),
 		Rect2( Point2(src_center.pos.x,region.pos.y), Size2(src_center.size.width,p_margin[MARGIN_TOP])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	_draw_textured_quad( // bottom
 		Rect2( Point2(rect_center.pos.x,rect_center.pos.y+rect_center.size.height),Size2(rect_center.size.width,p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(src_center.pos.x,src_center.pos.y+src_center.size.height), Size2(src_center.size.width,p_margin[MARGIN_BOTTOM])),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	_draw_textured_quad( // left
 		Rect2( Point2(p_rect.pos.x,rect_center.pos.y),Size2(p_margin[MARGIN_LEFT],rect_center.size.height)),
 		Rect2( Point2(region.pos.x,region.pos.y+p_margin[MARGIN_TOP]), Size2(p_margin[MARGIN_LEFT],src_center.size.height)),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	_draw_textured_quad( // right
 		Rect2( Point2(rect_center.pos.x+rect_center.size.width,rect_center.pos.y),Size2(p_margin[MARGIN_RIGHT],rect_center.size.height)),
 		Rect2( Point2(src_center.pos.x+src_center.size.width,region.pos.y+p_margin[MARGIN_TOP]), Size2(p_margin[MARGIN_RIGHT],src_center.size.height)),
-		Size2( texture->tex.width, texture->tex.height ) );
+		texture->uv_size() );
 
 	if (p_draw_center) {
 		_draw_textured_quad(
 			rect_center,
 			src_center,
-			Size2( texture->tex.width, texture->tex.height ));
+			texture->uv_size());
 	}
 
 	_rinfo.ci_draw_commands++;
 }
 void RasterizerCitro3d::canvas_draw_primitive(const Vector<Point2>& p_points, const Vector<Color>& p_colors,const Vector<Point2>& p_uvs, RID p_texture,float p_width)
 {
-	print("canvas_draw_primitive\n");
+	int count = p_points.size();
+	ERR_FAIL_COND(count < 1);
+
+	// One color per point, or one color for all (white if none).
+	const Color *colors = p_colors.size() == count ? p_colors.ptr() : NULL;
+	Color single = p_colors.size() ? p_colors[0] : Color(1, 1, 1);
+	C3D_FixedAttribSet(2, single.r, single.g, single.b, single.a * canvas_opacity);
+
+	Texture *texture = _canvas_setup_texenv(p_texture);
+	const Vector2 *uvs = (texture && p_uvs.size() == count) ? p_uvs.ptr() : NULL;
+
+	if (count <= 2) {
+		// No point/line primitives on the PICA200: a point is a small square, a line a thin quad.
+		float half = MAX(p_width, 1.0f) * 0.5f;
+		Vector2 corner[4];
+		int src[4] = { 0, 0, 0, 0 };
+		Vector2 dir = count == 2 ? p_points[1] - p_points[0] : Vector2();
+		float len = dir.length();
+
+		if (count == 2 && len > CMP_EPSILON) {
+			Vector2 n = Vector2(-dir.y, dir.x) * (half / len);
+			corner[0] = p_points[0] + n;
+			corner[1] = p_points[1] + n; src[1] = 1;
+			corner[2] = p_points[1] - n; src[2] = 1;
+			corner[3] = p_points[0] - n;
+		} else {
+			Vector2 p = p_points[0];
+			corner[0] = p + Vector2(-half, -half);
+			corner[1] = p + Vector2(half, -half);
+			corner[2] = p + Vector2(half, half);
+			corner[3] = p + Vector2(-half, half);
+		}
+
+		Vector2 quad_uvs[4];
+		Color quad_colors[4];
+		for (int i = 0; i < 4; i++) {
+			if (uvs)
+				quad_uvs[i] = uvs[src[i]];
+			if (colors)
+				quad_colors[i] = colors[src[i]];
+		}
+		_draw_canvas_triangles(GPU_TRIANGLE_FAN, 4, NULL, corner, uvs ? quad_uvs : NULL, texture, colors ? quad_colors : NULL);
+	} else {
+		_draw_canvas_triangles(count == 3 ? GPU_TRIANGLES : GPU_TRIANGLE_FAN, count, NULL, p_points.ptr(), uvs, texture, colors);
+	}
+
+	_rinfo.ci_draw_commands++;
 }
 
 
 void RasterizerCitro3d::canvas_draw_polygon(int p_vertex_count, const int* p_indices, const Vector2* p_vertices, const Vector2* p_uvs, const Color* p_colors,const RID& p_texture,bool p_singlecolor)
 {
-	print("canvas_draw_polygon\n");
+	// p_vertex_count is the number of indices when p_indices is given, of vertices otherwise.
+	ERR_FAIL_COND(!p_vertices);
+
+	const Color *colors = NULL;
+	if (p_colors && p_singlecolor) {
+		C3D_FixedAttribSet(2, p_colors->r, p_colors->g, p_colors->b, p_colors->a * canvas_opacity);
+	} else if (!p_colors) {
+		C3D_FixedAttribSet(2, 1.0f, 1.0f, 1.0f, canvas_opacity);
+	} else {
+		colors = p_colors;
+	}
+
+	Texture *texture = _canvas_setup_texenv(p_texture);
+	_draw_canvas_triangles(GPU_TRIANGLES, p_vertex_count - p_vertex_count % 3, p_indices, p_vertices, texture ? p_uvs : NULL, texture, colors);
+
+	_rinfo.ci_draw_commands++;
+}
+
+void RasterizerCitro3d::_canvas_set_vertex_colors(bool p_enable)
+{
+	// v2 (color) is a fixed attribute (C3D_FixedAttribSet) for most 2D draws, and a per-vertex
+	// array only for gradients / vertex-colored polygons.
+	if (canvas_vertex_colors == p_enable)
+		return;
+
+	C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
+	AttrInfo_Init(attrInfo);
+	AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0=position
+	AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 2); // v1=texcoord
+	if (p_enable)
+		AttrInfo_AddLoader(attrInfo, 2, GPU_FLOAT, 4); // v2=color, per vertex
+	else
+		AttrInfo_AddFixed(attrInfo, 2); // v2=color, fixed
+	canvas_vertex_colors = p_enable;
+}
+
+RasterizerCitro3d::Texture* RasterizerCitro3d::_canvas_setup_texenv(const RID& p_texture)
+{
+	Texture *texture = p_texture.is_valid() ? texture_owner.get(p_texture) : NULL;
+	C3D_TexEnv* env = C3D_GetTexEnv(0);
+
+	if (texture) {
+		C3D_TexBind(0, &texture->tex);
+		C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR);
+		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
+		C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
+		C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
+	} else {
+		C3D_TexBind(0, NULL);
+		C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
+		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
+		C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
+		C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+	}
+	return texture;
+}
+
+void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int p_count, const int *p_indices, const Vector2 *p_points, const Vector2 *p_uvs, const Texture *p_texture, const Color *p_colors)
+{
+	if (p_count <= 0)
+		return;
+
+	// UVs are normalized to the image, but the GPU texture is padded to a power of two
+	// (e.g. 400x240 -> 512x256): scale them to the image part.
+	Vector2 uv_scale(1, 1);
+	if (p_texture && p_texture->tex.width && p_texture->tex.height)
+		uv_scale = Vector2(p_texture->width, p_texture->height) / p_texture->uv_size();
+
+	VertexArray *varray;
+
+	if (p_colors) {
+		varray = memnew(VertexArray(sizeof(ColorVertex) * p_count, true));
+		ColorVertex *v = reinterpret_cast<ColorVertex*>(varray->vertices);
+		if (!v) {
+			memdelete(varray);
+			ERR_FAIL();
+		}
+		for (int i = 0; i < p_count; i++) {
+			int idx = p_indices ? p_indices[i] : i;
+			v[i].position[0] = p_points[idx].x;
+			v[i].position[1] = p_points[idx].y;
+			v[i].position[2] = 0.5f;
+			v[i].texcoord[0] = p_uvs ? p_uvs[idx].x * uv_scale.x : 0.0f;
+			v[i].texcoord[1] = p_uvs ? p_uvs[idx].y * uv_scale.y : 0.0f;
+			const Color &c = p_colors[idx];
+			v[i].color[0] = c.r;
+			v[i].color[1] = c.g;
+			v[i].color[2] = c.b;
+			v[i].color[3] = c.a * canvas_opacity;
+		}
+
+		_canvas_set_vertex_colors(true);
+		C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+		BufInfo_Init(bufInfo);
+		BufInfo_Add(bufInfo, v, sizeof(ColorVertex), 3, 0x210);
+	} else {
+		varray = memnew(VertexArray(p_count));
+		Vertex *v = varray->vertices;
+		if (!v) {
+			memdelete(varray);
+			ERR_FAIL();
+		}
+		for (int i = 0; i < p_count; i++) {
+			int idx = p_indices ? p_indices[i] : i;
+			v[i].position = Vector3(p_points[idx].x, p_points[idx].y, 0.5f);
+			v[i].texcoord = p_uvs ? Vector2(p_uvs[idx].x * uv_scale.x, p_uvs[idx].y * uv_scale.y) : Vector2();
+		}
+
+		_canvas_set_vertex_colors(false);
+		C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+		BufInfo_Init(bufInfo);
+		BufInfo_Add(bufInfo, v, sizeof(Vertex), 2, 0x10);
+	}
+
+	C3D_DrawArrays(p_primitive, 0, p_count);
+	vertexArrays.push_back(varray);
 }
 
 RasterizerCitro3d::Texture* RasterizerCitro3d::_bind_texture(const RID& p_texture)
@@ -2794,39 +3120,27 @@ void RasterizerCitro3d::canvas_set_transform(const Matrix32& p_transform)
 
 static void _set_scissor(int x, int y, int w, int h)
 {
-	print("set_scissor %d %d %d %d\n", x, y, w, h);
-	// Keep in mind the sideway 3ds screen, so it seems screwy
-	int bottom = TOP_SCREEN_WIDTH - x;
-	int top = TOP_SCREEN_HEIGHT - y;
-	int left = top - h;
-	int right = bottom - w;
-	if (bottom < 0) bottom = 0;
-	if (top < 0) top = 0;
-	if (left < 0) left = 0;
-	if (right < 0) right = 0;
-	C3D_SetScissor(GPU_SCISSOR_NORMAL, left, right, top, bottom);
-// 	C3D_SetScissor(GPU_SCISSOR_NORMAL, 240 - (y + h), 400 - (x + w), 240 - y, 400 - x);
+	// (x, y, w, h) is a top-down rect on the 400x240 landscape screen. The top screen's
+	// framebuffer is 240x400 and rotated (see Mtx_OrthoTilt in canvas_begin): screen x runs
+	// along the framebuffer's y axis and screen y is reversed along its x axis.
+	int x0 = CLAMP(x, 0, TOP_SCREEN_WIDTH);
+	int x1 = CLAMP(x + w, 0, TOP_SCREEN_WIDTH);
+	int y0 = CLAMP(y, 0, TOP_SCREEN_HEIGHT);
+	int y1 = CLAMP(y + h, 0, TOP_SCREEN_HEIGHT);
+
+	if (x1 <= x0 || y1 <= y0) {
+		// Empty clip: a box that rejects every pixel (right/bottom are exclusive).
+		C3D_SetScissor(GPU_SCISSOR_NORMAL, 1, 1, 1, 1);
+		return;
+	}
+
+	C3D_SetScissor(GPU_SCISSOR_NORMAL, TOP_SCREEN_HEIGHT - y1, TOP_SCREEN_WIDTH - x1, TOP_SCREEN_HEIGHT - y0, TOP_SCREEN_WIDTH - x0);
 }
 
 void RasterizerCitro3d::_set_canvas_scissor(CanvasItem* p_item)
 {
-	int x, y, w, h;
-
-	if (current_rt) {
-		x = p_item->final_clip_rect.pos.x;
-		y = p_item->final_clip_rect.pos.y;
-		w = p_item->final_clip_rect.size.x;
-		h = p_item->final_clip_rect.size.y;
-	}
-	else
-	{
-		x = p_item->final_clip_rect.pos.x;
-		y = TOP_SCREEN_HEIGHT - (p_item->final_clip_rect.pos.y + p_item->final_clip_rect.size.y);
-		w = p_item->final_clip_rect.size.x;
-		h = p_item->final_clip_rect.size.y;
-	}
-	
-	_set_scissor(x, y, w, h);
+	const Rect2 &r = p_item->final_clip_rect;
+	_set_scissor(Math::floor(r.pos.x), Math::floor(r.pos.y), Math::ceil(r.pos.x + r.size.x) - Math::floor(r.pos.x), Math::ceil(r.pos.y + r.size.y) - Math::floor(r.pos.y));
 }
 
 template<bool use_normalmap>
@@ -3184,6 +3498,7 @@ void RasterizerCitro3d::free(const RID& p_rid) {
 // 		print("delete texture\n");
 		Texture *texture = texture_owner.get(p_rid);
 		texture_owner.free(p_rid);
+		_texture_release(texture->tex);
 		memdelete(texture);
 
 	} else if (shader_owner.owns(p_rid)) {
@@ -4649,6 +4964,7 @@ void RasterizerCitro3d::_render(const Geometry *p_geometry,const Material *p_mat
 
 void RasterizerCitro3d::_draw_quad(const Rect2& p_rect)
 {	
+	_canvas_set_vertex_colors(false);
 	VertexArray *varray = memnew(VertexArray(4));
 	varray->vertices[0].position = Vector3( p_rect.pos.x,p_rect.pos.y, 0.5f );
 	varray->vertices[1].position = Vector3( p_rect.pos.x+p_rect.size.width,p_rect.pos.y, 0.5f );
@@ -4670,6 +4986,7 @@ void RasterizerCitro3d::_draw_quad(const Rect2& p_rect)
 void RasterizerCitro3d::_draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip, bool p_v_flip, bool p_transpose )
 {
 // 	print("_draw_textured_quad\n");
+	_canvas_set_vertex_colors(false);
 	VertexArray *varray = memnew(VertexArray(4));
 	
 	Vertex v[4] = {
@@ -4786,6 +5103,7 @@ void RasterizerCitro3d::finish()
 	memdelete(base_framebuffer->texture_ptr);
 	memdelete(base_framebuffer);
 	
+	_free_frame_resources();
 	C3D_Fini();
 }
 
@@ -4865,6 +5183,8 @@ void RasterizerCitro3d::restore_framebuffer()
 RasterizerCitro3d::RasterizerCitro3d()
 : current_rt (NULL)
 {
+	canvas_vertex_colors = false;
+	canvas_opacity = 1.0;
 	
 };
 

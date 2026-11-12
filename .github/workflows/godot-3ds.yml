@@ -165,12 +165,13 @@ jobs:
           cp artifacts/templates-3ds/3ds_release.3dsx artifacts/templates-3ds/3ds_release.elf $P/editor_data/templates/
           cp artifacts/tools-windows/*.exe $P/tools/
           cp -r misc/3ds-build/test_project $P/exemplo_test_project
+          cp -r misc/3ds-build/draw_test $P/exemplo_draw_test
           cat > $P/LEIA-ME.txt <<'EOF'
           Godot 2.1 para Nintendo 3DS - editor portatil para Windows
 
           1. Abra Godot3DS.exe. Configuracoes e templates ficam em editor_data\ (modo portatil:
              nao apague o arquivo ._sc_). Pode mover a pasta inteira para onde quiser.
-          2. Crie ou importe um projeto (exemplo: exemplo_test_project). Para o 3DS use
+          2. Crie ou importe um projeto (exemplos: exemplo_test_project, exemplo_draw_test). Para o 3DS use
              display/width=400, height=240, stretch_mode=2d.
           3. Exportar: Cena > Exportar > Nintendo 3DS.
              - binary/format = 3dsx: abre pelo Homebrew Launcher.

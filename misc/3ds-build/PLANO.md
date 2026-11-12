@@ -86,8 +86,20 @@ sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas
 ## Renderizador 3DS — pendências conhecidas
 - [x] Texturas fora de potência de 2 (ex.: splash 400x240 → 512x256) saíam espremidas: UV usava o tamanho
       alocado como área da imagem; NinePatch/StyleBox tinham o erro inverso. Corrigido.
-- [~] `canvas_draw_primitive` e `canvas_draw_polygon` vazios (em andamento): draw_line/draw_circle/draw_polygon, Polygon2D,
-      Line e partículas desenhadas como polígonos não aparecem no console.
+- [x] Linhas, círculos e polígonos (`canvas_draw_line/primitive/polygon` estavam vazios): o PICA200 não tem
+      primitiva de linha, então linha vira quad fino; cor por vértice (gradiente) com loader de cor só
+      quando preciso; UV de polígono ajustado ao padding. Cena de teste: `misc/3ds-build/draw_test`.
+- [x] Recorte (clip: Label clip_text/autowrap, ScrollContainer) estava espelhado na vertical.
+- [x] Texturas: filtro (FILTER) e repetição (REPEAT/tile) respeitados; tile em textura não potência de 2
+      feito à mão (um quad por repetição, num só draw); padding preenchido com a borda (sem lixo ao filtrar).
+      Textura com REPEAT e tamanho não potência de 2 é redimensionada para potência de 2 (como o GLES2
+      faz sem NPOT): para repetição pixel-perfect, use 16/32/64/128...
+- [x] Vazamentos: texturas liberadas nunca devolviam a memória linear (sem `C3D_TexDelete`); buffers de
+      vértices eram liberados antes de a GPU terminar o quadro. Agora tudo é liberado no `begin_frame`.
+- [ ] StyleBox/NinePatch: cada pedaço é um draw (9 por caixa); juntar em um só (Fase 4).
+- [ ] Cada textura guarda também uma cópia RGBA em RAM (`Texture::image`): dobra o uso de memória das
+      texturas. Remover a cópia (refazer `texture_get_data` lendo da textura da GPU) — Fase 1.5.
+- [ ] `draw_primitive` com 1 ponto respeita `width` (quadrado); no PC (GLES2) o ponto tem sempre 1 px.
 - [ ] Tela de baixo não é desenhada (Fase 5); toque chega como SCREEN_TOUCH/DRAG em coordenadas que o
       viewport de cima interpreta. Botões (Control) não respondem a toque (só mouse).
 

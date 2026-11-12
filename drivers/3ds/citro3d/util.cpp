@@ -64,14 +64,21 @@ void texture_tile_sw(C3D_Tex *tex, const void *data, int w, int h)
 {	
 	const u32* src = reinterpret_cast<const u32*>(data);
 	u32* dest = reinterpret_cast<u32*>(tex->data);
-	for (int y = 0; y < h; y++)
-		for (int x = 0; x < w; x++)
+	if (w <= 0 || h <= 0)
+		return;
+	// The image goes in the top-left corner of the (power-of-two) texture. The padding repeats
+	// the last column/row instead of keeping whatever was in memory: linear filtering and
+	// clamping at the image's edges then look as they do on the PC.
+	for (int y = 0; y < tex->height; y++)
+		for (int x = 0; x < tex->width; x++)
 		{
+			int sx = x < w ? x : w - 1;
+			int sy = y < h ? y : h - 1;
 			int dest_y = (tex->height - 1 - y);
 			u32 coarse_y = dest_y & ~7;
 			u32 dst_offset = get_morton_offset(x, dest_y, 1) + coarse_y * tex->width;
 
-			u32 v = src[x + y * w];
+			u32 v = src[sx + sy * w];
 			dest[dst_offset] = __builtin_bswap32(v);
 		}
 
