@@ -2567,8 +2567,10 @@ void RasterizerCitro3d::canvas_draw_rect(const Rect2& p_rect, int p_flags, const
 		
 		if (!(p_flags&CANVAS_RECT_REGION)) {
 
-			Rect2 region = Rect2(0,0,texture->tex.width,texture->tex.height);
-			_draw_textured_quad(p_rect,region,region.size,p_flags&CANVAS_RECT_FLIP_H,p_flags&CANVAS_RECT_FLIP_V,p_flags&CANVAS_RECT_TRANSPOSE);
+			// Textures are padded to a power of two (e.g. 400x240 -> 512x256): sample only the image
+			// part, not the padding, or non-power-of-two images come out squashed.
+			Rect2 region = Rect2(0,0,texture->width,texture->height);
+			_draw_textured_quad(p_rect,region,Size2(texture->tex.width,texture->tex.height),p_flags&CANVAS_RECT_FLIP_H,p_flags&CANVAS_RECT_FLIP_V,p_flags&CANVAS_RECT_TRANSPOSE);
 
 		} else {
 
@@ -2609,23 +2611,23 @@ void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& 
 	_draw_textured_quad( // top left
 		Rect2( p_rect.pos, Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_TOP])),
 		Rect2( region.pos, Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_TOP])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	_draw_textured_quad( // top right
 		Rect2( Point2( p_rect.pos.x + p_rect.size.width - p_margin[MARGIN_RIGHT], p_rect.pos.y), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_TOP])),
 		Rect2( Point2(region.pos.x+region.size.width-p_margin[MARGIN_RIGHT], region.pos.y), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_TOP])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 
 	_draw_textured_quad( // bottom left
 		Rect2( Point2(p_rect.pos.x,p_rect.pos.y + p_rect.size.height - p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(region.pos.x, region.pos.y+region.size.height-p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_LEFT],p_margin[MARGIN_BOTTOM])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	_draw_textured_quad( // bottom right
 		Rect2( Point2( p_rect.pos.x + p_rect.size.width - p_margin[MARGIN_RIGHT], p_rect.pos.y + p_rect.size.height - p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(region.pos.x+region.size.width-p_margin[MARGIN_RIGHT], region.pos.y+region.size.height-p_margin[MARGIN_BOTTOM]), Size2(p_margin[MARGIN_RIGHT],p_margin[MARGIN_BOTTOM])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	Rect2 rect_center( p_rect.pos+Point2( p_margin[MARGIN_LEFT], p_margin[MARGIN_TOP]), Size2( p_rect.size.width - p_margin[MARGIN_LEFT] - p_margin[MARGIN_RIGHT], p_rect.size.height - p_margin[MARGIN_TOP] - p_margin[MARGIN_BOTTOM] ));
 
@@ -2635,28 +2637,28 @@ void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& 
 	_draw_textured_quad( // top
 		Rect2( Point2(rect_center.pos.x,p_rect.pos.y),Size2(rect_center.size.width,p_margin[MARGIN_TOP])),
 		Rect2( Point2(src_center.pos.x,region.pos.y), Size2(src_center.size.width,p_margin[MARGIN_TOP])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	_draw_textured_quad( // bottom
 		Rect2( Point2(rect_center.pos.x,rect_center.pos.y+rect_center.size.height),Size2(rect_center.size.width,p_margin[MARGIN_BOTTOM])),
 		Rect2( Point2(src_center.pos.x,src_center.pos.y+src_center.size.height), Size2(src_center.size.width,p_margin[MARGIN_BOTTOM])),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	_draw_textured_quad( // left
 		Rect2( Point2(p_rect.pos.x,rect_center.pos.y),Size2(p_margin[MARGIN_LEFT],rect_center.size.height)),
 		Rect2( Point2(region.pos.x,region.pos.y+p_margin[MARGIN_TOP]), Size2(p_margin[MARGIN_LEFT],src_center.size.height)),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	_draw_textured_quad( // right
 		Rect2( Point2(rect_center.pos.x+rect_center.size.width,rect_center.pos.y),Size2(p_margin[MARGIN_RIGHT],rect_center.size.height)),
 		Rect2( Point2(src_center.pos.x+src_center.size.width,region.pos.y+p_margin[MARGIN_TOP]), Size2(p_margin[MARGIN_RIGHT],src_center.size.height)),
-		Size2( texture->width, texture->height ) );
+		Size2( texture->tex.width, texture->tex.height ) );
 
 	if (p_draw_center) {
 		_draw_textured_quad(
 			rect_center,
 			src_center,
-			Size2( texture->width, texture->height ));
+			Size2( texture->tex.width, texture->tex.height ));
 	}
 
 	_rinfo.ci_draw_commands++;

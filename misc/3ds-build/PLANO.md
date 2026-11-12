@@ -83,6 +83,14 @@ Conversão para formatos nativos já em tiles (reaproveitar módulo ETC1), fonte
 áudio → PCM16/ADPCM (OGG só para música). Erros/avisos: textura >1024, não-pot2, shader de canvas,
 sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas.
 
+## Renderizador 3DS — pendências conhecidas
+- [x] Texturas fora de potência de 2 (ex.: splash 400x240 → 512x256) saíam espremidas: UV usava o tamanho
+      alocado como área da imagem; NinePatch/StyleBox tinham o erro inverso. Corrigido.
+- [ ] `canvas_draw_primitive` e `canvas_draw_polygon` vazios: draw_line/draw_circle/draw_polygon, Polygon2D,
+      Line e partículas desenhadas como polígonos não aparecem no console.
+- [ ] Tela de baixo não é desenhada (Fase 5); toque chega como SCREEN_TOUCH/DRAG em coordenadas que o
+      viewport de cima interpreta. Botões (Control) não respondem a toque (só mouse).
+
 ## Fase 4 — Desempenho
 0. Antes de otimizar, medir (adiado da Fase 1): cronômetro por etapa do quadro (lógica, física, montagem
    do desenho, espera de GPU, vsync) + contadores de draw calls/vértices/trocas de textura via Platform3DS;
