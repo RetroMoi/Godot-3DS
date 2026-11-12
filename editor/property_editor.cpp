@@ -4232,6 +4232,7 @@ PropertyEditor::PropertyEditor() {
 	capitalize_paths = true;
 	autoclear = false;
 	checkable_as_revert = false;
+	tree->set_spin_slider_mode(true); // number fields behave like newer Godot's inspector
 	tree->set_column_titles_visible(false);
 	tree->add_constant_override("button_margin", 0);
 

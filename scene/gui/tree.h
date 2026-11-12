@@ -288,6 +288,11 @@ private:
 	float range_drag_base;
 	bool range_drag_enabled;
 	Vector2 range_drag_capture_pos;
+	// Inspector-style number cells (see set_spin_slider_mode).
+	bool spin_slider_mode;
+	double range_drag_pre_value;
+	float range_drag_dist;
+	void _cancel_range_drag();
 
 	//TreeItem *cursor_item;
 	//int cursor_column;
@@ -530,6 +535,12 @@ public:
 	bool get_allow_rmb_select() const;
 
 	void set_value_evaluator(ValueEvaluator *p_evaluator);
+
+	// Number cells behave like the editor spin sliders of newer Godot: click to type in place (no
+	// slider popup), drag horizontally to change (Shift precise, Ctrl whole numbers, Esc/right click
+	// cancels), arrows only for integers, an inline slider bar for bounded decimals. Off by default.
+	void set_spin_slider_mode(bool p_enable);
+	bool is_spin_slider_mode() const;
 
 	Tree();
 	~Tree();

@@ -106,6 +106,10 @@ Tela de baixo como Viewport secundário; 3D estéreo por parallax.
       Corrigido bug do 2.1 em que o valor decimal digitado no popup era descartado.
 - [~] Vector2/Rect2/Vector3 com campos inline (linhas x/y, x/y/w/h, x/y/z coloridas) abaixo da propriedade,
       editáveis direto (arraste, digitação, ↑/↓); campos decimais sem limite usam passo 1 no teclado/arraste.
+- [~] Campos numéricos no estilo `EditorSpinSlider` do Godot 4 (Tree::set_spin_slider_mode, só no Inspector):
+      clicar e soltar edita no lugar sem popup/slider; arraste horizontal linear (Shift fino, Ctrl inteiro,
+      Esc/botão direito cancela); setas só em inteiros; barrinha de slider para decimais com faixa;
+      ↑/↓ com a regra do Godot 4 (Ctrl ×100, Shift ×10, Alt ×0,1).
 - CI ignora pushes que só alteram arquivos `.md`.
 
 ## Riscos

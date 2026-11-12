@@ -1128,7 +1128,37 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 
 						String valtext = String::num(p_item->cells[i].val, Math::step_decimals(p_item->cells[i].step));
 						//String valtext = rtos( p_item->cells[i].val );
-						font->draw(ci, text_pos, valtext, col, item_rect.size.x - updown->get_width());
+
+						if (spin_slider_mode) {
+
+							const TreeItem::Cell &c = p_item->cells[i];
+							bool is_int = c.step >= 1;
+							bool bounded = (c.max - c.min) <= 100000;
+							font->draw(ci, text_pos, valtext, col, item_rect.size.x - (is_int ? updown->get_width() : 0));
+
+							if (!c.editable)
+								break;
+
+							if (!is_int) {
+								if (bounded && c.max > c.min) {
+									// Thin slider under the number, like newer Godot (track, filled part, grabber).
+									int w = item_rect.size.x - 6;
+									int x0 = item_rect.pos.x + 2;
+									int y0 = item_rect.pos.y + item_rect.size.y - 4;
+									float ratio = CLAMP((c.val - c.min) / (c.max - c.min), 0.0, 1.0);
+									Color track = col;
+									track.a = 0.2;
+									VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(x0, y0, w, 2), track);
+									track.a = 0.45;
+									VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(x0, y0, w * ratio, 2), track);
+									track.a = 0.9;
+									VisualServer::get_singleton()->canvas_item_add_rect(ci, Rect2(x0 + w * ratio, y0 - 1, 4, 4), track);
+								}
+								break;
+							}
+						} else {
+							font->draw(ci, text_pos, valtext, col, item_rect.size.x - updown->get_width());
+						}
 
 						if (!p_item->cells[i].editable)
 							break;
@@ -1606,7 +1636,8 @@ int Tree::propagate_mouse_event(const Point2i &p_pos, int x_ofs, int y_ofs, bool
 					bring_up_editor = false;
 				} else {
 
-					if (x >= (col_width - item_h / 2)) {
+					bool has_updown = !spin_slider_mode || c.step >= 1;
+					if (has_updown && x >= (col_width - item_h / 2)) {
 
 						/* touching the combo */
 						bool up = p_pos.y < (item_h / 2);
@@ -1804,9 +1835,22 @@ void Tree::_text_editor_input(const InputEvent &p_event) {
 	if (c.mode != TreeItem::CELL_MODE_RANGE && c.mode != TreeItem::CELL_MODE_RANGE_EXPRESSION)
 		return;
 
-	double step = _range_edit_unit(c.step, c.min, c.max);
+	double step;
+	if (spin_slider_mode) {
+		// Same rule as newer Godot: steps like 0.1/0.01/0.001 move by 1; Ctrl x100, Shift x10, Alt x0.1.
+		step = c.step > 0 ? c.step : 1.0;
+		if (step < 1) {
+			double divisor = 1.0 / step;
+			if (Math::abs(divisor - Math::round(divisor)) < 1e-6)
+				step = 1.0;
+		}
+	} else {
+		step = _range_edit_unit(c.step, c.min, c.max);
+	}
 	bool fine = p_event.key.mod.alt;
-	if (p_event.key.mod.shift)
+	if (p_event.key.mod.command && spin_slider_mode)
+		step *= 100.0;
+	else if (p_event.key.mod.shift)
 		step *= 10.0;
 	else if (fine)
 		step *= 0.1;
@@ -1828,6 +1872,32 @@ void Tree::_text_editor_input(const InputEvent &p_event) {
 	item_edited(popup_edited_item_col, popup_edited_item);
 	update();
 	text_editor->accept_event();
+}
+
+void Tree::_cancel_range_drag() {
+
+	if (!range_drag_enabled)
+		return;
+	range_drag_enabled = false;
+	pressing_for_editor = false;
+	Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+	warp_mouse(range_drag_capture_pos);
+	if (popup_edited_item && popup_edited_item_col >= 0 && popup_edited_item_col < columns.size()) {
+		popup_edited_item->set_range(popup_edited_item_col, range_drag_pre_value);
+		item_edited(popup_edited_item_col, popup_edited_item);
+	}
+	update();
+}
+
+void Tree::set_spin_slider_mode(bool p_enable) {
+
+	spin_slider_mode = p_enable;
+	update();
+}
+
+bool Tree::is_spin_slider_mode() const {
+
+	return spin_slider_mode;
 }
 
 void Tree::value_editor_changed(double p_value) {
@@ -1867,6 +1937,11 @@ void Tree::_input_event(InputEvent p_event) {
 
 			if (!p_event.key.pressed)
 				break;
+			if (range_drag_enabled && p_event.key.scancode == KEY_ESCAPE) {
+				_cancel_range_drag();
+				accept_event();
+				break;
+			}
 			if (p_event.key.mod.alt || p_event.key.mod.command || (p_event.key.mod.shift && p_event.key.unicode == 0) || p_event.key.mod.meta)
 				break;
 			if (!root)
@@ -2199,12 +2274,38 @@ void Tree::_input_event(InputEvent p_event) {
 				if (!range_drag_enabled) {
 
 					Vector2 cpos = Vector2(b.x, b.y);
-					if (cpos.distance_to(pressing_pos) > 2) {
+					bool start = spin_slider_mode ? ABS(cpos.x - pressing_pos.x) > 4 : cpos.distance_to(pressing_pos) > 2;
+					if (start) {
 						range_drag_enabled = true;
 						range_drag_capture_pos = cpos;
 						range_drag_base = popup_edited_item->get_range(popup_edited_item_col);
+						range_drag_pre_value = range_drag_base;
+						range_drag_dist = 0;
 						Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
 					}
+				} else if (spin_slider_mode) {
+
+					// Linear, horizontal drag (newer Godot). Integers and unbounded decimals (positions):
+					// half a unit per pixel; bounded decimals: the whole range in ~200 pixels.
+					TreeItem::Cell &c = popup_edited_item->cells[popup_edited_item_col];
+					float dx = b.relative_x;
+					if (b.mod.shift)
+						dx *= 0.1;
+					range_drag_dist += dx;
+
+					double per_px;
+					if (c.step >= 1)
+						per_px = 0.5 * c.step;
+					else if ((c.max - c.min) <= 100000)
+						per_px = (c.max - c.min) / 200.0;
+					else
+						per_px = 0.5;
+
+					double v = range_drag_pre_value + per_px * range_drag_dist;
+					if (b.mod.control)
+						v = Math::round(v);
+					popup_edited_item->set_range(popup_edited_item_col, CLAMP(v, c.min, c.max));
+					item_edited(popup_edited_item_col, popup_edited_item);
 				} else {
 
 					TreeItem::Cell &c = popup_edited_item->cells[popup_edited_item_col];
@@ -2308,8 +2409,11 @@ void Tree::_input_event(InputEvent p_event) {
 				break;
 			}
 
-			if (range_drag_enabled)
+			if (range_drag_enabled) {
+				if (spin_slider_mode && b.button_index == BUTTON_RIGHT)
+					_cancel_range_drag();
 				break;
+			}
 
 			switch (b.button_index) {
 				case BUTTON_RIGHT:
@@ -2454,7 +2558,7 @@ bool Tree::edit_selected() {
 		text_editor->set_text(c.mode == TreeItem::CELL_MODE_STRING ? c.text : String::num(c.val, Math::step_decimals(c.step)));
 		text_editor->select_all();
 
-		if (c.mode == TreeItem::CELL_MODE_RANGE || c.mode == TreeItem::CELL_MODE_RANGE_EXPRESSION) {
+		if ((c.mode == TreeItem::CELL_MODE_RANGE || c.mode == TreeItem::CELL_MODE_RANGE_EXPRESSION) && !spin_slider_mode) {
 
 			value_editor->set_pos(textedpos + Point2i(0, text_editor->get_size().height));
 			value_editor->set_size(Size2(rect.size.width, 1));
@@ -3553,6 +3657,9 @@ Tree::Tree() {
 	text_editor->set_as_toplevel(true);
 
 	updating_value_editor = false;
+	spin_slider_mode = false;
+	range_drag_pre_value = 0;
+	range_drag_dist = 0;
 	pressed_button = -1;
 	show_column_titles = false;
 
