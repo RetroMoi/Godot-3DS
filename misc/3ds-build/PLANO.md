@@ -88,7 +88,8 @@ sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas
       alocado como área da imagem; NinePatch/StyleBox tinham o erro inverso. Corrigido.
 - [x] Linhas, círculos e polígonos (`canvas_draw_line/primitive/polygon` estavam vazios): o PICA200 não tem
       primitiva de linha, então linha vira quad fino; cor por vértice (gradiente) com loader de cor só
-      quando preciso; UV de polígono ajustado ao padding. Cena de teste: `misc/3ds-build/draw_test`.
+      quando preciso; UV de polígono ajustado ao padding. Cena de teste: `misc/3ds-build/draw_test`
+      (validada no Azahar: igual ao PC, 60 FPS).
 - [x] Recorte (clip: Label clip_text/autowrap, ScrollContainer) estava espelhado na vertical.
 - [x] Texturas: filtro (FILTER) e repetição (REPEAT/tile) respeitados; tile em textura não potência de 2
       feito à mão (um quad por repetição, num só draw); padding preenchido com a borda (sem lixo ao filtrar).
