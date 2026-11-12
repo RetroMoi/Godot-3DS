@@ -366,6 +366,7 @@ private:
 	Object *current;
 
 	bool _playing_edited;
+	float child_check_timer; // see NOTIFICATION_PROCESS: detects the game process exiting
 	String run_custom_filename;
 	bool reference_resource_mem;
 	bool save_external_resources_mem;

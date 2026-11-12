@@ -100,6 +100,7 @@ public:
 
 	virtual Error execute(const String &p_path, const List<String> &p_arguments, bool p_blocking, ProcessID *r_child_id = NULL, String *r_pipe = NULL, int *r_exitcode = NULL, bool read_stderr = false);
 	virtual Error kill(const ProcessID &p_pid);
+	virtual bool is_process_running(const ProcessID &p_pid) const;
 	virtual int get_process_ID() const;
 
 	virtual bool has_environment(const String &p_var) const;

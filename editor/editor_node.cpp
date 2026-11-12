@@ -223,6 +223,17 @@ void EditorNode::_notification(int p_what) {
 	}
 	if (p_what == NOTIFICATION_PROCESS) {
 
+		// The debugger connection usually tells us when the game closes, but it may never connect
+		// (firewall, port in use) or drop silently: also watch the process so Play/Stop reset.
+		child_check_timer -= get_process_delta_time();
+		if (child_check_timer <= 0) {
+			child_check_timer = 0.5;
+			if (editor_run.has_child_exited()) {
+				editor_run.forget_child();
+				notify_child_process_exited();
+			}
+		}
+
 //force the whole tree viewport
 #if 0
 		{
@@ -6349,6 +6360,7 @@ EditorNode::EditorNode() {
 	opening_prev = false;
 	set_process_unhandled_input(true);
 	_playing_edited = false;
+	child_check_timer = 0;
 
 	//	Panel *errors = memnew( Panel );
 	load_errors = memnew(RichTextLabel);

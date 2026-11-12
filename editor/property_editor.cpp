@@ -2202,9 +2202,10 @@ void PropertyEditor::set_item_text(TreeItem *p_item, int p_type, const String &p
 		case Variant::MATRIX3:
 		case Variant::TRANSFORM: {
 
-			p_item->set_text(1, obj->get(p_name));
 			if (_subfield_count(p_type))
 				_update_subfields(p_item, p_type, obj->get(p_name));
+			else
+				p_item->set_text(1, obj->get(p_name));
 
 		} break;
 		case Variant::COLOR: {
@@ -3288,9 +3289,10 @@ void PropertyEditor::update_tree() {
 			} break;
 			case Variant::VECTOR2: {
 
+				// The value is edited through the x/y(/z, w/h) rows below: no popup/summary field here.
 				item->set_cell_mode(1, TreeItem::CELL_MODE_CUSTOM);
-				item->set_editable(1, true);
-				item->set_text(1, obj->get(p.name));
+				item->set_editable(1, false);
+				item->set_text(1, "");
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Vector2", "EditorIcons"));
 				_create_subfields(item, p.name, p.type);
@@ -3298,9 +3300,10 @@ void PropertyEditor::update_tree() {
 			} break;
 			case Variant::RECT2: {
 
+				// The value is edited through the x/y(/z, w/h) rows below: no popup/summary field here.
 				item->set_cell_mode(1, TreeItem::CELL_MODE_CUSTOM);
-				item->set_editable(1, true);
-				item->set_text(1, obj->get(p.name));
+				item->set_editable(1, false);
+				item->set_text(1, "");
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Rect2", "EditorIcons"));
 				_create_subfields(item, p.name, p.type);
@@ -3308,9 +3311,10 @@ void PropertyEditor::update_tree() {
 			} break;
 			case Variant::VECTOR3: {
 
+				// The value is edited through the x/y(/z, w/h) rows below: no popup/summary field here.
 				item->set_cell_mode(1, TreeItem::CELL_MODE_CUSTOM);
-				item->set_editable(1, true);
-				item->set_text(1, obj->get(p.name));
+				item->set_editable(1, false);
+				item->set_text(1, "");
 				if (show_type_icons)
 					item->set_icon(0, get_icon("Vector", "EditorIcons"));
 				_create_subfields(item, p.name, p.type);

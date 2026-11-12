@@ -2220,6 +2220,16 @@ Error OS_Windows::execute(const String &p_path, const List<String> &p_arguments,
 	return OK;
 };
 
+bool OS_Windows::is_process_running(const ProcessID &p_pid) const {
+
+	if (!process_map->has(p_pid))
+		return false;
+	DWORD exit_code = 0;
+	if (!GetExitCodeProcess((*process_map)[p_pid].pi.hProcess, &exit_code))
+		return false;
+	return exit_code == STILL_ACTIVE;
+}
+
 Error OS_Windows::kill(const ProcessID &p_pid) {
 
 	HANDLE h;

@@ -411,6 +411,13 @@ Error OS_Unix::execute(const String &p_path, const List<String> &p_arguments, bo
 	return OK;
 }
 
+bool OS_Unix::is_process_running(const ProcessID &p_pid) const {
+
+	// 0 = still running; the pid = it exited (and is now reaped); -1 = not our child / already gone.
+	int status = 0;
+	return ::waitpid(p_pid, &status, WNOHANG) == 0;
+}
+
 Error OS_Unix::kill(const ProcessID &p_pid) {
 
 	int ret = ::kill(p_pid, SIGKILL);

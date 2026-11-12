@@ -56,6 +56,9 @@ public:
 	void stop();
 
 	OS::ProcessID get_pid() const { return pid; }
+	// The game process ended on its own (e.g. its window was closed).
+	bool has_child_exited() const { return status != STATUS_STOP && pid != 0 && !OS::get_singleton()->is_process_running(pid); }
+	void forget_child() { pid = 0; }
 
 	void set_debug_collisions(bool p_debug);
 	bool get_debug_collisions() const;
