@@ -101,7 +101,7 @@ sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas
 - [ ] Cada textura guarda também uma cópia RGBA em RAM (`Texture::image`): dobra o uso de memória das
       texturas. Remover a cópia (refazer `texture_get_data` lendo da textura da GPU) — Fase 1.5.
 - [ ] `draw_primitive` com 1 ponto respeita `width` (quadrado); no PC (GLES2) o ponto tem sempre 1 px.
-- [~] Tela de baixo e toque: ver Fase 5.
+- [x] Tela de baixo e toque: ver Fase 5.
 
 ## Fase 4 — Desempenho
 0. Antes de otimizar, medir (adiado da Fase 1): cronômetro por etapa do quadro (lógica, física, montagem
@@ -113,12 +113,13 @@ Batching no canvas, ring buffer de vértices, atlas, física 2D a 30 Hz.
 ## Fase 5 — Tela de baixo e toque
 Escolhido: **área única 400x480** (`display/3ds_dual_screen = true`, width=400, height=480). A tela de cima
 mostra y 0–240; a de baixo, x 40–360 e y 240–480 (320x240 centrada).
-- [~] Renderizador: a cena é desenhada uma vez por tela (projeção, recorte e descarte por tela); itens que
+- [x] Renderizador: a cena é desenhada uma vez por tela (projeção, recorte e descarte por tela); itens que
       não aparecem numa tela não são desenhados nela. Splash só na tela de cima.
-- [~] Toque nas coordenadas da área 400x480 (SCREEN_TOUCH/DRAG) e também como botão esquerdo do mouse:
+- [x] Toque nas coordenadas da área 400x480 (SCREEN_TOUCH/DRAG) e também como botão esquerdo do mouse:
       Button, Slider, ScrollContainer (arrastar rola) etc. funcionam pelo toque.
-- [~] Editor: guias das duas telas na vista 2D, faixas fora da tela de baixo sombreadas; ao rodar no PC
-      essas faixas ficam pretas, como no console. Projeto de teste: `misc/3ds-build/dual_screen_test`.
+- [x] Editor: guias das duas telas na vista 2D, faixas fora da tela de baixo sombreadas; ao rodar no PC
+      essas faixas ficam pretas, como no console. Projeto de teste: `misc/3ds-build/dual_screen_test`
+      (validado no Azahar: botões, slider, lista rolável e desenho por toque).
 - [ ] Teclado do sistema (swkbd) ao focar LineEdit/TextEdit (`OS::show_virtual_keyboard`).
 - [ ] Viewport separado para a tela de baixo (mundos independentes nas duas telas), se algum jogo pedir.
 - [ ] 3D estéreo por parallax (opcional).
