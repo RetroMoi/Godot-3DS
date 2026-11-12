@@ -73,6 +73,7 @@ class OS_3DS : public OS {
 	Platform3DS *platform_3ds;
 	
 	Point2i last_mouse_pos;
+	class LocalWireless *local_wireless;
 	Point2 touch_pos;
 	bool touch_pressed;
 	bool dual_screen;

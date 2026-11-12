@@ -57,6 +57,7 @@
 #include "main/main.h"
 #include "globals.h"
 #include "platform_3ds.h"
+#include "local_wireless_3ds.h"
 
 extern "C" {
 #include <3ds/svc.h>
@@ -168,6 +169,7 @@ OS_3DS::OS_3DS()
 : video_mode(400, 240, true, false, false) // top screen, native resolution
 {	
 	platform_3ds = NULL;
+	local_wireless = NULL;
 	touch_pressed = false;
 	dual_screen = false;
 	mouse_button_state = 0;
@@ -339,6 +341,9 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 
 	platform_3ds = memnew( Platform3DS );
 	Globals::get_singleton()->add_singleton(Globals::Singleton("Platform3DS", platform_3ds));
+
+	local_wireless = memnew( LocalWireless );
+	Globals::get_singleton()->add_singleton(Globals::Singleton("LocalWireless", local_wireless));
 }
 
 void OS_3DS::delete_main_loop()
@@ -382,6 +387,8 @@ void OS_3DS::finalize()
 	physics_2d_server->finish();
 	memdelete(physics_2d_server);
 
+	memdelete(local_wireless);
+	local_wireless = NULL;
 	memdelete(platform_3ds);
 	platform_3ds = NULL;
 }

@@ -125,8 +125,12 @@ mostra y 0–240; a de baixo, x 40–360 e y 240–480 (320x240 centrada).
 - [ ] 3D estéreo por parallax (opcional).
 
 ## Fase 6 — Rede
-- Jogo local sem fio (UDS, até 8 consoles): singleton `LocalWireless` (host/scan/join/send/get_packets).
-  O RSF já libera `nwm::UDS`; funciona em .3dsx e .cia.
+- [~] Jogo local sem fio (UDS, até 16 consoles): singleton `LocalWireless`. Sala por jogo (ID e senha
+  vêm de `application/name`); `host(max_jogadores, info, modo)`, `start_scan(modo)` em thread +
+  `is_scanning()`/`get_rooms()`, `join(i)`, `leave()`, `get_status()`, `get_my_id()`, `get_players()`,
+  `send(RawArray, para)`/`send_var(v, para)` (para 0 = todos), `get_packet_count()`, `get_packet()`/
+  `get_var()`, `get_packet_sender()`. Pacotes até 1478 bytes. O RSF já libera `nwm::UDS`.
+  Teste: `misc/3ds-build/local_wireless_test` (dois Azahar numa sala multijogador, ou dois consoles).
 - Wi-Fi/Internet: reativar sockets do Godot 2.1 (HTTPClient, StreamPeerTCP, PacketPeerUDP) sobre o soc:U.
 
 ## Fase 7 — StreetPass (experimental)

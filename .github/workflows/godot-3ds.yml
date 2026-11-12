@@ -167,6 +167,7 @@ jobs:
           cp -r misc/3ds-build/test_project $P/exemplo_test_project
           cp -r misc/3ds-build/draw_test $P/exemplo_draw_test
           cp -r misc/3ds-build/dual_screen_test $P/exemplo_duas_telas
+          cp -r misc/3ds-build/local_wireless_test $P/exemplo_jogo_local
           cat > $P/LEIA-ME.txt <<'EOF'
           Godot 2.1 para Nintendo 3DS - editor portatil para Windows
 

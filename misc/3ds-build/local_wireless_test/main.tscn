@@ -1,0 +1,79 @@
+[gd_scene load_steps=2 format=1]
+
+[ext_resource path="res://main.gd" type="Script" id=1]
+
+[node name="Main" type="Node2D"]
+
+script/script = ExtResource( 1 )
+
+[node name="info" type="Label" parent="."]
+
+margin/left = 8.0
+margin/top = 6.0
+margin/right = 392.0
+margin/bottom = 60.0
+text = "..."
+
+[node name="criar" type="Button" parent="."]
+
+margin/left = 48.0
+margin/top = 248.0
+margin/right = 148.0
+margin/bottom = 276.0
+text = "Criar sala"
+
+[node name="procurar" type="Button" parent="."]
+
+margin/left = 156.0
+margin/top = 248.0
+margin/right = 256.0
+margin/bottom = 276.0
+text = "Procurar"
+
+[node name="sair" type="Button" parent="."]
+
+margin/left = 264.0
+margin/top = 248.0
+margin/right = 352.0
+margin/bottom = 276.0
+text = "Sair"
+
+[node name="sala0" type="Button" parent="."]
+
+margin/left = 48.0
+margin/top = 288.0
+margin/right = 352.0
+margin/bottom = 318.0
+text = "Sala"
+
+[node name="sala1" type="Button" parent="."]
+
+margin/left = 48.0
+margin/top = 324.0
+margin/right = 352.0
+margin/bottom = 354.0
+text = "Sala"
+
+[node name="sala2" type="Button" parent="."]
+
+margin/left = 48.0
+margin/top = 360.0
+margin/right = 352.0
+margin/bottom = 390.0
+text = "Sala"
+
+[node name="sala3" type="Button" parent="."]
+
+margin/left = 48.0
+margin/top = 396.0
+margin/right = 352.0
+margin/bottom = 426.0
+text = "Sala"
+
+[node name="dica" type="Label" parent="."]
+
+margin/left = 48.0
+margin/top = 444.0
+margin/right = 352.0
+margin/bottom = 470.0
+text = "Circle Pad / direcional: mover o quadrado"
