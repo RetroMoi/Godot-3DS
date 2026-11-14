@@ -1533,8 +1533,17 @@ bool Main::iteration() {
 
 	last_ticks = ticks;
 
-	if (step > frame_slice * 8)
-		step = frame_slice * 8;
+	// Physics catch-up: after a slow frame, the next one runs several physics steps to keep up
+	// with real time. Each step makes that frame slower still, so on a slow CPU (Old 3DS) a
+	// single expensive moment spirals down (20 FPS). Cap the steps per frame: beyond it the
+	// game slows down instead.
+#ifdef _3DS
+	static const int max_physics_steps = GLOBAL_DEF("physics/max_steps_per_frame", 2);
+#else
+	static const int max_physics_steps = GLOBAL_DEF("physics/max_steps_per_frame", 8);
+#endif
+	if (step > frame_slice * max_physics_steps)
+		step = frame_slice * max_physics_steps;
 
 	time_accum += step;
 
@@ -1548,8 +1557,11 @@ bool Main::iteration() {
 
 		uint64_t fixed_begin = OS::get_singleton()->get_ticks_usec();
 
+#ifndef _3D_DISABLED
+		// No 3D nodes without 3D: the 3D physics world is always empty.
 		PhysicsServer::get_singleton()->sync();
 		PhysicsServer::get_singleton()->flush_queries();
+#endif
 
 		Physics2DServer::get_singleton()->sync();
 		Physics2DServer::get_singleton()->flush_queries();
@@ -1561,7 +1573,9 @@ bool Main::iteration() {
 
 		message_queue->flush();
 
+#ifndef _3D_DISABLED
 		PhysicsServer::get_singleton()->step(frame_slice * time_scale);
+#endif
 
 		Physics2DServer::get_singleton()->end_sync();
 		Physics2DServer::get_singleton()->step(frame_slice * time_scale);
@@ -1581,8 +1595,10 @@ bool Main::iteration() {
 	OS::get_singleton()->get_main_loop()->idle(step * time_scale);
 	message_queue->flush();
 
+#ifndef _3D_DISABLED
 	if (SpatialSoundServer::get_singleton())
 		SpatialSoundServer::get_singleton()->update(step * time_scale);
+#endif
 	if (SpatialSound2DServer::get_singleton())
 		SpatialSound2DServer::get_singleton()->update(step * time_scale);
 

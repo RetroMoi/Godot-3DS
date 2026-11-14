@@ -2071,6 +2071,7 @@ void RasterizerCitro3d::begin_frame()
 	stat_frame_begin_tick = svcGetSystemTick();
 	stat_gpu_wait_ticks = stat_frame_begin_tick - t0;
 	stat_draw_calls = stat_vertices = stat_items = 0;
+	canvas_extra_identity = false; // send it once per frame
 
 	// Mark the screen targets as drawn this frame: C3D_FrameEnd then queues their transfer to
 	// the LCD framebuffers and swaps the buffers only once the GPU has finished (citro3d's
@@ -3257,6 +3258,7 @@ void RasterizerCitro3d::_set_uniform(int uniform_location, const CameraMatrix& p
 void RasterizerCitro3d::canvas_set_transform(const Matrix32& p_transform)
 {
 	_set_uniform(canvas_shader->location_extra, p_transform);
+	canvas_extra_identity = false;
 }
 
 static void _set_scissor(const Rect2& p_screen, int x, int y, int w, int h)
@@ -3546,7 +3548,12 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 				xform.elements[2] = (xform.elements[2] + Vector2(0.5, 0.5)).floor();
 		}
 		_set_uniform(canvas_shader->location_modelview, xform);
-		_set_uniform(canvas_shader->location_extra, Matrix32());
+		// The extra transform is identity unless an item's draw commands set one: don't re-send
+		// it (4 more uniforms in the command buffer) for every item.
+		if (!canvas_extra_identity) {
+			_set_uniform(canvas_shader->location_extra, Matrix32());
+			canvas_extra_identity = true;
+		}
 		
 		bool unshaded = (material && material->shading_mode==VS::CANVAS_ITEM_SHADING_UNSHADED) || ci->blend_mode!=VS::MATERIAL_BLEND_MODE_MIX;
 		

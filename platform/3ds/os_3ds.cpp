@@ -202,7 +202,6 @@ void OS_3DS::run()
 		return;
 	
 	main_loop->init();
-	unsigned int frame = 0;
 	bool closed_by_system = false;
 	while (true)
 	{
@@ -211,10 +210,8 @@ void OS_3DS::run()
 			break;
 		}
 
-		// Sample memory peaks about once per second (mallinfo walks the heap).
-		if ((frame++ % 60) == 0)
-			platform_3ds->update_peaks();
-
+		// (Memory peaks are sampled only when a script asks for them: mallinfo walks the
+		// whole heap, a hitch every second on the Old 3DS.)
 		processInput();
 		_dispatch_apt_events();
 
@@ -307,12 +304,10 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	rasterizer_citro3d->set_dual_screen(dual_screen);
 	rasterizer = rasterizer_citro3d;
 	
+	// The game runs in one thread: no VisualServerWrapMT / Physics2DServerWrapMT. They only add
+	// a thread check and an extra virtual call to each of the thousands of server calls a frame.
 	visual_server = memnew( VisualServerRaster(rasterizer) );
-	
-	if (get_render_thread_mode()!=RENDER_THREAD_UNSAFE) {
-		visual_server =memnew(VisualServerWrapMT(visual_server,get_render_thread_mode()==RENDER_SEPARATE_THREAD));
-	}
-	
+
 	AudioDriverManagerSW::get_driver(0)->set_singleton();
 	if (AudioDriverManagerSW::get_driver(0)->init()!=OK)
 	{
@@ -335,8 +330,7 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	
 	physics_server = memnew( PhysicsServerSW );
 	physics_server->init();
-// 	physics_2d_server = memnew( Physics2DServerSW );
-	physics_2d_server = Physics2DServerWrapMT::init_server<Physics2DServerSW>();
+	physics_2d_server = memnew( Physics2DServerSW );
 	physics_2d_server->init();
 
 	input = memnew( InputDefault );

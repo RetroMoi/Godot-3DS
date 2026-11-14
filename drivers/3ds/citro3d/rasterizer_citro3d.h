@@ -942,6 +942,7 @@ public:
 		float cmdbuf_usage;
 	};
 	FrameStats last_frame_stats;
+	bool canvas_extra_identity = false; // the canvas "extra" uniform holds identity
 	static RasterizerCitro3d *get_singleton() { return singleton; }
 
 	// Dual screen mode: draw canvas layer p_layer only on these screens (1 top, 2 bottom, 3 both).
