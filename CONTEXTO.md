@@ -1,7 +1,7 @@
 # Contexto do projeto: Godot 2.1 para Nintendo 3DS + porte do ARPG (v3)
 
 Documento de passagem de contexto, para continuar o trabalho com qualquer assistente de IA.
-Estado em 14/11/2026 (engine em `fd4f4a6`). Substitui a v2 (`contexto_godot3ds_arpg_v2.md`, fora do repositório).
+Estado em 14/11/2026 (engine em `9535e74`). Substitui a v2 (`contexto_godot3ds_arpg_v2.md`, fora do repositório).
 Idioma de trabalho: **português do Brasil** (responder sempre em PT-BR).
 
 **Onde fica:** este arquivo é o `CONTEXTO.md` na raiz do repositório **Godot-3DS** (`main/2.1`).
@@ -210,6 +210,7 @@ São dois projetos ligados:
   - D-pad: 12–15.
 - **`TileMap.cell_size`** é `Size2i`; cuidado ao misturar com Vector2.
 - **Autoload de script:** `[autoload] Nome="*res://caminho.gd"`.
+- **Não existe `is_instance_valid`.** Para valor que pode ser `null`: `if x != null:`. Para nó que pode ter sido liberado (`queue_free`), guardar `weakref(no)` e usar `ref.get_ref()` com checagem. Chamar método num **objeto já liberado** ainda derruba o release (só valores não-objeto viram erro de script, ver 5.6).
 
 ### 3.6 Build
 
@@ -391,6 +392,14 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - corrigido o `image_loader/repeat` invertido na importação do diálogo de exportação.
 - Validado no PC: com o filtro desligado, 5 cores (nítido); ligado, 46 cores (borrado). Falta ver no console ou no Azahar com renderizador de hardware.
 
+### 5.6 Data abort em `Variant::call_ptr` (resolvido na engine, `9535e74`; bug do jogo pendente com o Open)
+- **Dump do console:** *data abort*, leitura em `0x1C`, PC em `Variant::call_ptr`, LR em `GDFunction::call` (simbolizado com o ELF do run #26).
+- **Causa:** um script do jogo chamou um método num valor que não é objeto, quase certamente `null`. No release, `call_ptr` não checava se o método existe para o tipo e usava o resultado nulo da busca no mapa (`0x1C` é o deslocamento do valor no nó).
+- **Correção na engine (proposta pelo Open):** a checagem do método passou a valer no release (`Nonexistent function 'x' in base 'Nil'`). A checagem de argumentos de menos em métodos built-in também (`"texto".substr(1)` → `Expected 2 arguments`).
+- **Testes:** no PC, o release antigo dava *segfault* e o novo mostra os erros e segue; o mesmo no template do 3DS pelo emulador; a semântica da VM continua idêntica (2.924 resultados).
+- **Pendente (Open):** achar no jogo o `x.metodo()` com `x` nulo. Os suspeitos são as mudanças do morcego (HurtBox na morte, explosão, recheck do golpe): `get_node` com caminho inexistente, `onready` usado antes de preenchido, referência zerada na morte e usada por timer ou sinal depois. Para achar a linha: rodar a cena pelo editor no PC (debug mostra arquivo e linha).
+- **Mensagem dedicada ao Open:** já enviada pelo usuário (explicação, suspeitos, como achar a linha, cuidados com `null` e `weakref`).
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -432,8 +441,11 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 ## 7. Pendências e próximos passos
 
-**Do usuário:**
-- Atualizar a engine (`sync-engine.ps1`) para o run com `fd4f4a6` e conferir que a exportação usa o template certo (o console mostra "3DS export template: ... (build X, editor build X)").
+**Do usuário / do Open:**
+- Atualizar a engine (`sync-engine.ps1`) para o run com `9535e74` e conferir que a exportação usa o template certo (o console mostra "3DS export template: ... (build X, editor build X)").
+- Open: achar e corrigir a chamada de método em `null` no jogo (5.6).
+- Open: avaliar preservar `editor_data/` no `sync-engine.ps1` (mensagem com o código já enviada); hoje cada atualização apaga as preferências e os layouts por projeto.
+- Ver o novo layout padrão dos docks (Cena/Arquivos à esquerda, Inspetor/Node à direita) após atualizar.
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
 
@@ -467,6 +479,10 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `9535e74` | release: método inexistente e argumentos de menos viram erro de script em vez de crash |
+| `179fd19` | `CONTEXTO.md`: repositório do jogo é somente leitura para o lado da engine |
+| `448d9c7` | editor: layout padrão (Cena/Arquivos à esquerda, Inspetor/Node à direita) |
+| `84d21eb` | `CONTEXTO.md` passa a morar na raiz do repositório |
 | `fd4f4a6` | splash e importação seguem `image_loader/filter`; `repeat` invertido corrigido |
 | `7c0fed9` | CI: marcador portátil visível `_sc_` |
 | `031d489` | exportador recusa template de outro build (build id) |
