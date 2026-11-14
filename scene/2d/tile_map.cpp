@@ -307,6 +307,11 @@ void TileMap::_update_dirty_quadrants() {
 		debug_collision_color = st->get_debug_collisions_color();
 	}
 
+	// Y-sort origin: the quadrant's canvas item (whose position is its sort key) moves by
+	// sort_ofs and its tiles are drawn sort_ofs higher, so drawing, collision and navigation
+	// stay where they were and only the sort point changes.
+	Vector2 sort_ofs = y_sort_mode ? Vector2(0, y_sort_origin) : Vector2();
+
 	while (dirty_quadrant_list.first()) {
 
 		Quadrant &q = *dirty_quadrant_list.first()->self();
@@ -366,7 +371,7 @@ void TileMap::_update_dirty_quadrants() {
 				vs->canvas_item_set_parent(canvas_item, get_canvas_item());
 				_update_item_material_state(canvas_item);
 				Matrix32 xform;
-				xform.set_origin(q.pos);
+				xform.set_origin(q.pos + sort_ofs);
 				vs->canvas_item_set_transform(canvas_item, xform);
 				vs->canvas_item_set_light_mask(canvas_item, get_light_mask());
 
@@ -376,6 +381,7 @@ void TileMap::_update_dirty_quadrants() {
 
 					debug_canvas_item = vs->canvas_item_create();
 					vs->canvas_item_set_parent(debug_canvas_item, canvas_item);
+					vs->canvas_item_set_transform(debug_canvas_item, Matrix32(0, -sort_ofs));
 					vs->canvas_item_set_z_as_relative_to_parent(debug_canvas_item, false);
 					vs->canvas_item_set_z(debug_canvas_item, VS::CANVAS_ITEM_Z_MAX - 1);
 					q.canvas_items.push_back(debug_canvas_item);
@@ -406,7 +412,7 @@ void TileMap::_update_dirty_quadrants() {
 			}
 
 			Rect2 rect;
-			rect.pos = offset.floor();
+			rect.pos = offset.floor() - sort_ofs;
 			rect.size = s;
 
 			if (rect.size.y > rect.size.x) {
@@ -1234,6 +1240,19 @@ bool TileMap::is_y_sort_mode_enabled() const {
 	return y_sort_mode;
 }
 
+void TileMap::set_y_sort_origin(int p_origin) {
+
+	_clear_quadrants();
+	y_sort_origin = p_origin;
+	_recreate_quadrants();
+	emit_signal("settings_changed");
+}
+
+int TileMap::get_y_sort_origin() const {
+
+	return y_sort_origin;
+}
+
 Array TileMap::get_used_cells() const {
 
 	Array a;
@@ -1345,6 +1364,8 @@ void TileMap::_bind_methods() {
 
 	ObjectTypeDB::bind_method(_MD("set_y_sort_mode", "enable"), &TileMap::set_y_sort_mode);
 	ObjectTypeDB::bind_method(_MD("is_y_sort_mode_enabled"), &TileMap::is_y_sort_mode_enabled);
+	ObjectTypeDB::bind_method(_MD("set_y_sort_origin", "origin"), &TileMap::set_y_sort_origin);
+	ObjectTypeDB::bind_method(_MD("get_y_sort_origin"), &TileMap::get_y_sort_origin);
 
 	ObjectTypeDB::bind_method(_MD("set_collision_use_kinematic", "use_kinematic"), &TileMap::set_collision_use_kinematic);
 	ObjectTypeDB::bind_method(_MD("get_collision_use_kinematic"), &TileMap::get_collision_use_kinematic);
@@ -1403,6 +1424,9 @@ void TileMap::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cell/half_offset", PROPERTY_HINT_ENUM, "Offset X,Offset Y,Disabled"), _SCS("set_half_offset"), _SCS("get_half_offset"));
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cell/tile_origin", PROPERTY_HINT_ENUM, "Top Left,Center,Bottom Left"), _SCS("set_tile_origin"), _SCS("get_tile_origin"));
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "cell/y_sort"), _SCS("set_y_sort_mode"), _SCS("is_y_sort_mode_enabled"));
+	// Pixels added to each tile's sort point (below the cell origin when positive), like
+	// TileMapLayer.y_sort_origin in Godot 4. Only drawing order changes.
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "cell/y_sort_origin", PROPERTY_HINT_RANGE, "-256,256,1"), _SCS("set_y_sort_origin"), _SCS("get_y_sort_origin"));
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collision/use_kinematic", PROPERTY_HINT_NONE, ""), _SCS("set_collision_use_kinematic"), _SCS("get_collision_use_kinematic"));
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "collision/friction", PROPERTY_HINT_RANGE, "0,1,0.01"), _SCS("set_collision_friction"), _SCS("get_collision_friction"));
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "collision/bounce", PROPERTY_HINT_RANGE, "0,1,0.01"), _SCS("set_collision_bounce"), _SCS("get_collision_bounce"));
@@ -1445,6 +1469,7 @@ TileMap::TileMap() {
 	use_kinematic = false;
 	navigation = NULL;
 	y_sort_mode = false;
+	y_sort_origin = 0;
 	occluder_light_mask = 1;
 
 	fp_adjust = 0.00001;

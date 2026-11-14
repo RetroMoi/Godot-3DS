@@ -162,6 +162,7 @@ private:
 	bool used_size_cache_dirty;
 	bool quadrant_order_dirty;
 	bool y_sort_mode;
+	int y_sort_origin;
 	float fp_adjust;
 	float friction;
 	float bounce;
@@ -276,6 +277,9 @@ public:
 
 	void set_y_sort_mode(bool p_enable);
 	bool is_y_sort_mode_enabled() const;
+
+	void set_y_sort_origin(int p_origin);
+	int get_y_sort_origin() const;
 
 	Array get_used_cells() const;
 	Array get_used_cells_by_id(int p_id) const;
