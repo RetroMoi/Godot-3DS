@@ -83,6 +83,11 @@ Conversão para formatos nativos já em tiles (reaproveitar módulo ETC1), fonte
 áudio → PCM16/ADPCM (OGG só para música). Erros/avisos: textura >1024, não-pot2, shader de canvas,
 sombras Light2D, orçamento de RAM/VRAM por cena. Preview 400x240 das duas telas.
 
+## Bugs de plataforma corrigidos
+- [x] `Semaphore3ds` era um esqueleto (`wait()` voltava na hora). Com a rede ligada, a thread de
+      resolução de nomes do `IP` ficava num laço na prioridade da thread principal: tela preta em
+      qualquer jogo. Agora usa `LightSemaphore` da libctru.
+
 ## Renderizador 3DS — pendências conhecidas
 - [x] Texturas fora de potência de 2 (ex.: splash 400x240 → 512x256) saíam espremidas: UV usava o tamanho
       alocado como área da imagem; NinePatch/StyleBox tinham o erro inverso. Corrigido.
