@@ -432,8 +432,30 @@ public:
 	String get_construct_string() const;
 	static void construct_from_string(const String &p_string, Variant &r_value, ObjectConstruct p_obj_construct = NULL, void *p_construct_ud = NULL);
 
-	void operator=(const Variant &p_variant); // only this is enough for all the other types
-	Variant(const Variant &p_variant);
+	// Types stored by value in _data with nothing to construct or destroy: a copy between two
+	// of them is a plain copy of the data (the bulk of script math: ints, floats, vectors).
+	enum {
+		POD_TYPES = (1 << NIL) | (1 << BOOL) | (1 << INT) | (1 << REAL) | (1 << VECTOR2) | (1 << RECT2) | (1 << VECTOR3) | (1 << PLANE) | (1 << QUAT) | (1 << COLOR)
+	};
+	_FORCE_INLINE_ static bool _is_pod_type(Type p_type) { return (POD_TYPES >> p_type) & 1; }
+
+	_FORCE_INLINE_ void operator=(const Variant &p_variant) { // only this is enough for all the other types
+		if (_is_pod_type(type) && _is_pod_type(p_variant.type)) {
+			type = p_variant.type;
+			_data = p_variant._data;
+		} else {
+			reference(p_variant);
+		}
+	}
+	_FORCE_INLINE_ Variant(const Variant &p_variant) {
+		if (_is_pod_type(p_variant.type)) {
+			type = p_variant.type;
+			_data = p_variant._data;
+		} else {
+			type = NIL;
+			reference(p_variant);
+		}
+	}
 	_FORCE_INLINE_ Variant() { type = NIL; }
 	_FORCE_INLINE_ ~Variant() {
 		if (type != Variant::NIL) clear();

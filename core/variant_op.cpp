@@ -235,9 +235,106 @@ bool Variant::booleanize(bool &r_valid) const {
 		return;                 \
 	}
 
+// Fast path for the arithmetic and comparisons of int, float and Vector2, the bulk of game
+// script math. Same results as the generic tables below (including int/float promotion), but
+// the result is written straight into r_ret instead of through a temporary Variant. The value
+// is computed before r_ret is touched, since r_ret may be one of the operands. Anything not
+// handled here (division of ints, modulo, other types) falls through to the generic code.
+#define _FAST_SET(m_type, m_field, m_ctype, m_value) \
+	{                                                 \
+		const m_ctype _v = (m_value);                 \
+		if (r_ret.type != m_type) {                   \
+			r_ret.clear();                            \
+			r_ret.type = m_type;                      \
+		}                                             \
+		r_ret._data.m_field = _v;                     \
+		return;                                       \
+	}
+#define _FAST_INT(m_value) _FAST_SET(INT, _int, int, m_value)
+#define _FAST_REAL(m_value) _FAST_SET(REAL, _real, double, m_value)
+#define _FAST_BOOL(m_value) _FAST_SET(BOOL, _bool, bool, m_value)
+#define _FAST_VECTOR2(m_value)                                     \
+	{                                                              \
+		const Vector2 _v = (m_value);                              \
+		if (r_ret.type != VECTOR2) {                               \
+			r_ret.clear();                                         \
+			r_ret.type = VECTOR2;                                  \
+		}                                                          \
+		*reinterpret_cast<Vector2 *>(r_ret._data._mem) = _v;       \
+		return;                                                    \
+	}
+
 void Variant::evaluate(const Operator &p_op, const Variant &p_a, const Variant &p_b, Variant &r_ret, bool &r_valid) {
 
 	r_valid = true;
+
+	{
+		const Type ta = p_a.type;
+		const Type tb = p_b.type;
+		if (ta == INT && tb == INT) {
+			const int a = p_a._data._int;
+			const int b = p_b._data._int;
+			switch (p_op) {
+				case OP_ADD: _FAST_INT(a + b);
+				case OP_SUBSTRACT: _FAST_INT(a - b);
+				case OP_MULTIPLY: _FAST_INT(a * b);
+				case OP_EQUAL: _FAST_BOOL(a == b);
+				case OP_NOT_EQUAL: _FAST_BOOL(!(a == b));
+				case OP_LESS: _FAST_BOOL(a < b);
+				case OP_LESS_EQUAL: _FAST_BOOL(a <= b);
+				case OP_GREATER: _FAST_BOOL(b < a);
+				case OP_GREATER_EQUAL: _FAST_BOOL(b <= a);
+				case OP_NEGATE: _FAST_INT(-a);
+				default: break;
+			}
+		} else if ((ta == REAL || ta == INT) && (tb == REAL || tb == INT)) {
+			const double a = ta == REAL ? p_a._data._real : (double)p_a._data._int;
+			const double b = tb == REAL ? p_b._data._real : (double)p_b._data._int;
+			switch (p_op) {
+				case OP_ADD: _FAST_REAL(a + b);
+				case OP_SUBSTRACT: _FAST_REAL(a - b);
+				case OP_MULTIPLY: _FAST_REAL(a * b);
+				case OP_DIVIDE: _FAST_REAL(a / b); // int/int never gets here: (int, int) above
+				case OP_EQUAL: _FAST_BOOL(a == b);
+				case OP_NOT_EQUAL: _FAST_BOOL(!(a == b));
+				case OP_LESS: _FAST_BOOL(a < b);
+				case OP_LESS_EQUAL: _FAST_BOOL(a <= b);
+				case OP_GREATER: _FAST_BOOL(b < a);
+				case OP_GREATER_EQUAL: _FAST_BOOL(b <= a);
+				default: break;
+			}
+		} else if (ta == VECTOR2) {
+			const Vector2 &a = *reinterpret_cast<const Vector2 *>(p_a._data._mem);
+			if (tb == VECTOR2) {
+				const Vector2 &b = *reinterpret_cast<const Vector2 *>(p_b._data._mem);
+				switch (p_op) {
+					case OP_ADD: _FAST_VECTOR2(a + b);
+					case OP_SUBSTRACT: _FAST_VECTOR2(a - b);
+					case OP_MULTIPLY: _FAST_VECTOR2(a * b);
+					case OP_DIVIDE: _FAST_VECTOR2(a / b);
+					case OP_EQUAL: _FAST_BOOL(a == b);
+					case OP_NOT_EQUAL: _FAST_BOOL(!(a == b));
+					default: break;
+				}
+			} else if (tb == REAL || tb == INT) {
+				const real_t b = tb == REAL ? (real_t)p_b._data._real : (real_t)p_b._data._int;
+				switch (p_op) {
+					case OP_MULTIPLY: _FAST_VECTOR2(a * b);
+					case OP_DIVIDE: _FAST_VECTOR2(a / b);
+					default: break;
+				}
+			}
+			if (p_op == OP_NEGATE)
+				_FAST_VECTOR2(-a);
+		} else if (tb == VECTOR2 && (ta == REAL || ta == INT) && p_op == OP_MULTIPLY) {
+			const real_t a = ta == REAL ? (real_t)p_a._data._real : (real_t)p_a._data._int;
+			_FAST_VECTOR2(a * *reinterpret_cast<const Vector2 *>(p_b._data._mem));
+		} else if (ta == REAL && p_op == OP_NEGATE) {
+			_FAST_REAL(-p_a._data._real);
+		} else if (ta == INT && p_op == OP_NEGATE) {
+			_FAST_INT(-p_a._data._int);
+		}
+	}
 
 	switch (p_op) {
 

@@ -2600,10 +2600,6 @@ Variant::Variant(const Vector<Color> &p_array) {
 	*this = v;
 }
 
-void Variant::operator=(const Variant &p_variant) {
-
-	reference(p_variant);
-}
 
 Variant::Variant(const IP_Address &p_address) {
 
@@ -2611,11 +2607,6 @@ Variant::Variant(const IP_Address &p_address) {
 	memnew_placement(_data._mem, String(p_address));
 }
 
-Variant::Variant(const Variant &p_variant) {
-
-	type = NIL;
-	reference(p_variant);
-}
 
 /*
 Variant::~Variant() {
