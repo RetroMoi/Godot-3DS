@@ -62,6 +62,20 @@ public:
 	StringName _iter_next;
 	StringName _iter_get;
 	StringName get_rid;
+
+	// Members of the built-in math types (Variant::get_named/set_named fast path).
+	StringName x;
+	StringName y;
+	StringName z;
+	StringName width;
+	StringName height;
+	StringName pos;
+	StringName size;
+	StringName end;
+	StringName r;
+	StringName g;
+	StringName b;
+	StringName a;
 };
 
 #endif // SCENE_STRING_NAMES_H

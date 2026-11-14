@@ -45,4 +45,17 @@ CoreStringNames::CoreStringNames() {
 	_iter_next = StaticCString::create("_iter_next");
 	_iter_get = StaticCString::create("_iter_get");
 	get_rid = StaticCString::create("get_rid");
+
+	x = StaticCString::create("x");
+	y = StaticCString::create("y");
+	z = StaticCString::create("z");
+	width = StaticCString::create("width");
+	height = StaticCString::create("height");
+	pos = StaticCString::create("pos");
+	size = StaticCString::create("size");
+	end = StaticCString::create("end");
+	r = StaticCString::create("r");
+	g = StaticCString::create("g");
+	b = StaticCString::create("b");
+	a = StaticCString::create("a");
 }

@@ -1054,6 +1054,76 @@ void Variant::set_named(const StringName &p_index, const Variant &p_value, bool 
 		return;
 	}
 
+	// Members of the math types by StringName (pointer compares), without building a String
+	// and comparing text in set(). Same checks and results as set().
+	const CoreStringNames *sn = CoreStringNames::get_singleton();
+	const bool num = p_value.type == INT || p_value.type == REAL;
+	switch (type) {
+		case VECTOR2: {
+			Vector2 *v = reinterpret_cast<Vector2 *>(_data._mem);
+			if (num && (p_index == sn->x || p_index == sn->width)) {
+				v->x = p_value;
+			} else if (num && (p_index == sn->y || p_index == sn->height)) {
+				v->y = p_value;
+			} else {
+				break;
+			}
+			if (r_valid)
+				*r_valid = true;
+			return;
+		}
+		case RECT2: {
+			Rect2 *v = reinterpret_cast<Rect2 *>(_data._mem);
+			if (p_value.type != VECTOR2) {
+				break;
+			} else if (p_index == sn->pos) {
+				v->pos = p_value;
+			} else if (p_index == sn->size) {
+				v->size = p_value;
+			} else if (p_index == sn->end) {
+				v->size = Vector2(p_value) - v->pos;
+			} else {
+				break;
+			}
+			if (r_valid)
+				*r_valid = true;
+			return;
+		}
+		case VECTOR3: {
+			Vector3 *v = reinterpret_cast<Vector3 *>(_data._mem);
+			if (num && p_index == sn->x) {
+				v->x = p_value;
+			} else if (num && p_index == sn->y) {
+				v->y = p_value;
+			} else if (num && p_index == sn->z) {
+				v->z = p_value;
+			} else {
+				break;
+			}
+			if (r_valid)
+				*r_valid = true;
+			return;
+		}
+		case COLOR: {
+			Color *v = reinterpret_cast<Color *>(_data._mem);
+			if (num && p_index == sn->r) {
+				v->r = p_value;
+			} else if (num && p_index == sn->g) {
+				v->g = p_value;
+			} else if (num && p_index == sn->b) {
+				v->b = p_value;
+			} else if (num && p_index == sn->a) {
+				v->a = p_value;
+			} else {
+				break;
+			}
+			if (r_valid)
+				*r_valid = true;
+			return;
+		}
+		default: break;
+	}
+
 	set(p_index.operator String(), p_value, r_valid);
 }
 
@@ -1078,6 +1148,76 @@ Variant Variant::get_named(const StringName &p_index, bool *r_valid) const {
 #endif
 
 		return _get_obj().obj->get(p_index, r_valid);
+	}
+
+	// Members of the math types by StringName (see set_named).
+	const CoreStringNames *sn = CoreStringNames::get_singleton();
+	switch (type) {
+		case VECTOR2: {
+			const Vector2 *v = reinterpret_cast<const Vector2 *>(_data._mem);
+			if (p_index == sn->x || p_index == sn->width) {
+				if (r_valid)
+					*r_valid = true;
+				return v->x;
+			} else if (p_index == sn->y || p_index == sn->height) {
+				if (r_valid)
+					*r_valid = true;
+				return v->y;
+			}
+		} break;
+		case RECT2: {
+			const Rect2 *v = reinterpret_cast<const Rect2 *>(_data._mem);
+			if (p_index == sn->pos) {
+				if (r_valid)
+					*r_valid = true;
+				return v->pos;
+			} else if (p_index == sn->size) {
+				if (r_valid)
+					*r_valid = true;
+				return v->size;
+			} else if (p_index == sn->end) {
+				if (r_valid)
+					*r_valid = true;
+				return v->size + v->pos;
+			}
+		} break;
+		case VECTOR3: {
+			const Vector3 *v = reinterpret_cast<const Vector3 *>(_data._mem);
+			if (p_index == sn->x) {
+				if (r_valid)
+					*r_valid = true;
+				return v->x;
+			} else if (p_index == sn->y) {
+				if (r_valid)
+					*r_valid = true;
+				return v->y;
+			} else if (p_index == sn->z) {
+				if (r_valid)
+					*r_valid = true;
+				return v->z;
+			}
+		} break;
+		case COLOR: {
+			const Color *v = reinterpret_cast<const Color *>(_data._mem);
+			if (p_index == sn->r) {
+				if (r_valid)
+					*r_valid = true;
+				return v->r;
+			} else if (p_index == sn->g) {
+				if (r_valid)
+					*r_valid = true;
+				return v->g;
+			} else if (p_index == sn->b) {
+				if (r_valid)
+					*r_valid = true;
+				return v->b;
+			} else if (p_index == sn->a) {
+				if (r_valid)
+					*r_valid = true;
+				return v->a;
+			}
+		} break;
+		default: break;
 	}
 
 	return get(p_index.operator String(), r_valid);
