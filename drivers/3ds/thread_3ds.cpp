@@ -129,6 +129,27 @@ Error Mutex3ds::try_lock() {
 /* Semaphore */
 ///////////////
 
+Semaphore3ds::Semaphore3ds() {
+	LightSemaphore_Init(&semaphore, 0, 0x7FFF);
+}
+
+Error Semaphore3ds::wait() {
+	LightSemaphore_Acquire(&semaphore, 1);
+	return OK;
+}
+
+Error Semaphore3ds::post() {
+	// libctru panics past max_count; a semaphore nobody waits on (e.g. a CommandQueueMT's
+	// sync semaphore without a server thread) just stays at the max.
+	if (semaphore.current_count < semaphore.max_count)
+		LightSemaphore_Release(&semaphore, 1);
+	return OK;
+}
+
+int Semaphore3ds::get() const {
+	return semaphore.current_count;
+}
+
 Semaphore* Semaphore3ds::create() {
 	return memnew(Semaphore3ds);
 }

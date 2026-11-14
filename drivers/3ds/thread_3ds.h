@@ -84,13 +84,18 @@ class Semaphore3ds : public Semaphore {
 
 	static Semaphore* create();
 
+	// Was a stub (wait() returned at once): a thread waiting on it, like the IP resolver's,
+	// spun forever at the main thread's priority and starved the game.
+	LightSemaphore semaphore;
+
 public:
-	virtual Error wait() { return OK; };
-	virtual Error post() { return OK; };
-	virtual int get() const { return 0; }; ///< get semaphore value
+	virtual Error wait();
+	virtual Error post();
+	virtual int get() const; ///< get semaphore value
 
 	static void make_default();
 
+	Semaphore3ds();
 };
 
 #endif
