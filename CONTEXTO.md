@@ -13,7 +13,7 @@ não dispara build. O jogo tem o seu próprio `CONTEXTO.md` no ARPG-3DS, mantido
 ## 0. Divisão de trabalho (desde a v1)
 
 - **Engine (Godot-3DS):** trabalhada com o Claude (Claude Code).
-- **Jogo (ARPG-3DS):** desenvolvido pelo usuário com o **OpenCode**, que o usuário chama de **"Open"**. O Claude continua com acesso ao repositório do jogo, mas só para testes e medições. Mudanças no jogo são do lado do Open, salvo pedido explícito.
+- **Jogo (ARPG-3DS):** desenvolvido pelo usuário com o **OpenCode**, que o usuário chama de **"Open"**. Para o Claude, o repositório do jogo é **somente leitura**: ler, testar, medir e apontar problemas (arquivo, linha, sugestão). Quem altera é sempre o Open; o Claude não faz commits nem oferece editar o ARPG-3DS.
 - Quando o Open apontar um gargalo, a pergunta é sempre: **é do jogo (scripts, cenas, conversor) ou da engine?** Se for da engine, o Claude corrige.
 
 ---
