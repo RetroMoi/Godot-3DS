@@ -3512,9 +3512,19 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 		// different origins in the PICA200's 24-bit floats and could leave a 1-pixel column
 		// uncovered (vertical/horizontal lines while scrolling). Whole pixels put every edge
 		// between pixel centers, and keep pixel art sharp.
+		//
+		// With a whole-number scale (e.g. a Camera2D zoom of 0.5 = 2x), the origin snaps to
+		// multiples of that scale instead: everything moves on the same 2x2 (3x3...) grid,
+		// exactly like a lower-resolution game scaled up, with no half-pixel ("mixel") steps.
 		Matrix32 xform = ci->final_transform;
-		if (xform.elements[0].y == 0 && xform.elements[1].x == 0)
-			xform.elements[2] = (xform.elements[2] + Vector2(0.5, 0.5)).floor();
+		if (xform.elements[0].y == 0 && xform.elements[1].x == 0) {
+			float sx = Math::abs(xform.elements[0].x);
+			float grid = Math::floor(sx + 0.5f);
+			if (grid >= 2.0f && Math::abs(sx - grid) < 0.001f && Math::abs(Math::abs(xform.elements[1].y) - grid) < 0.001f)
+				xform.elements[2] = (xform.elements[2] / grid + Vector2(0.5, 0.5)).floor() * grid;
+			else
+				xform.elements[2] = (xform.elements[2] + Vector2(0.5, 0.5)).floor();
+		}
 		_set_uniform(canvas_shader->location_modelview, xform);
 		_set_uniform(canvas_shader->location_extra, Matrix32());
 		
