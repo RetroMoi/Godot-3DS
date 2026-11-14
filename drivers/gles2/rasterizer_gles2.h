@@ -1223,6 +1223,7 @@ class RasterizerGLES2 : public Rasterizer {
 	float canvas_opacity;
 	Color canvas_modulate;
 	bool canvas_use_modulate;
+	bool canvas_clip_uv; // the canvas shader variant that clamps texcoords to each rect's region is bound
 	bool uses_texpixel_size;
 	bool rebind_texpixel_size;
 	Transform canvas_transform;

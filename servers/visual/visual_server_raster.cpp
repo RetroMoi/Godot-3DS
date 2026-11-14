@@ -3399,7 +3399,7 @@ void VisualServerRaster::canvas_item_add_texture_rect(RID p_item, const Rect2 &p
 	canvas_item->commands.push_back(rect);
 }
 
-void VisualServerRaster::canvas_item_add_texture_rect_region(RID p_item, const Rect2 &p_rect, RID p_texture, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) {
+void VisualServerRaster::canvas_item_add_texture_rect_region(RID p_item, const Rect2 &p_rect, RID p_texture, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose, bool p_clip_uv) {
 	VS_CHANGED;
 	CanvasItem *canvas_item = canvas_item_owner.get(p_item);
 	ERR_FAIL_COND(!canvas_item);
@@ -3411,6 +3411,8 @@ void VisualServerRaster::canvas_item_add_texture_rect_region(RID p_item, const R
 	rect->texture = p_texture;
 	rect->source = p_src_rect;
 	rect->flags = Rasterizer::CANVAS_RECT_REGION;
+	if (p_clip_uv)
+		rect->flags |= Rasterizer::CANVAS_RECT_CLIP_UV;
 
 	if (p_rect.size.x < 0) {
 

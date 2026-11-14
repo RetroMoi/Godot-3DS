@@ -188,6 +188,11 @@ uniform float shadow_esm_multiplier;
 uniform vec2 texpixel_size;
 #endif
 
+#ifdef USE_CLIP_RECT_UV
+// Texcoords of the centers of the source region's edge texels (min.xy, max.xy).
+uniform vec4 clip_rect_uv;
+#endif
+
 
 FRAGMENT_SHADER_GLOBALS
 
@@ -204,7 +209,11 @@ void main() {
 	float distance = texture2D(texture, uv_interp).a;
 	color.a = smoothstep(0.5 - smoothing, 0.5 + smoothing, distance) * color.a;
 #else
+#ifdef USE_CLIP_RECT_UV
+	color *= texture2D( texture,  clamp(uv_interp, clip_rect_uv.xy, clip_rect_uv.zw) );
+#else
 	color *= texture2D( texture,  uv_interp );
+#endif
 
 #endif
 

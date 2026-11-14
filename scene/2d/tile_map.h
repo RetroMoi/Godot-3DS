@@ -163,6 +163,7 @@ private:
 	bool quadrant_order_dirty;
 	bool y_sort_mode;
 	int y_sort_origin;
+	bool clip_uv;
 	float fp_adjust;
 	float friction;
 	float bounce;
@@ -280,6 +281,9 @@ public:
 
 	void set_y_sort_origin(int p_origin);
 	int get_y_sort_origin() const;
+
+	void set_clip_uv(bool p_enable);
+	bool get_clip_uv() const;
 
 	// The map's collision shapes with their transforms (in TileMap coordinates), placed like
 	// the physics bodies. Used by CollisionGrid2D.

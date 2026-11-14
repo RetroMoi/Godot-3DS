@@ -7528,6 +7528,7 @@ void RasterizerGLES2::canvas_begin() {
 	canvas_shader.bind();
 	canvas_shader.set_uniform(CanvasShaderGLES2::TEXTURE, 0);
 	canvas_use_modulate = false;
+	canvas_clip_uv = false;
 	_set_color_attrib(Color(1, 1, 1));
 	canvas_transform = Transform();
 	canvas_transform.translate(-(viewport.width / 2.0f), -(viewport.height / 2.0f), 0.0f);
@@ -7864,6 +7865,20 @@ void RasterizerGLES2::canvas_draw_rect(const Rect2 &p_rect, int p_flags, const R
 			glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			untile = true;
+		}
+
+		if (canvas_clip_uv) {
+			// Clamp to the centers of the region's edge texels (or don't clamp, for rects of
+			// this item that don't ask for it).
+			if ((p_flags & CANVAS_RECT_CLIP_UV) && (p_flags & CANVAS_RECT_REGION)) {
+				float tw = texture->width, th = texture->height;
+				Rect2 r = p_source;
+				canvas_shader.set_uniform(CanvasShaderGLES2::CLIP_RECT_UV,
+						(r.pos.x + 0.5) / tw, (r.pos.y + 0.5) / th,
+						(r.pos.x + r.size.x - 0.5) / tw, (r.pos.y + r.size.y - 0.5) / th);
+			} else {
+				canvas_shader.set_uniform(CanvasShaderGLES2::CLIP_RECT_UV, -1e6f, -1e6f, 1e6f, 1e6f);
+			}
 		}
 
 		if (!(p_flags & CANVAS_RECT_REGION)) {
@@ -8821,9 +8836,11 @@ void RasterizerGLES2::canvas_render_items(CanvasItem *p_item_list, int p_z, cons
 	canvas_modulate = p_modulate;
 	canvas_shader.set_conditional(CanvasShaderGLES2::USE_MODULATE, canvas_use_modulate);
 	canvas_shader.set_conditional(CanvasShaderGLES2::USE_DISTANCE_FIELD, false);
+	canvas_shader.set_conditional(CanvasShaderGLES2::USE_CLIP_RECT_UV, false);
 
 	bool reset_modulate = false;
 	bool prev_distance_field = false;
+	canvas_clip_uv = false;
 
 	while (p_item_list) {
 
@@ -8840,7 +8857,9 @@ void RasterizerGLES2::canvas_render_items(CanvasItem *p_item_list, int p_z, cons
 			canvas_modulate = p_modulate;
 			canvas_shader.set_conditional(CanvasShaderGLES2::USE_MODULATE, canvas_use_modulate);
 			canvas_shader.set_conditional(CanvasShaderGLES2::USE_DISTANCE_FIELD, false);
+			canvas_shader.set_conditional(CanvasShaderGLES2::USE_CLIP_RECT_UV, false);
 			prev_distance_field = false;
+			canvas_clip_uv = false;
 			rebind_shader = true;
 			reset_modulate = true;
 		}
@@ -8849,6 +8868,17 @@ void RasterizerGLES2::canvas_render_items(CanvasItem *p_item_list, int p_z, cons
 
 			canvas_shader.set_conditional(CanvasShaderGLES2::USE_DISTANCE_FIELD, ci->distance_field);
 			prev_distance_field = ci->distance_field;
+			rebind_shader = true;
+		}
+
+		// Items whose rects clip their texcoords (TileMap quadrants): the shader variant that
+		// clamps them, switched per item (switching rebinds the shader).
+		bool clip_uv = ci->commands.size() && ci->commands[0]->type == CanvasItem::Command::TYPE_RECT &&
+					   (static_cast<CanvasItem::CommandRect *>(ci->commands[0])->flags & CANVAS_RECT_CLIP_UV);
+		if (clip_uv != canvas_clip_uv) {
+
+			canvas_shader.set_conditional(CanvasShaderGLES2::USE_CLIP_RECT_UV, clip_uv);
+			canvas_clip_uv = clip_uv;
 			rebind_shader = true;
 		}
 

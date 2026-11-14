@@ -582,7 +582,7 @@ public:
 	FUNC3(canvas_item_add_rect, RID, const Rect2 &, const Color &);
 	FUNC4(canvas_item_add_circle, RID, const Point2 &, float, const Color &);
 	FUNC6(canvas_item_add_texture_rect, RID, const Rect2 &, RID, bool, const Color &, bool);
-	FUNC6(canvas_item_add_texture_rect_region, RID, const Rect2 &, RID, const Rect2 &, const Color &, bool);
+	FUNC7(canvas_item_add_texture_rect_region, RID, const Rect2 &, RID, const Rect2 &, const Color &, bool, bool);
 	FUNC8(canvas_item_add_style_box, RID, const Rect2 &, const Rect2 &, RID, const Vector2 &, const Vector2 &, bool, const Color &);
 	FUNC6(canvas_item_add_primitive, RID, const Vector<Point2> &, const Vector<Color> &, const Vector<Point2> &, RID, float);
 	FUNC5(canvas_item_add_polygon, RID, const Vector<Point2> &, const Vector<Color> &, const Vector<Point2> &, RID);

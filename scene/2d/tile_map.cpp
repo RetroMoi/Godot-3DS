@@ -480,7 +480,7 @@ void TileMap::_update_dirty_quadrants() {
 			if (r == Rect2()) {
 				tex->draw_rect(canvas_item, rect, false, modulate, c.transpose);
 			} else {
-				tex->draw_rect_region(canvas_item, rect, r, modulate, c.transpose);
+				tex->draw_rect_region(canvas_item, rect, r, modulate, c.transpose, clip_uv);
 			}
 
 			// No collision layers: no physics bodies (the map's collision may be handled another
@@ -1298,6 +1298,20 @@ void TileMap::get_collision_shapes(List<CollisionShape> *r_shapes) const {
 	}
 }
 
+void TileMap::set_clip_uv(bool p_enable) {
+
+	if (clip_uv == p_enable)
+		return;
+	_clear_quadrants();
+	clip_uv = p_enable;
+	_recreate_quadrants();
+}
+
+bool TileMap::get_clip_uv() const {
+
+	return clip_uv;
+}
+
 void TileMap::set_y_sort_origin(int p_origin) {
 
 	_clear_quadrants();
@@ -1423,6 +1437,8 @@ void TileMap::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("set_y_sort_mode", "enable"), &TileMap::set_y_sort_mode);
 	ObjectTypeDB::bind_method(_MD("is_y_sort_mode_enabled"), &TileMap::is_y_sort_mode_enabled);
 	ObjectTypeDB::bind_method(_MD("set_y_sort_origin", "origin"), &TileMap::set_y_sort_origin);
+	ObjectTypeDB::bind_method(_MD("set_clip_uv", "enable"), &TileMap::set_clip_uv);
+	ObjectTypeDB::bind_method(_MD("get_clip_uv"), &TileMap::get_clip_uv);
 	ObjectTypeDB::bind_method(_MD("get_y_sort_origin"), &TileMap::get_y_sort_origin);
 
 	ObjectTypeDB::bind_method(_MD("set_collision_use_kinematic", "use_kinematic"), &TileMap::set_collision_use_kinematic);
@@ -1485,6 +1501,11 @@ void TileMap::_bind_methods() {
 	// Pixels added to each tile's sort point (below the cell origin when positive), like
 	// TileMapLayer.y_sort_origin in Godot 4. Only drawing order changes.
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cell/y_sort_origin", PROPERTY_HINT_RANGE, "-256,256,1"), _SCS("set_y_sort_origin"), _SCS("get_y_sort_origin"));
+	// Tiles sample only inside their region of the tileset texture: no lines from neighbouring
+	// tiles of an atlas when the map is drawn at fractional positions or scales (PC window
+	// stretch, camera zoom). Costs a clamp in the PC renderer's fragment shader; the 3DS
+	// renderer always draws at whole pixels and ignores it.
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "cell/clip_uv"), _SCS("set_clip_uv"), _SCS("get_clip_uv"));
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collision/use_kinematic", PROPERTY_HINT_NONE, ""), _SCS("set_collision_use_kinematic"), _SCS("get_collision_use_kinematic"));
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "collision/friction", PROPERTY_HINT_RANGE, "0,1,0.01"), _SCS("set_collision_friction"), _SCS("get_collision_friction"));
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "collision/bounce", PROPERTY_HINT_RANGE, "0,1,0.01"), _SCS("set_collision_bounce"), _SCS("get_collision_bounce"));
@@ -1528,6 +1549,7 @@ TileMap::TileMap() {
 	navigation = NULL;
 	y_sort_mode = false;
 	y_sort_origin = 0;
+	clip_uv = true;
 	occluder_light_mask = 1;
 
 	fp_adjust = 0.00001;

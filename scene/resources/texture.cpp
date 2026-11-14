@@ -45,9 +45,14 @@ void Texture::draw_rect(RID p_canvas_item, const Rect2 &p_rect, bool p_tile, con
 
 	VisualServer::get_singleton()->canvas_item_add_texture_rect(p_canvas_item, p_rect, get_rid(), p_tile, p_modulate, p_transpose);
 }
-void Texture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) const {
+void Texture::_draw_rect_region_bind(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) const {
 
-	VisualServer::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, p_rect, get_rid(), p_src_rect, p_modulate, p_transpose);
+	draw_rect_region(p_canvas_item, p_rect, p_src_rect, p_modulate, p_transpose);
+}
+
+void Texture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose, bool p_clip_uv) const {
+
+	VisualServer::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, p_rect, get_rid(), p_src_rect, p_modulate, p_transpose, p_clip_uv);
 }
 
 bool Texture::get_rect_region_uv_rect(const Rect2 &p_rect, const Rect2 &p_src_rect, Rect2 &r_rect, Rect2 &r_uv_rect) const {
@@ -74,7 +79,7 @@ void Texture::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_flags"), &Texture::get_flags);
 	ObjectTypeDB::bind_method(_MD("draw", "canvas_item", "pos", "modulate", "transpose"), &Texture::draw, DEFVAL(Color(1, 1, 1)), DEFVAL(false));
 	ObjectTypeDB::bind_method(_MD("draw_rect", "canvas_item", "rect", "tile", "modulate", "transpose"), &Texture::draw_rect, DEFVAL(Color(1, 1, 1)), DEFVAL(false));
-	ObjectTypeDB::bind_method(_MD("draw_rect_region", "canvas_item", "rect", "src_rect", "modulate", "transpose"), &Texture::draw_rect_region, DEFVAL(Color(1, 1, 1)), DEFVAL(false));
+	ObjectTypeDB::bind_method(_MD("draw_rect_region", "canvas_item", "rect", "src_rect", "modulate", "transpose"), &Texture::_draw_rect_region_bind, DEFVAL(Color(1, 1, 1)), DEFVAL(false));
 
 	BIND_CONSTANT(FLAG_MIPMAPS);
 	BIND_CONSTANT(FLAG_REPEAT);
@@ -328,11 +333,11 @@ void ImageTexture::draw_rect(RID p_canvas_item, const Rect2 &p_rect, bool p_tile
 		return;
 	VisualServer::get_singleton()->canvas_item_add_texture_rect(p_canvas_item, p_rect, texture, p_tile, p_modulate, p_transpose);
 }
-void ImageTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) const {
+void ImageTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose, bool p_clip_uv) const {
 
 	if ((w | h) == 0)
 		return;
-	VisualServer::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, p_rect, texture, p_src_rect, p_modulate, p_transpose);
+	VisualServer::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, p_rect, texture, p_src_rect, p_modulate, p_transpose, p_clip_uv);
 }
 
 void ImageTexture::set_size_override(const Size2 &p_size) {
@@ -573,7 +578,7 @@ void AtlasTexture::draw_rect(RID p_canvas_item, const Rect2 &p_rect, bool p_tile
 
 	VS::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, dr, atlas->get_rid(), rc, p_modulate, p_transpose);
 }
-void AtlasTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) const {
+void AtlasTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose, bool p_clip_uv) const {
 
 	//this might not necesarily work well if using a rect, needs to be fixed properly
 	Rect2 rc = region;
@@ -601,7 +606,7 @@ void AtlasTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, cons
 	}
 	Rect2 dr(p_rect.pos + ofs * scale, src_c.size * scale);
 
-	VS::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, dr, atlas->get_rid(), src_c, p_modulate, p_transpose);
+	VS::get_singleton()->canvas_item_add_texture_rect_region(p_canvas_item, dr, atlas->get_rid(), src_c, p_modulate, p_transpose, p_clip_uv);
 }
 
 bool AtlasTexture::get_rect_region_uv_rect(const Rect2 &p_rect, const Rect2 &p_src_rect, Rect2 &r_rect, Rect2 &r_uv_rect) const {
@@ -794,7 +799,7 @@ void LargeTexture::draw_rect(RID p_canvas_item, const Rect2 &p_rect, bool p_tile
 		pieces[i].texture->draw_rect(p_canvas_item, Rect2(pieces[i].offset * scale + p_rect.pos, pieces[i].texture->get_size() * scale), false, p_modulate, p_transpose);
 	}
 }
-void LargeTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose) const {
+void LargeTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, const Rect2 &p_src_rect, const Color &p_modulate, bool p_transpose, bool p_clip_uv) const {
 
 	//tiling not supported for this
 	if (p_src_rect.size.x == 0 || p_src_rect.size.y == 0)
@@ -813,7 +818,7 @@ void LargeTexture::draw_rect_region(RID p_canvas_item, const Rect2 &p_rect, cons
 		target.size *= scale;
 		target.pos = p_rect.pos + (p_src_rect.pos + rect.pos) * scale;
 		local.pos -= rect.pos;
-		pieces[i].texture->draw_rect_region(p_canvas_item, target, local, p_modulate, p_transpose);
+		pieces[i].texture->draw_rect_region(p_canvas_item, target, local, p_modulate, p_transpose, p_clip_uv);
 	}
 }
 

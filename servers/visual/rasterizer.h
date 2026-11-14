@@ -559,7 +559,10 @@ public:
 		CANVAS_RECT_TILE = 2,
 		CANVAS_RECT_FLIP_H = 4,
 		CANVAS_RECT_FLIP_V = 8,
-		CANVAS_RECT_TRANSPOSE = 16
+		CANVAS_RECT_TRANSPOSE = 16,
+		// Sample only inside the source region (clamped to the centers of its edge texels):
+		// no bleeding from neighbouring atlas tiles at fractional positions/scales.
+		CANVAS_RECT_CLIP_UV = 32
 	};
 
 	struct CanvasLight {
