@@ -15,6 +15,9 @@ var outros = {}   # id do jogador -> posição
 var nomes = {}    # id do jogador -> nome do console
 var procurando = false
 var tempo_lista = 0.0
+var ultimo_envio = Vector2(-1, -1)
+var tempo_envio = 0.0
+var meu_id = 0
 var msg = ""
 var cores = [Color(1, 0.3, 0.3), Color(0.3, 1, 0.3), Color(0.3, 0.6, 1), Color(1, 1, 0.3),
 		Color(1, 0.4, 1), Color(0.3, 1, 1), Color(1, 0.6, 0.2), Color(0.85, 0.85, 0.85)]
@@ -93,7 +96,7 @@ func _process(delta):
 	meu_pos = Vector2(clamp(meu_pos.x, 10, 390), clamp(meu_pos.y, 70, 230))
 
 	var estado = DESCONECTADO
-	var meu_id = 0
+	meu_id = 0
 	if lw != null:
 		estado = lw.get_status()
 		if procurando and not lw.is_scanning():
@@ -102,7 +105,12 @@ func _process(delta):
 
 		if estado != DESCONECTADO:
 			meu_id = lw.get_my_id()
-			lw.send_var([meu_pos.x, meu_pos.y])
+			# Manda a posição só quando muda, e a cada 0,5 s (para quem acabou de entrar).
+			tempo_envio += delta
+			if meu_pos != ultimo_envio or tempo_envio > 0.5:
+				lw.send_var([meu_pos.x, meu_pos.y])
+				ultimo_envio = meu_pos
+				tempo_envio = 0.0
 			while lw.get_packet_count() > 0:
 				var v = lw.get_var()
 				var de = lw.get_packet_sender()
@@ -138,7 +146,6 @@ func _draw():
 	var fonte = get_node("info").get_font("font")
 	for id in outros:
 		_quadrado(outros[id], _cor(id), str(id), fonte)
-	var meu_id = lw.get_my_id() if lw != null else 0
 	_quadrado(meu_pos, _cor(meu_id), "eu", fonte)
 
 func _quadrado(pos, cor, texto, fonte):

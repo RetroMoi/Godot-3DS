@@ -29,6 +29,7 @@
 #include "local_wireless_3ds.h"
 
 #include "globals.h"
+#include "os/os.h"
 #include "io/marshalls.h"
 #include "print_string.h"
 
@@ -46,6 +47,8 @@ extern "C" {
 #define MAX_QUEUED_PACKETS 256
 #define SCAN_BUFFER_SIZE 0x4000
 #define SCAN_ATTEMPTS 3
+#define STATUS_REFRESH_FRAMES 30 // re-read the status at least this often, even without an event
+#define PULL_REFRESH_FRAMES 8 // pull packets at least this often, even without a data event
 
 // udsConnectionStatus::status values (as in Citra/Azahar's NWM-UDS implementation).
 #define NETSTATUS_NOT_CONNECTED 3
@@ -123,6 +126,7 @@ Error LocalWireless::host(int p_max_players, const String &p_room_info, int p_mo
 
 	packets.clear();
 	status = STATUS_HOST;
+	_invalidate_status();
 	return OK;
 }
 
@@ -249,6 +253,7 @@ Error LocalWireless::join(int p_room_index) {
 
 	packets.clear();
 	status = STATUS_CLIENT;
+	_invalidate_status();
 	return OK;
 }
 
@@ -265,6 +270,39 @@ void LocalWireless::leave() {
 
 	status = STATUS_DISCONNECTED;
 	packets.clear();
+	_invalidate_status();
+}
+
+void LocalWireless::_invalidate_status() {
+
+	status_valid = false;
+	names_bitmask = 0;
+	for (int i = 0; i < MAX_PLAYERS; i++)
+		node_names[i] = String();
+}
+
+void LocalWireless::_refresh_status() const {
+
+	if (status == STATUS_DISCONNECTED)
+		return;
+
+	uint64_t frame = OS::get_singleton()->get_frames_drawn();
+	if (status_valid && status_frame == frame)
+		return; // already up to date this frame
+
+	// Cheap check (no call to the UDS service): did the status change?
+	bool changed = udsWaitConnectionStatusEvent(false, false);
+	if (status_valid && !changed && frame - status_frame < STATUS_REFRESH_FRAMES)
+		return;
+
+	udsConnectionStatus constatus;
+	if (R_FAILED(udsGetConnectionStatus(&constatus)))
+		return;
+	net_status = constatus.status;
+	my_id = constatus.cur_NetworkNodeID;
+	node_bitmask = constatus.node_bitmask;
+	status_frame = frame;
+	status_valid = true;
 }
 
 void LocalWireless::_check_connection() {
@@ -273,8 +311,8 @@ void LocalWireless::_check_connection() {
 		return;
 
 	// The host closed the room or went out of range.
-	udsConnectionStatus constatus;
-	if (R_SUCCEEDED(udsGetConnectionStatus(&constatus)) && constatus.status == NETSTATUS_NOT_CONNECTED)
+	_refresh_status();
+	if (status_valid && net_status == NETSTATUS_NOT_CONNECTED)
 		leave();
 }
 
@@ -288,10 +326,8 @@ int LocalWireless::get_my_id() const {
 
 	if (status == STATUS_DISCONNECTED)
 		return 0;
-	udsConnectionStatus constatus;
-	if (R_FAILED(udsGetConnectionStatus(&constatus)))
-		return 0;
-	return constatus.cur_NetworkNodeID;
+	_refresh_status();
+	return status_valid ? my_id : 0;
 }
 
 Array LocalWireless::get_players() const {
@@ -300,20 +336,25 @@ Array LocalWireless::get_players() const {
 	if (status == STATUS_DISCONNECTED)
 		return result;
 
-	udsConnectionStatus constatus;
-	if (R_FAILED(udsGetConnectionStatus(&constatus)))
+	_refresh_status();
+	if (!status_valid)
 		return result;
 
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (!(constatus.node_bitmask & (1 << i)))
+		if (!(node_bitmask & (1 << i)))
 			continue;
 		int id = i + 1;
-		udsNodeInfo node;
+		// Ask for a name only for players that joined since the last time.
+		if (!(names_bitmask & (1 << i)) || node_names[i] == String()) {
+			udsNodeInfo node;
+			node_names[i] = R_SUCCEEDED(udsGetNodeInformation(id, &node)) ? _node_username(&node) : String();
+		}
 		Dictionary d;
 		d["id"] = id;
-		d["name"] = R_SUCCEEDED(udsGetNodeInformation(id, &node)) ? _node_username(&node) : String();
+		d["name"] = node_names[i];
 		result.push_back(d);
 	}
+	names_bitmask = node_bitmask;
 	return result;
 }
 
@@ -354,6 +395,17 @@ void LocalWireless::_pull_packets() {
 		return;
 
 	udsBindContext *ctx = (udsBindContext *)bind_context;
+
+	// At most once per frame, and only when the system signals new data (cheap check, no call
+	// to the UDS service); every few frames regardless, in case an event was missed.
+	uint64_t frame = OS::get_singleton()->get_frames_drawn();
+	if (frame == pull_frame)
+		return;
+	bool data = udsWaitDataAvailable(ctx, false, false);
+	if (!data && frame - pull_frame < PULL_REFRESH_FRAMES)
+		return;
+	pull_frame = frame;
+
 	while (true) {
 		size_t size = 0;
 		u16 sender = 0;
@@ -443,6 +495,13 @@ LocalWireless::LocalWireless() {
 	scanning = false;
 	scan_mode = 0;
 	scan_thread = NULL;
+	status_valid = false;
+	status_frame = 0;
+	net_status = 0;
+	my_id = 0;
+	node_bitmask = 0;
+	names_bitmask = 0;
+	pull_frame = (uint64_t)-1;
 	mutex = Mutex::create();
 	bind_context = memalloc(sizeof(udsBindContext));
 	memset(bind_context, 0, sizeof(udsBindContext));

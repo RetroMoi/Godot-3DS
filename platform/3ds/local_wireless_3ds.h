@@ -84,9 +84,24 @@ private:
 	int scan_mode;
 	Vector<Room *> rooms;
 
+	// Connection status cache: udsGetConnectionStatus is a call to the system (expensive at the
+	// Old 3DS's 268 MHz), so it is queried at most once per frame, and only when the system says
+	// it changed (with a refresh every 30 frames just in case). Names are fetched when the set of
+	// players changes.
+	mutable bool status_valid;
+	mutable uint64_t status_frame;
+	mutable uint32_t net_status;
+	mutable int my_id;
+	mutable uint16_t node_bitmask;
+	mutable uint16_t names_bitmask;
+	mutable String node_names[MAX_PLAYERS];
+	uint64_t pull_frame;
+
 	static void _scan_thread_func(void *p_self);
 	void _clear_rooms();
 	Error _init();
+	void _refresh_status() const;
+	void _invalidate_status();
 	void _pull_packets();
 	void _check_connection();
 
