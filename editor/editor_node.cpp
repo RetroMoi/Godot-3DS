@@ -4356,6 +4356,10 @@ void EditorNode::_load_docks() {
 		//no config
 		if (overridden_default_layout >= 0) {
 			_layout_menu_option(overridden_default_layout);
+		} else if (OS::get_singleton()->get_screen_size(OS::get_singleton()->get_current_screen()).x >= 1200) {
+			// The docks are created in the stock arrangement; apply the default layout. (Narrow
+			// screens keep the single column set up in the constructor.)
+			_load_docks_from_config(default_layout, "docks");
 		}
 		return;
 	}
@@ -5975,9 +5979,12 @@ EditorNode::EditorNode() {
 
 	overridden_default_layout = -1;
 	default_layout.instance();
-	default_layout->set_value(docks_section, "dock_3", TTR("FileSystem"));
-	default_layout->set_value(docks_section, "dock_5", TTR("Scene"));
-	default_layout->set_value(docks_section, "dock_6", TTR("Inspector") + "," + TTR("Node"));
+	// Default layout (this fork): Scene above FileSystem on the left; Inspector and Node (signals,
+	// groups) as tabs on the right, full height. Used for projects without a saved layout and by
+	// Editor > Editor Layout > Default.
+	default_layout->set_value(docks_section, "dock_3", TTR("Scene"));
+	default_layout->set_value(docks_section, "dock_4", TTR("FileSystem"));
+	default_layout->set_value(docks_section, "dock_5", TTR("Inspector") + "," + TTR("Node"));
 
 	for (int i = 0; i < DOCK_SLOT_MAX / 2; i++)
 		default_layout->set_value(docks_section, "dock_hsplit_" + itos(i + 1), 0);

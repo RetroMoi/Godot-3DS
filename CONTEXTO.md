@@ -109,6 +109,8 @@ São dois projetos ligados:
   - campos numéricos tipo `EditorSpinSlider`;
   - Vector2, Rect2 e Vector3 com campos na mesma linha.
 - Guias das duas telas no canvas do editor.
+- **Layout padrão dos docks:** Cena (em cima) e Arquivos (embaixo) à esquerda; Inspetor e Node (sinais/grupos) em abas à direita, na altura toda. Vale para projetos sem layout salvo e para Editor → Layout do Editor → Padrão. Em telas com menos de 1200 px de largura, fica a coluna única original.
+  - O layout que o usuário ajusta fica por projeto em `editor_data/` e é apagado a cada `sync-engine.ps1` (ele substitui a pasta do editor inteira). Sugestão ao Open: preservar `editor_data/` no sync, trocando só o executável e os templates.
 - **Filtro de imagem do projeto** (`image_loader/filter`, `gen_mipmaps`, `repeat`, nas Configurações do Projeto): é a configuração padrão de todos os gráficos. Vale para os PNGs carregados direto, para o **splash de boot** e para o padrão de "Filter" nos diálogos de importação de textura (2D, atlas, grande, 3D). Desligado = nearest, para pixel art (commit `fd4f4a6`).
 
 ### 3.4 Engine/renderizador 3DS: pontos técnicos
