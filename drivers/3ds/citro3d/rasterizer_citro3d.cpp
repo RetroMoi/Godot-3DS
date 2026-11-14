@@ -3507,7 +3507,15 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 		CanvasItem *material_owner = ci->material_owner?ci->material_owner:ci;
 		CanvasItemMaterial *material = material_owner->material;
 		
-		_set_uniform(canvas_shader->location_modelview,ci->final_transform);
+		// Items without rotation are drawn at whole pixels. With a fractional camera position,
+		// the shared edge of two neighbouring items (TileMap quadrants) was computed from two
+		// different origins in the PICA200's 24-bit floats and could leave a 1-pixel column
+		// uncovered (vertical/horizontal lines while scrolling). Whole pixels put every edge
+		// between pixel centers, and keep pixel art sharp.
+		Matrix32 xform = ci->final_transform;
+		if (xform.elements[0].y == 0 && xform.elements[1].x == 0)
+			xform.elements[2] = (xform.elements[2] + Vector2(0.5, 0.5)).floor();
+		_set_uniform(canvas_shader->location_modelview, xform);
 		_set_uniform(canvas_shader->location_extra, Matrix32());
 		
 		bool unshaded = (material && material->shading_mode==VS::CANVAS_ITEM_SHADING_UNSHADED) || ci->blend_mode!=VS::MATERIAL_BLEND_MODE_MIX;
