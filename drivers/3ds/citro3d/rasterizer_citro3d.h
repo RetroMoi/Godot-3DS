@@ -843,13 +843,14 @@ class RasterizerCitro3d : public Rasterizer {
 
 	struct VertexArray {
 		Vertex *vertices;
-// 		int count;
+		size_t bytes; // flushed from the CPU cache at end_frame
 		VertexArray(int vertexCount) {
-// 			count = vertexCount;
-			vertices = reinterpret_cast<Vertex*>(linearAlloc(sizeof(Vertex) * vertexCount));
+			bytes = sizeof(Vertex) * vertexCount;
+			vertices = reinterpret_cast<Vertex*>(linearAlloc(bytes));
 		}
 		// Raw buffer of p_bytes (for other vertex layouts); freed the same way at end of frame.
 		VertexArray(size_t p_bytes, bool) {
+			bytes = p_bytes;
 			vertices = reinterpret_cast<Vertex*>(linearAlloc(p_bytes));
 		}
 		~VertexArray() {
@@ -937,6 +938,7 @@ public:
 	struct FrameStats {
 		uint32_t draw_calls, vertices, items;
 		uint64_t draw_ticks, gpu_wait_ticks;
+		uint64_t end_ticks; // part of draw_ticks: cache flush + C3D_FrameEnd
 		float cmdbuf_usage;
 	};
 	FrameStats last_frame_stats;

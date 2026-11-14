@@ -140,11 +140,13 @@ void Platform3DS::record_frame(uint64_t p_frame_ticks, uint64_t p_vblank_ticks) 
 	float gpu = _ticks_to_ms(fs.gpu_wait_ticks);
 	float draw = _ticks_to_ms(fs.draw_ticks);
 	float vblank = _ticks_to_ms(p_vblank_ticks);
+	float end = _ticks_to_ms(fs.end_ticks);
 	float logic = MAX(frame - gpu - draw - vblank, 0.0f);
 	const float a = 0.1f;
 	frame_ms += (frame - frame_ms) * a;
 	logic_ms += (logic - logic_ms) * a;
 	draw_ms += (draw - draw_ms) * a;
+	frame_end_ms += (end - frame_end_ms) * a;
 	gpu_wait_ms += (gpu - gpu_wait_ms) * a;
 	vblank_ms += (vblank - vblank_ms) * a;
 }
@@ -154,6 +156,7 @@ Dictionary Platform3DS::get_frame_stats() const {
 	d["frame_ms"] = frame_ms;
 	d["logic_ms"] = logic_ms;
 	d["draw_ms"] = draw_ms;
+	d["frame_end_ms"] = frame_end_ms;
 	d["gpu_wait_ms"] = gpu_wait_ms;
 	d["vblank_ms"] = vblank_ms;
 	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
@@ -189,7 +192,7 @@ Platform3DS::Platform3DS() {
 	linear_peak = 0;
 	vram_peak = 0;
 	cpu_speedup = true; // OS_3DS enables it at startup
-	frame_ms = logic_ms = draw_ms = gpu_wait_ms = vblank_ms = 0;
+	frame_ms = logic_ms = draw_ms = frame_end_ms = gpu_wait_ms = vblank_ms = 0;
 }
 
 Platform3DS::~Platform3DS() {

@@ -45,7 +45,7 @@ class Platform3DS : public Object {
 	bool cpu_speedup;
 
 	// Frame timing, smoothed (exponential moving average), in milliseconds.
-	float frame_ms, logic_ms, draw_ms, gpu_wait_ms, vblank_ms;
+	float frame_ms, logic_ms, draw_ms, frame_end_ms, gpu_wait_ms, vblank_ms;
 
 protected:
 	static void _bind_methods();
@@ -90,7 +90,8 @@ public:
 	int get_canvas_layer_screens(int p_layer) const;
 
 	// Where the frame time goes (ms, smoothed): frame_ms, logic_ms (scripts, physics, scene),
-	// draw_ms (visual server + renderer, CPU), gpu_wait_ms (waiting for the GPU to finish the
+	// draw_ms (visual server + renderer, CPU; includes frame_end_ms, the cache flush and
+	// C3D_FrameEnd that hand the frame to the GPU), gpu_wait_ms (waiting for the GPU to finish the
 	// previous frame), vblank_ms (waiting for the screen refresh), plus the last frame's
 	// draw_calls, vertices, items (canvas items drawn) and cmdbuf_percent.
 	Dictionary get_frame_stats() const;

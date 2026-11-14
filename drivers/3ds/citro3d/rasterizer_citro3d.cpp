@@ -973,6 +973,10 @@ void RasterizerCitro3d::mesh_add_surface(RID p_mesh,VS::PrimitiveType p_primitiv
 	}
 
 	_surface_set_arrays(surface,surface->array_local,surface->index_array_local,p_arrays,true);
+	// The GPU reads these from linear memory: flush the CPU cache now (end_frame doesn't).
+	GSPGPU_FlushDataCache(surface->array_local, surface->array_len*surface->stride);
+	if (surface->index_array_local)
+		GSPGPU_FlushDataCache(surface->index_array_local, surface->index_array_len*surface->array[VS::ARRAY_INDEX].size);
 
 	/* create buffers!! */
 	
@@ -2018,7 +2022,8 @@ RID RasterizerCitro3d::render_target_create()
 	Texture *texture = memnew(Texture);
 	
 	rt->target = TOP_TARGET_CREATE();
-	C3D_RenderTargetSetOutput(rt->target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+	// Not linked to a screen: an off-screen target is drawn into a texture. (Linking it to
+	// GFX_TOP would unlink the real screen target, citro3d keeps one target per screen.)
 	C3D_RenderTargetClear(rt->target,C3D_CLEAR_ALL,CLEAR_COLOR,0);
 	rt->texture_ptr = texture;
 	rt->texture = texture_owner.make_rid( texture );
@@ -2066,6 +2071,15 @@ void RasterizerCitro3d::begin_frame()
 	stat_frame_begin_tick = svcGetSystemTick();
 	stat_gpu_wait_ticks = stat_frame_begin_tick - t0;
 	stat_draw_calls = stat_vertices = stat_items = 0;
+
+	// Mark the screen targets as drawn this frame: C3D_FrameEnd then queues their transfer to
+	// the LCD framebuffers and swaps the buffers only once the GPU has finished (citro3d's
+	// queue-finish callback). Swapping right after C3D_FrameEnd, as before, could show a buffer
+	// the GPU was still writing (torn image while scrolling on the Old 3DS, whose GPU often
+	// isn't done by the next VBlank).
+	if (bottom_framebuffer)
+		C3D_FrameDrawOn(bottom_framebuffer->target);
+	C3D_FrameDrawOn(base_framebuffer->target);
 
 	// C3D_FrameBegin waits for the GPU to finish the previous frame: only now is it safe to free
 	// the vertex buffers it drew from and the textures deleted since then.
@@ -2296,7 +2310,20 @@ void RasterizerCitro3d::end_frame()
 {
 	_batch_flush();
 	stat_cmdbuf_usage = C3D_GetCmdBufUsage();
-	C3D_FrameEnd(GX_CMDLIST_UPDATE_GAS_ACC);
+
+	// Without GX_CMDLIST_FLUSH, C3D_FrameEnd flushes the CPU data cache over the *whole* linear
+	// heap (12+ MB) every frame: several milliseconds on the Old 3DS. Flush only what the CPU
+	// wrote for the GPU this frame (the vertex ring and any overflow buffers); textures and mesh
+	// arrays are flushed when they are written, and GX_CMDLIST_FLUSH covers the command list.
+	uint64_t end_start = svcGetSystemTick();
+	if (vertex_ring && vertex_ring_used)
+		GSPGPU_FlushDataCache(vertex_ring, vertex_ring_used);
+	for (int i = 0; i < vertexArrays.size(); i++)
+		GSPGPU_FlushDataCache(vertexArrays[i]->vertices, vertexArrays[i]->bytes);
+
+	// Also queues the transfers of the screen targets and the buffer swap (see begin_frame).
+	C3D_FrameEnd(GX_CMDLIST_UPDATE_GAS_ACC | GX_CMDLIST_FLUSH);
+	last_frame_stats.end_ticks = svcGetSystemTick() - end_start;
 	last_frame_stats.draw_calls = stat_draw_calls;
 	last_frame_stats.vertices = stat_vertices;
 	last_frame_stats.items = stat_items;
@@ -2306,16 +2333,9 @@ void RasterizerCitro3d::end_frame()
 	cmdbuf_full_warned = false;
 	
 	print("end_frame %d %f\n", vertexArrays.size(), C3D_GetCmdBufUsage());
-	
-	RenderTarget* rt = current_rt ? current_rt : base_framebuffer;
-	C3D_FrameBufTransfer(&rt->target->frameBuf,rt->target->screen,rt->target->side,rt->target->transferFlags);
-	if (bottom_framebuffer) {
-		C3D_RenderTarget *bt = bottom_framebuffer->target;
-		C3D_FrameBufTransfer(&bt->frameBuf, bt->screen, bt->side, bt->transferFlags);
-	}
 	// vertexArrays are freed at the next begin_frame, once the GPU is done with them.
-	
-	OS::get_singleton()->swap_buffers();
+
+	OS::get_singleton()->swap_buffers(); // VSync only: citro3d swaps when the GPU is done
 }
 
 void RasterizerCitro3d::flush_frame()
@@ -2465,7 +2485,7 @@ RID RasterizerCitro3d::canvas_light_shadow_buffer_create(int p_width)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 */
 	cls->renderTarget = TOP_TARGET_CREATE();
-	C3D_RenderTargetSetOutput(cls->renderTarget, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+	// Off-screen (see render_target_create): not linked to the top screen.
 	C3D_RenderTargetClear(cls->renderTarget,C3D_CLEAR_ALL,C3D_CLEAR_COLOR,0);
 	
 // 	ERR_FAIL_COND(!C3D_TexInit(&cls->texture, w, h, GPU_RGBA8));
@@ -5183,20 +5203,17 @@ void RasterizerCitro3d::_draw_quad(const Rect2& p_rect)
 void RasterizerCitro3d::_draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip, bool p_v_flip, bool p_transpose )
 {
 	// Textured quad, added to the current batch (_batch_begin(texture, color) first).
+	// Two divisions instead of eight (division is slow on the Old 3DS's ARM11).
+	float iw = 1.0f / p_tex_size.width, ih = 1.0f / p_tex_size.height;
+	float u0 = p_src_region.pos.x * iw, u1 = (p_src_region.pos.x + p_src_region.size.width) * iw;
+	float v0 = p_src_region.pos.y * ih, v1 = (p_src_region.pos.y + p_src_region.size.height) * ih;
+	float x0 = p_rect.pos.x, x1 = p_rect.pos.x + p_rect.size.width;
+	float y0 = p_rect.pos.y, y1 = p_rect.pos.y + p_rect.size.height;
 	Vertex v[4] = {
-		{
-			Vector3( p_rect.pos.x, p_rect.pos.y, 0.5f),
-			Vector2( p_src_region.pos.x/p_tex_size.width, p_src_region.pos.y/p_tex_size.height)
-		},{
-			Vector3( p_rect.pos.x+p_rect.size.width, p_rect.pos.y, 0.5f),
-			Vector2((p_src_region.pos.x+p_src_region.size.width)/p_tex_size.width, p_src_region.pos.y/p_tex_size.height)
-		},{
-			Vector3( p_rect.pos.x+p_rect.size.width, p_rect.pos.y+p_rect.size.height, 0.5f),
-			Vector2( (p_src_region.pos.x+p_src_region.size.width)/p_tex_size.width, (p_src_region.pos.y+p_src_region.size.height)/p_tex_size.height)
-		},{
-			Vector3( p_rect.pos.x,p_rect.pos.y+p_rect.size.height, 0.5f),
-			Vector2( p_src_region.pos.x/p_tex_size.width, (p_src_region.pos.y+p_src_region.size.height)/p_tex_size.height)
-		},
+		{ Vector3(x0, y0, 0.5f), Vector2(u0, v0) },
+		{ Vector3(x1, y0, 0.5f), Vector2(u1, v0) },
+		{ Vector3(x1, y1, 0.5f), Vector2(u1, v1) },
+		{ Vector3(x0, y1, 0.5f), Vector2(u0, v1) },
 	};
 
 	if (p_transpose) {

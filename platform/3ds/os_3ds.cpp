@@ -583,8 +583,9 @@ void OS_3DS::_send_mouse_button(const Point2 &p_pos, bool p_pressed)
 
 void OS_3DS::swap_buffers()
 {
- 	//gfxFlushBuffers();
-	gfxSwapBuffersGpu();
+	// The buffer swap itself is done by citro3d when the GPU finishes the frame (the screen
+	// render targets are linked with C3D_RenderTargetSetOutput and marked with C3D_FrameDrawOn).
+	// Swapping here, right after the frame was queued, could show a half-written buffer.
 	if (use_vsync) {
 		uint64_t t = svcGetSystemTick();
 		gspWaitForVBlank();
