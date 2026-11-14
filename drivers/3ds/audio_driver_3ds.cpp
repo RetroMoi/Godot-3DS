@@ -78,6 +78,9 @@ Error AudioDriver3ds::init() {
 	ndspChnSetFormat(channel_num, (channels == 1) ? NDSP_FORMAT_MONO_PCM16 : NDSP_FORMAT_STEREO_PCM16);
 
 	mutex = Mutex::create();
+	// The software mix (music streams; effects play on DSP channels, see AudioServer3DS) runs
+	// on core 1, beside the game instead of taking time from it.
+	Thread3ds::next_thread_core = 1;
 	thread = Thread3ds::create(AudioDriver3ds::thread_func, this);
 
 	return OK;

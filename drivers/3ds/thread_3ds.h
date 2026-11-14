@@ -56,6 +56,11 @@ public:
 	virtual ID get_ID() const;
 
 	static void make_default();
+
+	// Core for the next thread created (-1 = the application's core). Core 1 is the system
+	// core: an app may use up to the APT_SetAppCpuTimeLimit share of it (30%), in parallel with
+	// the game on core 0, also on the Old 3DS.
+	static int next_thread_core;
 };
 
 

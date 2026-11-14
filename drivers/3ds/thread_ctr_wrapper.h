@@ -54,7 +54,9 @@ class ThreadCtrWrapper
 	Thread_tag* thread;
 	
 public:
-	ThreadCtrWrapper(ThreadCreateCallback p_callback, void* p_userdata, int32_t p_priority);
+	// p_core: CPU core, or -1 for the application's default core. Falls back to -1 if the
+	// thread can't be created there.
+	ThreadCtrWrapper(ThreadCreateCallback p_callback, void* p_userdata, int32_t p_priority, int p_core = -1);
 	
 	void wait();
 	

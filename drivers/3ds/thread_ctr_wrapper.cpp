@@ -30,8 +30,10 @@
 #include "thread_ctr_wrapper.h"
 #include <3ds.h>
 
-ThreadCtrWrapper::ThreadCtrWrapper(ThreadCreateCallback p_callback, void* p_userdata, int32_t p_priority) {
-	thread = threadCreate(p_callback, p_userdata, 64 * 1024, p_priority, -1, false);
+ThreadCtrWrapper::ThreadCtrWrapper(ThreadCreateCallback p_callback, void* p_userdata, int32_t p_priority, int p_core) {
+	thread = threadCreate(p_callback, p_userdata, 64 * 1024, p_priority, p_core, false);
+	if (!thread && p_core != -1)
+		thread = threadCreate(p_callback, p_userdata, 64 * 1024, p_priority, -1, false);
 }
 
 uint64_t ThreadCtrWrapper::get_thread_ID_func_3ds() {

@@ -45,9 +45,12 @@ Thread* Thread3ds::create_func_3ds(ThreadCreateCallback p_callback,void * p_user
 	else if (p_settings.priority == PRIORITY_HIGH)
 		priority--;
 	
-	ThreadCtrWrapper* thread_wrapper = memnew(ThreadCtrWrapper(p_callback, p_user, priority));
+	ThreadCtrWrapper* thread_wrapper = memnew(ThreadCtrWrapper(p_callback, p_user, priority, next_thread_core));
+	next_thread_core = -1;
 	return memnew(Thread3ds(thread_wrapper));
 }
+
+int Thread3ds::next_thread_core = -1;
 
 void Thread3ds::make_default() {
 	create_func = create_func_3ds;

@@ -46,6 +46,7 @@
 // #include "semaphore_posix.h"
 // #include "mutex_posix.h"
 #include "drivers/3ds/thread_3ds.h"
+#include "drivers/3ds/audio_server_3ds.h"
 
 //#include "core/io/file_access_buffered_fa.h"
 #include "drivers/unix/file_access_unix.h"
@@ -317,7 +318,7 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	}
 
 	sample_manager = memnew( SampleManagerMallocSW );
-	audio_server = memnew( AudioServerSW(sample_manager) );
+	audio_server = memnew( AudioServer3DS(sample_manager) ); // effects on the DSP, see audio_server_3ds.h
 	audio_server->init();
 	spatial_sound_server = memnew( SpatialSoundServerSW );
 	spatial_sound_server->init();
