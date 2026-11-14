@@ -366,7 +366,7 @@ void CanvasItem::_queue_sort_children() {
 		return;
 
 	pending_children_sort = true;
-	MessageQueue::get_singleton()->push_call(this, "_sort_children");
+	MessageQueue::get_singleton()->push_call(this, SceneStringNames::get_singleton()->_sort_children);
 }
 
 void CanvasItem::_sort_children() {
@@ -521,11 +521,13 @@ void CanvasItem::update() {
 
 	pending_update = true;
 
-	MessageQueue::get_singleton()->push_call(this, "_update_callback");
+	MessageQueue::get_singleton()->push_call(this, SceneStringNames::get_singleton()->_update_callback);
 }
 
 void CanvasItem::set_opacity(float p_opacity) {
 
+	if (opacity == p_opacity)
+		return;
 	opacity = p_opacity;
 	VisualServer::get_singleton()->canvas_item_set_opacity(canvas_item, opacity);
 }
@@ -568,6 +570,8 @@ CanvasItem *CanvasItem::get_parent_item() const {
 
 void CanvasItem::set_self_opacity(float p_self_opacity) {
 
+	if (self_opacity == p_self_opacity)
+		return;
 	self_opacity = p_self_opacity;
 	VisualServer::get_singleton()->canvas_item_set_self_opacity(canvas_item, self_opacity);
 }

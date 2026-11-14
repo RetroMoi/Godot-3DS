@@ -74,6 +74,9 @@ public:
 	StringName idle;
 	StringName iteration;
 	StringName update;
+	StringName _update_callback;
+	StringName _sort_children;
+	StringName _update_minimum_size;
 	StringName updated;
 
 	StringName line_separation;

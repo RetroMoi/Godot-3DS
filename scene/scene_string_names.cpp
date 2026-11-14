@@ -81,6 +81,9 @@ SceneStringNames::SceneStringNames() {
 	idle = StaticCString::create("idle");
 	iteration = StaticCString::create("iteration");
 	update = StaticCString::create("update");
+	_update_callback = StaticCString::create("_update_callback");
+	_sort_children = StaticCString::create("_sort_children");
+	_update_minimum_size = StaticCString::create("_update_minimum_size");
 	updated = StaticCString::create("updated");
 
 	_get_gizmo_geometry = StaticCString::create("_get_gizmo_geometry");

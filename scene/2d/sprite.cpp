@@ -128,6 +128,8 @@ Ref<Texture> Sprite::get_texture() const {
 
 void Sprite::set_centered(bool p_center) {
 
+	if (centered == p_center)
+		return;
 	centered = p_center;
 	update();
 	item_rect_changed();
@@ -140,6 +142,8 @@ bool Sprite::is_centered() const {
 
 void Sprite::set_offset(const Point2 &p_offset) {
 
+	if (offset == p_offset)
+		return;
 	offset = p_offset;
 	update();
 	item_rect_changed();
@@ -152,6 +156,8 @@ Point2 Sprite::get_offset() const {
 
 void Sprite::set_flip_h(bool p_flip) {
 
+	if (hflip == p_flip)
+		return;
 	hflip = p_flip;
 	update();
 }
@@ -162,6 +168,8 @@ bool Sprite::is_flipped_h() const {
 
 void Sprite::set_flip_v(bool p_flip) {
 
+	if (vflip == p_flip)
+		return;
 	vflip = p_flip;
 	update();
 }
@@ -248,6 +256,8 @@ int Sprite::get_hframes() const {
 
 void Sprite::set_modulate(const Color &p_color) {
 
+	if (modulate == p_color)
+		return;
 	modulate = p_color;
 	update();
 }

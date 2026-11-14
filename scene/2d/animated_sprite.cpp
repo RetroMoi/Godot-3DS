@@ -464,6 +464,8 @@ int AnimatedSprite::get_frame() const {
 
 void AnimatedSprite::set_centered(bool p_center) {
 
+	if (centered == p_center)
+		return;
 	centered = p_center;
 	update();
 	item_rect_changed();
@@ -476,6 +478,8 @@ bool AnimatedSprite::is_centered() const {
 
 void AnimatedSprite::set_offset(const Point2 &p_offset) {
 
+	if (offset == p_offset)
+		return;
 	offset = p_offset;
 	update();
 	item_rect_changed();
@@ -488,6 +492,8 @@ Point2 AnimatedSprite::get_offset() const {
 
 void AnimatedSprite::set_flip_h(bool p_flip) {
 
+	if (hflip == p_flip)
+		return;
 	hflip = p_flip;
 	update();
 }
@@ -498,6 +504,8 @@ bool AnimatedSprite::is_flipped_h() const {
 
 void AnimatedSprite::set_flip_v(bool p_flip) {
 
+	if (vflip == p_flip)
+		return;
 	vflip = p_flip;
 	update();
 }
@@ -508,6 +516,8 @@ bool AnimatedSprite::is_flipped_v() const {
 
 void AnimatedSprite::set_modulate(const Color &p_color) {
 
+	if (modulate == p_color)
+		return;
 	modulate = p_color;
 	update();
 }

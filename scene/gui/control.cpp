@@ -2049,7 +2049,7 @@ void Control::minimum_size_changed() {
 		return;
 
 	data.pending_min_size_update = true;
-	MessageQueue::get_singleton()->push_call(this, "_update_minimum_size");
+	MessageQueue::get_singleton()->push_call(this, SceneStringNames::get_singleton()->_update_minimum_size);
 
 	if (!is_toplevel_control()) {
 		Control *pc = get_parent_control();
