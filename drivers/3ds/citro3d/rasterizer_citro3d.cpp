@@ -76,6 +76,8 @@ void RasterizerCitro3d::texture_allocate(RID p_texture,int p_width, int p_height
 	Texture *texture = texture_owner.get( p_texture );
 	ERR_FAIL_COND(!texture);
 	ERR_FAIL_COND(w > 1024 || h > 1024);
+	_batch_flush();
+	_invalidate_texture_state();
 	_texture_release(texture->tex); // re-allocation (e.g. ImageTexture resized)
 	ERR_FAIL_COND(!C3D_TexInit(&texture->tex, w, h, GPU_RGBA8));
 	texture->width=p_width;
@@ -127,6 +129,7 @@ void RasterizerCitro3d::_texture_upload(Texture *p_texture)
 
 void RasterizerCitro3d::_texture_apply_params(Texture *p_texture)
 {
+	_invalidate_texture_state(); // parameters are sent with the next bind
 	if (!p_texture->tex.data)
 		return;
 
@@ -2094,6 +2097,7 @@ void RasterizerCitro3d::capture_viewport(Image* r_capture) {
 
 void RasterizerCitro3d::clear_viewport(const Color& p_color)
 {
+	_batch_flush();
 	print("clear_viewport\n");
 	RenderTarget* rt = current_rt ? current_rt : base_framebuffer;
 	u32 c = (u8)(p_color.r*255);
@@ -2110,6 +2114,7 @@ void RasterizerCitro3d::clear_viewport(const Color& p_color)
 
 void RasterizerCitro3d::set_viewport(const VS::ViewportRect& p_viewport)
 {
+	_batch_flush();
 	print("set_viewport %d %d %d %d\n", p_viewport.x, p_viewport.y, p_viewport.width, p_viewport.height);
 	if (!current_rt) {
 		// The screens: in dual screen mode the viewport is 400x480 but the framebuffers are not.
@@ -2125,6 +2130,7 @@ void RasterizerCitro3d::set_time_scale(float p_scale)
 }
 void RasterizerCitro3d::set_render_target(RID p_render_target, bool p_transparent_bg, bool p_vflip)
 {
+	_batch_flush();
 	print("set_render_target\n");
 	current_rt_vflip=p_vflip;
 	
@@ -2283,7 +2289,9 @@ void RasterizerCitro3d::end_shadow_map() {
 
 void RasterizerCitro3d::end_frame()
 {
+	_batch_flush();
 	C3D_FrameEnd(GX_CMDLIST_UPDATE_GAS_ACC);
+	cmdbuf_full_warned = false;
 	
 	print("end_frame %d %f\n", vertexArrays.size(), C3D_GetCmdBufUsage());
 	
@@ -2532,6 +2540,8 @@ void RasterizerCitro3d::begin_canvas_bg()
 void RasterizerCitro3d::canvas_begin()
 {
 	print("canvas_begin");
+	_batch_flush();
+	_invalidate_texture_state(); // other code (3D, render targets) may have changed it
 	
 	C3D_BindProgram(&canvas_shader->program);
 	// Projection of the top screen (or of the render target being drawn).
@@ -2560,6 +2570,7 @@ void RasterizerCitro3d::canvas_begin()
 }
 void RasterizerCitro3d::canvas_disable_blending()
 {
+	_batch_flush();
 	print("canvas_disable_blending\n");
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
 }
@@ -2573,6 +2584,7 @@ void RasterizerCitro3d::canvas_set_blend_mode(VS::MaterialBlendMode p_mode)
 {
 	if (p_mode==canvas_blend_mode)
 		return;
+	_batch_flush();
 
 	switch(p_mode)
 	{
@@ -2620,7 +2632,7 @@ void RasterizerCitro3d::canvas_set_clip(bool p_clip, const Rect2& p_rect) {
 
 void RasterizerCitro3d::canvas_end_rect()
 {
-	print("canvas_end_rect\n");
+	_batch_flush();
 }
 
 void RasterizerCitro3d::canvas_draw_line(const Point2& p_from, const Point2& p_to, const Color& p_color, float p_width)
@@ -2642,55 +2654,146 @@ void RasterizerCitro3d::canvas_draw_line(const Point2& p_from, const Point2& p_t
 
 void RasterizerCitro3d::canvas_draw_rect(const Rect2& p_rect, int p_flags, const Rect2& p_source,RID p_texture,const Color& p_modulate)
 {
-	// Set the fixed attribute (color)
-	_set_canvas_color(p_modulate);
-
-	Texture *texture = _canvas_setup_texenv(p_texture);
+	Texture *texture = p_texture.is_valid() ? texture_owner.get(p_texture) : NULL;
 
 	if (texture)
 	{
 		bool flip_h = p_flags & CANVAS_RECT_FLIP_H;
 		bool flip_v = p_flags & CANVAS_RECT_FLIP_V;
-		bool untile = false;
 
 		if (p_flags & CANVAS_RECT_TILE && !(texture->flags & VS::TEXTURE_FLAG_REPEAT))
 		{
 			if (texture->fills_texture()) {
 				// Power-of-two image: the hardware repeats it, just for this draw (the wrap
-				// mode is read when the draw is queued, so it can be restored right after).
+				// mode is read when the draw is queued, so it is restored right after).
+				_batch_flush();
 				C3D_TexSetWrap(&texture->tex, GPU_REPEAT, GPU_REPEAT);
-				C3D_TexBind(0, &texture->tex);
-				untile = true;
+				_invalidate_texture_state();
+				_batch_begin(texture, p_modulate);
+				_draw_textured_quad(p_rect, p_source, texture->uv_size(), flip_h, flip_v, p_flags&CANVAS_RECT_TRANSPOSE);
+				_batch_flush();
+				_texture_apply_params(texture);
 			} else {
 				// Padded texture: hardware repeat would repeat the padding too.
+				_canvas_setup_texenv(p_texture);
+				_set_canvas_color(p_modulate);
 				_draw_tiled_quad(p_rect, p_source, texture, flip_h, flip_v);
-				_rinfo.ci_draw_commands++;
-				return;
 			}
+			_rinfo.ci_draw_commands++;
+			return;
 		}
 
+		_batch_begin(texture, p_modulate);
 		if (!(p_flags&CANVAS_RECT_REGION)) {
-
 			// Textures are padded to a power of two (e.g. 400x240 -> 512x256): sample only the image
 			// part, not the padding, or non-power-of-two images come out squashed.
 			Rect2 region = Rect2(0,0,texture->width,texture->height);
 			_draw_textured_quad(p_rect,region,texture->uv_size(),flip_h,flip_v,p_flags&CANVAS_RECT_TRANSPOSE);
-
 		} else {
-
 			_draw_textured_quad(p_rect, p_source, texture->uv_size(),flip_h,flip_v,p_flags&CANVAS_RECT_TRANSPOSE);
-
 		}
-
-		if (untile)
-			_texture_apply_params(texture);
 	}
 	else
 	{
+		_batch_begin(NULL, p_modulate);
 		_draw_quad(p_rect);
 	}
 
 	_rinfo.ci_draw_commands++;
+}
+
+void RasterizerCitro3d::_batch_begin(const Texture *p_texture, const Color& p_modulate)
+{
+	const Color &m = canvas_modulate;
+	Color c(p_modulate.r * m.r, p_modulate.g * m.g, p_modulate.b * m.b, p_modulate.a * m.a * canvas_opacity);
+	if (batch_count && (p_texture != batch_texture || c != batch_color))
+		_batch_flush();
+	batch_texture = p_texture;
+	batch_color = c;
+}
+
+void RasterizerCitro3d::_batch_add(const Vertex *p_quad)
+{
+	if (batch_count + 6 > MAX_BATCH_VERTICES)
+		_batch_flush(); // keeps texture and color
+	Vertex *v = batch_vertices + batch_count;
+	v[0] = p_quad[0];
+	v[1] = p_quad[1];
+	v[2] = p_quad[2];
+	v[3] = p_quad[0];
+	v[4] = p_quad[2];
+	v[5] = p_quad[3];
+	batch_count += 6;
+}
+
+void RasterizerCitro3d::_batch_flush()
+{
+	if (!batch_count)
+		return;
+	int count = batch_count;
+	batch_count = 0;
+
+	if (!_cmdbuf_has_room())
+		return;
+
+	_canvas_set_vertex_colors(false);
+	_apply_texture_state(batch_texture);
+	C3D_FixedAttribSet(2, batch_color.r, batch_color.g, batch_color.b, batch_color.a);
+
+	VertexArray *varray = memnew(VertexArray(count));
+	if (!varray->vertices) {
+		memdelete(varray);
+		ERR_FAIL();
+	}
+	memcpy(varray->vertices, batch_vertices, sizeof(Vertex) * count);
+
+	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+	BufInfo_Init(bufInfo);
+	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
+	C3D_DrawArrays(GPU_TRIANGLES, 0, count);
+	vertexArrays.push_back(varray);
+}
+
+void RasterizerCitro3d::_canvas_scissor_off()
+{
+	_batch_flush();
+	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+}
+
+bool RasterizerCitro3d::_cmdbuf_has_room()
+{
+	if (C3D_GetCmdBufUsage() < 0.95f)
+		return true;
+	if (!cmdbuf_full_warned) {
+		cmdbuf_full_warned = true;
+		WARN_PRINT("GPU command buffer full: the rest of this frame is not drawn.");
+	}
+	return false;
+}
+
+void RasterizerCitro3d::_apply_texture_state(const Texture *p_texture)
+{
+	const C3D_Tex *tex = p_texture ? &p_texture->tex : NULL;
+	if (tex != bound_tex) {
+		C3D_TexBind(0, const_cast<C3D_Tex *>(tex));
+		bound_tex = tex;
+	}
+	int mode = p_texture ? 1 : 0;
+	if (mode != texenv_mode) {
+		C3D_TexEnv* env = C3D_GetTexEnv(0);
+		if (p_texture) {
+			C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR);
+			C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
+			C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
+			C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
+		} else {
+			C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
+			C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
+			C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
+			C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+		}
+		texenv_mode = mode;
+	}
 }
 
 void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src_region, const Texture *p_texture, bool p_h_flip, bool p_v_flip)
@@ -2768,17 +2871,16 @@ void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src
 	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
 	BufInfo_Init(bufInfo);
 	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
-	C3D_DrawArrays(GPU_TRIANGLES, 0, count);
+	if (_cmdbuf_has_room())
+		C3D_DrawArrays(GPU_TRIANGLES, 0, count);
 	vertexArrays.push_back(varray);
 }
 
 void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& p_src_region, RID p_texture,const float *p_margin, bool p_draw_center,const Color& p_modulate)
 {
-	_set_canvas_color(p_modulate);
-
-	// Also sets the texture combiner: after an untextured draw it would still be "color only".
-	Texture* texture=_canvas_setup_texenv(p_texture);
+	Texture* texture = p_texture.is_valid() ? texture_owner.get(p_texture) : NULL;
 	ERR_FAIL_COND(!texture);
+	_batch_begin(texture, p_modulate);
 
 	Rect2 region = p_src_region;
 	if (region.size.width <= 0 )
@@ -2933,22 +3035,10 @@ void RasterizerCitro3d::_canvas_set_vertex_colors(bool p_enable)
 
 RasterizerCitro3d::Texture* RasterizerCitro3d::_canvas_setup_texenv(const RID& p_texture)
 {
+	// For draws outside the batch (lines, polygons...): pending quads go first.
+	_batch_flush();
 	Texture *texture = p_texture.is_valid() ? texture_owner.get(p_texture) : NULL;
-	C3D_TexEnv* env = C3D_GetTexEnv(0);
-
-	if (texture) {
-		C3D_TexBind(0, &texture->tex);
-		C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
-		C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
-	} else {
-		C3D_TexBind(0, NULL);
-		C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_ALPHA);
-		C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-	}
+	_apply_texture_state(texture);
 	return texture;
 }
 
@@ -3009,12 +3099,14 @@ void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int 
 		BufInfo_Add(bufInfo, v, sizeof(Vertex), 2, 0x10);
 	}
 
-	C3D_DrawArrays(p_primitive, 0, p_count);
+	if (_cmdbuf_has_room())
+		C3D_DrawArrays(p_primitive, 0, p_count);
 	vertexArrays.push_back(varray);
 }
 
 RasterizerCitro3d::Texture* RasterizerCitro3d::_bind_texture(const RID& p_texture)
 {
+	_invalidate_texture_state();
 	if (p_texture.is_valid())
 	{
 		Texture*texture=texture_owner.get(p_texture);
@@ -3028,6 +3120,7 @@ RasterizerCitro3d::Texture* RasterizerCitro3d::_bind_texture(const RID& p_textur
 
 void RasterizerCitro3d::_set_uniform(int uniform_location, const Matrix32& p_transform)
 {
+	_batch_flush(); // pending quads were drawn with the previous transform
 	const Matrix32& tr = p_transform;
 	
 	C3D_Mtx mtx;
@@ -3156,6 +3249,7 @@ static void _set_scissor(const Rect2& p_screen, int x, int y, int w, int h)
 
 void RasterizerCitro3d::_set_canvas_scissor(CanvasItem* p_item)
 {
+	_batch_flush();
 	const Rect2 &r = p_item->final_clip_rect;
 	Rect2 screen = current_rt ? _screen_region(0) : _screen_region(canvas_screen);
 	_set_scissor(screen, Math::floor(r.pos.x), Math::floor(r.pos.y), Math::ceil(r.pos.x + r.size.x) - Math::floor(r.pos.x), Math::ceil(r.pos.y + r.size.y) - Math::floor(r.pos.y));
@@ -3170,6 +3264,7 @@ Rect2 RasterizerCitro3d::_screen_region(int p_screen)
 
 void RasterizerCitro3d::_canvas_draw_on_screen(int p_screen)
 {
+	_batch_flush();
 	canvas_screen = p_screen;
 	Rect2 r = _screen_region(p_screen);
 
@@ -3187,6 +3282,7 @@ void RasterizerCitro3d::_canvas_draw_on_screen(int p_screen)
 
 void RasterizerCitro3d::_set_canvas_color(const Color& p_color)
 {
+	_batch_flush(); // pending quads use their own color
 	const Color &m = canvas_modulate;
 	C3D_FixedAttribSet(2, p_color.r * m.r, p_color.g * m.g, p_color.b * m.b, p_color.a * m.a * canvas_opacity);
 }
@@ -3305,7 +3401,7 @@ void RasterizerCitro3d::_canvas_item_render_commands(CanvasItem *p_item,CanvasIt
 
 					if (ci->ignore!=reclip) {
 						if (ci->ignore) {
-							C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+							_canvas_scissor_off();
 							reclip = true;
 						} else {							
 							_set_canvas_scissor(current_clip);
@@ -3343,7 +3439,7 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 	canvas_opacity=1.0;
 	
 	CanvasItem *current_clip = NULL;
-	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+	_canvas_scissor_off();
 	
 	for (CanvasItem *ci = p_item_list; ci; ci = ci->next)
 	{
@@ -3358,7 +3454,7 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 			if (current_clip)
 				_set_canvas_scissor(current_clip);
 			else
-				C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+				_canvas_scissor_off();
 		}
 		
 		// Handle material/shader
@@ -3385,8 +3481,9 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 		}
 	}
 	
+	_batch_flush();
 	if (current_clip)
-		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+		_canvas_scissor_off();
 }
 
 /* ENVIRONMENT */
@@ -3541,6 +3638,8 @@ void RasterizerCitro3d::free(const RID& p_rid) {
 // 		print("delete texture\n");
 		Texture *texture = texture_owner.get(p_rid);
 		texture_owner.free(p_rid);
+		_batch_flush();
+		_invalidate_texture_state();
 		_texture_release(texture->tex);
 		memdelete(texture);
 
@@ -5006,32 +5105,20 @@ void RasterizerCitro3d::_render(const Geometry *p_geometry,const Material *p_mat
 }
 
 void RasterizerCitro3d::_draw_quad(const Rect2& p_rect)
-{	
-	_canvas_set_vertex_colors(false);
-	VertexArray *varray = memnew(VertexArray(4));
-	varray->vertices[0].position = Vector3( p_rect.pos.x,p_rect.pos.y, 0.5f );
-	varray->vertices[1].position = Vector3( p_rect.pos.x+p_rect.size.width,p_rect.pos.y, 0.5f );
-	varray->vertices[2].position = Vector3( p_rect.pos.x+p_rect.size.width,p_rect.pos.y+p_rect.size.height, 0.5f );
-	varray->vertices[3].position = Vector3( p_rect.pos.x,p_rect.pos.y+p_rect.size.height, 0.5f );
-	
-	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
-	BufInfo_Init(bufInfo);
-	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
-	
-	C3D_DrawArrays(GPU_TRIANGLE_FAN, 0, 4);
-	
-	vertexArrays.push_back(varray);
-// 	C3D_Flush();
-// 	_draw_gui_primitive(4,coords,0,0);
-// 	_rinfo.ci_draw_commands++;
+{
+	// Untextured quad, added to the current batch (_batch_begin(NULL, color) first).
+	Vertex v[4] = {
+		{ Vector3(p_rect.pos.x, p_rect.pos.y, 0.5f), Vector2() },
+		{ Vector3(p_rect.pos.x + p_rect.size.width, p_rect.pos.y, 0.5f), Vector2() },
+		{ Vector3(p_rect.pos.x + p_rect.size.width, p_rect.pos.y + p_rect.size.height, 0.5f), Vector2() },
+		{ Vector3(p_rect.pos.x, p_rect.pos.y + p_rect.size.height, 0.5f), Vector2() },
+	};
+	_batch_add(v);
 }
 
 void RasterizerCitro3d::_draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip, bool p_v_flip, bool p_transpose )
 {
-// 	print("_draw_textured_quad\n");
-	_canvas_set_vertex_colors(false);
-	VertexArray *varray = memnew(VertexArray(4));
-	
+	// Textured quad, added to the current batch (_batch_begin(texture, color) first).
 	Vertex v[4] = {
 		{
 			Vector3( p_rect.pos.x, p_rect.pos.y, 0.5f),
@@ -5047,30 +5134,20 @@ void RasterizerCitro3d::_draw_textured_quad(const Rect2& p_rect, const Rect2& p_
 			Vector2( p_src_region.pos.x/p_tex_size.width, (p_src_region.pos.y+p_src_region.size.height)/p_tex_size.height)
 		},
 	};
-	
-	memcpy(varray->vertices, v, sizeof(v));
-	
+
 	if (p_transpose) {
-		SWAP( varray->vertices[1].texcoord, varray->vertices[3].texcoord );
+		SWAP( v[1].texcoord, v[3].texcoord );
 	}
 	if (p_h_flip) {
-		SWAP( varray->vertices[0].texcoord, varray->vertices[1].texcoord );
-		SWAP( varray->vertices[2].texcoord, varray->vertices[3].texcoord );
+		SWAP( v[0].texcoord, v[1].texcoord );
+		SWAP( v[2].texcoord, v[3].texcoord );
 	}
 	if (p_v_flip) {
-		SWAP( varray->vertices[1].texcoord, varray->vertices[2].texcoord );
-		SWAP( varray->vertices[0].texcoord, varray->vertices[3].texcoord );
+		SWAP( v[1].texcoord, v[2].texcoord );
+		SWAP( v[0].texcoord, v[3].texcoord );
 	}
-	
-	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
-	BufInfo_Init(bufInfo);
-	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
-	
-	C3D_DrawArrays(GPU_TRIANGLE_FAN, 0, 4);
 
-	vertexArrays.push_back(varray);
-// 	_draw_gui_primitive(4,coords,0,texcoords);
-// 	_rinfo.ci_draw_commands++;
+	_batch_add(v);
 }
 
 static const C3D_Material material =
@@ -5087,7 +5164,8 @@ int RasterizerCitro3d::RenderList::max_elements;
 void RasterizerCitro3d::init()
 {	
 	print("citro init ");
-	C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
+	// 1 MB of GPU commands per frame (default 256 KB): two screens of tiles and text.
+	C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
 	draw_next_frame = false;
 
 	canvas_shader = memnew(Shader);
@@ -5241,6 +5319,12 @@ RasterizerCitro3d::RasterizerCitro3d()
 {
 	dual_screen = false;
 	bottom_framebuffer = NULL;
+	batch_vertices = (Vertex *)memalloc(sizeof(Vertex) * MAX_BATCH_VERTICES);
+	batch_count = 0;
+	batch_texture = NULL;
+	bound_tex = (const C3D_Tex *)-1;
+	texenv_mode = -1;
+	cmdbuf_full_warned = false;
 	canvas_screen = 0;
 	canvas_modulate = Color(1, 1, 1, 1);
 	canvas_vertex_colors = false;
@@ -5250,6 +5334,7 @@ RasterizerCitro3d::RasterizerCitro3d()
 
 RasterizerCitro3d::~RasterizerCitro3d()
 {
+	memfree(batch_vertices);
 
 };
 

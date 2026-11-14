@@ -889,6 +889,29 @@ class RasterizerCitro3d : public Rasterizer {
 	// size, rescaled here for the power-of-two padding) and optional per-vertex colors.
 	void _canvas_set_vertex_colors(bool p_enable);
 	Texture *_canvas_setup_texenv(const RID& p_texture);
+
+	// 2D batching: consecutive quads with the same texture and color (tiles, text, the 9 parts
+	// of a StyleBox) are drawn with one call instead of one each. Anything that changes GPU
+	// state or draws otherwise flushes the batch first.
+	enum { MAX_BATCH_VERTICES = 6 * 512 };
+	Vertex *batch_vertices;
+	int batch_count;
+	const Texture *batch_texture;
+	Color batch_color; // final color: modulate * CanvasModulate, alpha * opacity
+	void _batch_begin(const Texture *p_texture, const Color& p_modulate);
+	void _batch_add(const Vertex *p_quad); // 4 corners, in fan order
+	void _batch_flush();
+	void _canvas_scissor_off();
+
+	// Texture/combiner state cache: re-sending them on every draw filled the command buffer.
+	const C3D_Tex *bound_tex; // (C3D_Tex*)-1 = unknown
+	int texenv_mode; // -1 unknown, 0 color only, 1 texture * color
+	void _apply_texture_state(const Texture *p_texture);
+	void _invalidate_texture_state() { bound_tex = (const C3D_Tex *)-1; texenv_mode = -1; }
+
+	// The GPU command buffer is fixed per frame: past the limit, libctru stops the program.
+	bool cmdbuf_full_warned;
+	bool _cmdbuf_has_room();
 	void _draw_canvas_triangles(GPU_Primitive_t p_primitive, int p_count, const int *p_indices, const Vector2 *p_points, const Vector2 *p_uvs, const Texture *p_texture, const Color *p_colors);
 	bool canvas_vertex_colors;
 	void _draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip=false, bool p_v_flip=false, bool p_transpose=false);
