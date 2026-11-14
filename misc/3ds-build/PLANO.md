@@ -131,7 +131,8 @@ mostra y 0–240; a de baixo, x 40–360 e y 240–480 (320x240 centrada).
   `send(RawArray, para)`/`send_var(v, para)` (para 0 = todos), `get_packet_count()`, `get_packet()`/
   `get_var()`, `get_packet_sender()`. Pacotes até 1478 bytes. O RSF já libera `nwm::UDS`.
   Teste: `misc/3ds-build/local_wireless_test` — validado com dois Azahar numa sala multijogador
-  (sincronização em tempo real). No Azahar, cada instância precisa de nome de usuário, ID do console
+  (sincronização em tempo real) e entre dois consoles reais (New 3DS XL host a 60 FPS, Old 3DS XL
+  cliente a 45 FPS: investigar custo por quadro no Old 3DS — chamadas IPC de status repetidas). No Azahar, cada instância precisa de nome de usuário, ID do console
   e MAC próprios (segunda cópia portátil com pasta `user` + Sistema → Regenerar).
 - [~] Wi-Fi/Internet: sockets do Godot 2.1 ligados no 3DS (estavam fora por `UNIX_ENABLED`): `IP`
   (resolve_hostname, get_local_addresses via gethostid), `StreamPeerTCP`, `TCP_Server`, `PacketPeerUDP` e,
