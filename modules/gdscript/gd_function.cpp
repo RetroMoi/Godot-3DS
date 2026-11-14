@@ -31,6 +31,9 @@
 #include "gd_function.h"
 #include "gd_functions.h"
 #include "gd_script.h"
+#include "core_string_names.h"
+#include "object_type_db.h"
+#include "os/mutex.h"
 #include "os/os.h"
 
 Variant *GDFunction::_get_variant(int p_address, GDInstance *p_instance, GDScript *p_script, Variant &self, Variant *p_stack, String &r_error) const {
@@ -630,7 +633,7 @@ Variant GDFunction::call(GDInstance *p_instance, const Variant **p_args, int p_a
 			case OPCODE_CALL_RETURN:
 			case OPCODE_CALL: {
 
-				CHECK_SPACE(4);
+				CHECK_SPACE(5);
 				bool call_ret = _code_ptr[ip] == OPCODE_CALL_RETURN;
 
 				int argc = _code_ptr[ip + 1];
@@ -640,8 +643,12 @@ Variant GDFunction::call(GDInstance *p_instance, const Variant **p_args, int p_a
 				ERR_BREAK(nameg < 0 || nameg >= _global_names_count);
 				const StringName *methodname = &_global_names_ptr[nameg];
 
+				int cache_idx = _code_ptr[ip + 4];
+				ERR_BREAK(cache_idx < 0 || cache_idx >= _call_cache_count);
+				CallCache *call_cache = &_call_caches[cache_idx];
+
 				ERR_BREAK(argc < 0);
-				ip += 4;
+				ip += 5;
 				CHECK_SPACE(argc + 1);
 				Variant **argptrs = call_args;
 
@@ -662,10 +669,10 @@ Variant GDFunction::call(GDInstance *p_instance, const Variant **p_args, int p_a
 				if (call_ret) {
 
 					GET_VARIANT_PTR(ret, argc);
-					base->call_ptr(*methodname, (const Variant **)argptrs, argc, ret, err);
+					_call_cached(call_cache, base, *methodname, (const Variant **)argptrs, argc, ret, err);
 				} else {
 
-					base->call_ptr(*methodname, (const Variant **)argptrs, argc, NULL, err);
+					_call_cached(call_cache, base, *methodname, (const Variant **)argptrs, argc, NULL, err);
 				}
 #ifdef DEBUG_ENABLED
 				if (GDScriptLanguage::get_singleton()->profiling) {
@@ -1295,9 +1302,105 @@ void GDFunction::clear() {
 
 }
 #endif
+Mutex *GDFunction::call_cache_mutex = NULL;
+
+// Marks a cache way whose receiver type must take the generic Variant::call_ptr path.
+#define GD_CALL_GENERIC ((void *)1)
+
+void *GDFunction::_call_cache_fill(CallCache *p_cache, const void *p_key, const Variant *p_base, const StringName &p_method) {
+
+	void *method = GD_CALL_GENERIC;
+
+	if (p_base->get_type() == Variant::OBJECT) {
+		Object *obj = *p_base;
+		// Classes that override Object::call() (scripts and native class references used
+		// as values) and free() keep the generic path.
+		if (p_method != CoreStringNames::get_singleton()->_free && !obj->cast_to<GDScript>() && !obj->cast_to<GDNativeClass>()) {
+			MethodBind *mb = ObjectTypeDB::get_method(obj->get_type_name(), p_method);
+			if (mb)
+				method = mb;
+		}
+	} else {
+		void *f = Variant::get_builtin_method(p_base->get_type(), p_method);
+		if (f)
+			method = f;
+	}
+
+	MutexLock lock(call_cache_mutex);
+	for (int i = 0; i < CALL_CACHE_WAYS; i++) {
+		if (p_cache->key[i] == p_key)
+			return p_cache->method[i]; // filled meanwhile by another thread
+		if (!p_cache->key[i]) {
+			p_cache->method[i] = method;
+			__sync_synchronize(); // readers that see the key must see the method
+			p_cache->key[i] = p_key;
+			return method;
+		}
+	}
+	// All ways taken: a site called on many types is not worth a lookup per call.
+	p_cache->megamorphic = true;
+	return method;
+}
+
+void GDFunction::_call_cached(CallCache *p_cache, Variant *p_base, const StringName &p_method, const Variant **p_args, int p_argcount, Variant *r_ret, Variant::CallError &r_err) {
+
+	Variant::Type type = p_base->get_type();
+
+	if (type == Variant::OBJECT) {
+#ifndef DEBUG_ENABLED
+		// (Debug builds keep the generic path: it validates freed instances and locks the
+		// object during the call.)
+		Object *obj = *p_base;
+		const void *key = obj ? obj->get_type_name().data_unique_pointer() : NULL;
+		if (key) {
+			// (The type-name StringName is a member of each object, but its interned data is
+			// shared by the whole class.)
+			void *method = NULL;
+			for (int i = 0; i < CALL_CACHE_WAYS; i++) {
+				if (p_cache->key[i] == key) {
+					method = p_cache->method[i];
+					break;
+				}
+			}
+			if (!method)
+				method = p_cache->megamorphic ? GD_CALL_GENERIC : _call_cache_fill(p_cache, key, p_base, p_method);
+
+			// A method of the object's script takes precedence over the native one.
+			ScriptInstance *si = obj->get_script_instance();
+			if (method != GD_CALL_GENERIC && (!si || !si->has_method(p_method))) {
+				r_err.error = Variant::CallError::CALL_OK;
+				Variant ret = static_cast<MethodBind *>(method)->call(obj, p_args, p_argcount, r_err);
+				if (r_ret && r_err.error == Variant::CallError::CALL_OK)
+					*r_ret = ret;
+				return;
+			}
+		}
+#endif
+	} else if (type != Variant::NIL) {
+		const void *key = (const void *)(uintptr_t)(type + 1);
+		void *method = NULL;
+		for (int i = 0; i < CALL_CACHE_WAYS; i++) {
+			if (p_cache->key[i] == key) {
+				method = p_cache->method[i];
+				break;
+			}
+		}
+		if (!method)
+			method = p_cache->megamorphic ? GD_CALL_GENERIC : _call_cache_fill(p_cache, key, p_base, p_method);
+		if (method != GD_CALL_GENERIC) {
+			p_base->call_builtin_method(method, p_args, p_argcount, r_ret, r_err);
+			return;
+		}
+	}
+
+	p_base->call_ptr(p_method, p_args, p_argcount, r_ret, r_err);
+}
+
 GDFunction::GDFunction() :
 		function_list(this) {
 
+	_call_caches = NULL;
+	_call_cache_count = 0;
 	_stack_size = 0;
 	_call_size = 0;
 	name = "<anonymous>";
@@ -1327,6 +1430,8 @@ GDFunction::GDFunction() :
 }
 
 GDFunction::~GDFunction() {
+	if (_call_caches)
+		memdelete_arr(_call_caches);
 #ifdef DEBUG_ENABLED
 	if (GDScriptLanguage::get_singleton()->lock) {
 		GDScriptLanguage::get_singleton()->lock->lock();

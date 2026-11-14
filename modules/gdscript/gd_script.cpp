@@ -1704,6 +1704,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	lock = NULL;
 #else
 	lock = Mutex::create();
+	GDFunction::call_cache_mutex = Mutex::create();
 #endif
 	profiling = false;
 	script_frame_time = 0;
@@ -1729,6 +1730,10 @@ GDScriptLanguage::~GDScriptLanguage() {
 	if (lock) {
 		memdelete(lock);
 		lock = NULL;
+	}
+	if (GDFunction::call_cache_mutex) {
+		memdelete(GDFunction::call_cache_mutex);
+		GDFunction::call_cache_mutex = NULL;
 	}
 	if (_call_stack) {
 		memdelete_arr(_call_stack);

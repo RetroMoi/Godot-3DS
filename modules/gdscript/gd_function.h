@@ -40,6 +40,7 @@
 
 class GDInstance;
 class GDScript;
+class Mutex;
 
 class GDFunction {
 public:
@@ -100,8 +101,36 @@ public:
 		StringName identifier;
 	};
 
+	// Per call-site cache of the resolved method (OPCODE_CALL/OPCODE_CALL_RETURN). A site
+	// remembers up to CALL_CACHE_WAYS receiver types (the class, by its interned type name, or
+	// the built-in Variant type) with the MethodBind or built-in method found for each, so the
+	// next call skips the script lookup, the ObjectTypeDB lock and the hash tables. Each way is
+	// written once and never changed, so reading it needs no lock.
+	enum {
+		CALL_CACHE_WAYS = 2
+	};
+	struct CallCache {
+		const void *volatile key[CALL_CACHE_WAYS];
+		void *volatile method[CALL_CACHE_WAYS];
+		volatile bool megamorphic; // more types than ways: the site stays on the generic path
+		CallCache() {
+			megamorphic = false;
+			for (int i = 0; i < CALL_CACHE_WAYS; i++) {
+				key[i] = NULL;
+				method[i] = NULL;
+			}
+		}
+	};
+
 private:
 	friend class GDCompiler;
+	friend class GDScriptLanguage;
+
+	CallCache *_call_caches;
+	int _call_cache_count;
+	static Mutex *call_cache_mutex;
+	static void *_call_cache_fill(CallCache *p_cache, const void *p_key, const Variant *p_base, const StringName &p_method);
+	static void _call_cached(CallCache *p_cache, Variant *p_base, const StringName &p_method, const Variant **p_args, int p_argcount, Variant *r_ret, Variant::CallError &r_err);
 
 	StringName source;
 

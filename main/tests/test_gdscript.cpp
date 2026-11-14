@@ -726,7 +726,7 @@ static void _disassemble_class(const Ref<GDScript> &p_class, const Vector<String
 
 					int argc = code[ip + 1];
 					if (ret) {
-						txt += DADDR(4 + argc) + "=";
+						txt += DADDR(5 + argc) + "=";
 					}
 
 					txt += DADDR(2) + ".";
@@ -736,11 +736,11 @@ static void _disassemble_class(const Ref<GDScript> &p_class, const Vector<String
 					for (int i = 0; i < argc; i++) {
 						if (i > 0)
 							txt += ", ";
-						txt += DADDR(4 + i);
+						txt += DADDR(5 + i);
 					}
 					txt += ")";
 
-					incr = 5 + argc;
+					incr = 6 + argc; // op, argc, base, name, cache, args, ret
 
 				} break;
 				case GDFunction::OPCODE_CALL_BUILT_IN: {

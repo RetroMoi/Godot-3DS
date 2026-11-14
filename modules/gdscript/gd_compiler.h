@@ -125,6 +125,7 @@ class GDCompiler {
 		int current_line;
 		int stack_max;
 		int call_max;
+		int call_cache_count; // call sites (one GDFunction::CallCache each)
 	};
 
 #if 0

@@ -484,8 +484,11 @@ int GDCompiler::_parse_expression(CodeGen &codegen, const GDParser::Node *p_expr
 						codegen.opcodes.push_back(p_root ? GDFunction::OPCODE_CALL : GDFunction::OPCODE_CALL_RETURN); // perform operator
 						codegen.opcodes.push_back(on->arguments.size() - 2);
 						codegen.alloc_call(on->arguments.size() - 2);
-						for (int i = 0; i < arguments.size(); i++)
+						for (int i = 0; i < arguments.size(); i++) {
 							codegen.opcodes.push_back(arguments[i]);
+							if (i == 1)
+								codegen.opcodes.push_back(codegen.call_cache_count++); // after base and name: the site's method cache
+						}
 					}
 				} break;
 				case GDParser::OperatorNode::OP_YIELD: {
@@ -1229,6 +1232,7 @@ Error GDCompiler::_parse_function(GDScript *p_script, const GDParser::ClassNode 
 	codegen.stack_max = 0;
 	codegen.current_line = 0;
 	codegen.call_max = 0;
+	codegen.call_cache_count = 0;
 	codegen.debug_stack = ScriptDebugger::get_singleton() != NULL;
 	Vector<StringName> argnames;
 
@@ -1381,6 +1385,10 @@ Error GDCompiler::_parse_function(GDScript *p_script, const GDParser::ClassNode 
 	gdfunc->_argument_count = p_func ? p_func->arguments.size() : 0;
 	gdfunc->_stack_size = codegen.stack_max;
 	gdfunc->_call_size = codegen.call_max;
+	if (codegen.call_cache_count) {
+		gdfunc->_call_caches = memnew_arr(GDFunction::CallCache, codegen.call_cache_count);
+		gdfunc->_call_cache_count = codegen.call_cache_count;
+	}
 	gdfunc->name = func_name;
 #ifdef DEBUG_ENABLED
 	if (ScriptDebugger::get_singleton()) {

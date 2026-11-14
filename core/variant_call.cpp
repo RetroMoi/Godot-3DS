@@ -969,6 +969,24 @@ Variant Variant::call(const StringName &p_method, const Variant **p_args, int p_
 	return ret;
 }
 
+void *Variant::get_builtin_method(Type p_type, const StringName &p_method) {
+
+	ERR_FAIL_INDEX_V(p_type, VARIANT_MAX, NULL);
+	if (p_type == NIL || p_type == OBJECT)
+		return NULL;
+	Map<StringName, _VariantCall::FuncData>::Element *E = _VariantCall::type_funcs[p_type].functions.find(p_method);
+	return E ? &E->get() : NULL;
+}
+
+void Variant::call_builtin_method(void *p_method, const Variant **p_args, int p_argcount, Variant *r_ret, CallError &r_error) {
+
+	r_error.error = Variant::CallError::CALL_OK;
+	Variant ret;
+	static_cast<_VariantCall::FuncData *>(p_method)->call(ret, *this, p_args, p_argcount, r_error);
+	if (r_error.error == Variant::CallError::CALL_OK && r_ret)
+		*r_ret = ret;
+}
+
 void Variant::call_ptr(const StringName &p_method, const Variant **p_args, int p_argcount, Variant *r_ret, CallError &r_error) {
 	Variant ret;
 

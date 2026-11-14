@@ -382,6 +382,11 @@ public:
 	};
 
 	void call_ptr(const StringName &p_method, const Variant **p_args, int p_argcount, Variant *r_ret, CallError &r_error);
+	// A built-in type's method resolved once (for call-site caches in script VMs), or NULL if
+	// the type has no such method. Valid for the program's lifetime.
+	static void *get_builtin_method(Type p_type, const StringName &p_method);
+	// Calls a method from get_builtin_method() on this value (which must be of that type).
+	void call_builtin_method(void *p_method, const Variant **p_args, int p_argcount, Variant *r_ret, CallError &r_error);
 	Variant call(const StringName &p_method, const Variant **p_args, int p_argcount, CallError &r_error);
 	Variant call(const StringName &p_method, const Variant &p_arg1 = Variant(), const Variant &p_arg2 = Variant(), const Variant &p_arg3 = Variant(), const Variant &p_arg4 = Variant(), const Variant &p_arg5 = Variant());
 

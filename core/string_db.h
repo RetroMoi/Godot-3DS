@@ -92,6 +92,9 @@ class StringName {
 	StringName(_Data *p_data) { _data = p_data; }
 
 public:
+	// Identifies the interned string (the same for every StringName with this text while any of
+	// them is alive); usable as a fast map/cache key.
+	_FORCE_INLINE_ const void *data_unique_pointer() const { return (const void *)_data; }
 	operator const void *() const { return (_data && (_data->cname || !_data->name.empty())) ? (void *)1 : 0; }
 
 	bool operator==(const String &p_name) const;
