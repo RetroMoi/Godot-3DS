@@ -118,6 +118,7 @@
 
 #include "scene/2d/position_2d.h"
 #include "scene/2d/tile_map.h"
+#include "scene/2d/collision_grid_2d.h"
 //#include "scene/2d/tile_map.h"
 #include "scene/resources/tile_set.h"
 
@@ -514,6 +515,7 @@ void register_scene_types() {
 	ObjectTypeDB::register_type<DampedSpringJoint2D>();
 	ObjectTypeDB::register_type<TileSet>();
 	ObjectTypeDB::register_type<TileMap>();
+	ObjectTypeDB::register_type<CollisionGrid2D>();
 	ObjectTypeDB::register_type<ParallaxBackground>();
 	ObjectTypeDB::register_type<ParallaxLayer>();
 	ObjectTypeDB::register_virtual_type<SoundPlayer2D>();

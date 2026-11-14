@@ -281,6 +281,14 @@ public:
 	void set_y_sort_origin(int p_origin);
 	int get_y_sort_origin() const;
 
+	// The map's collision shapes with their transforms (in TileMap coordinates), placed like
+	// the physics bodies. Used by CollisionGrid2D.
+	struct CollisionShape {
+		Ref<Shape2D> shape;
+		Matrix32 xform;
+	};
+	void get_collision_shapes(List<CollisionShape> *r_shapes) const;
+
 	Array get_used_cells() const;
 	Array get_used_cells_by_id(int p_id) const;
 	Rect2 get_used_rect(); // Not const because of cache

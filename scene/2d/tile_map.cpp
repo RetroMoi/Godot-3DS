@@ -483,6 +483,11 @@ void TileMap::_update_dirty_quadrants() {
 				tex->draw_rect_region(canvas_item, rect, r, modulate, c.transpose);
 			}
 
+			// No collision layers: no physics bodies (the map's collision may be handled another
+			// way, e.g. by a CollisionGrid2D). Saves memory and load time, and keeps thousands of
+			// static shapes out of the physics broadphase.
+			Vector<Ref<Shape2D> > shapes = tile_set->tile_get_shapes(c.id);
+			if ((collision_layer || collision_mask) && shapes.size()) {
 			RID body;
 			_BodyParams params = { tile_set->tile_get_one_way_collision_direction(c.id), tile_set->tile_get_one_way_collision_max_depth(c.id) };
 			Map<_BodyParams, int>::Element *B = params_bodies.find(params);
@@ -521,8 +526,6 @@ void TileMap::_update_dirty_quadrants() {
 				body = q.bodies[B->get()];
 			}
 
-			Vector<Ref<Shape2D> > shapes = tile_set->tile_get_shapes(c.id);
-
 			int shape_idx = ps->body_get_shape_count(body);
 			for (int i = 0; i < shapes.size(); i++) {
 
@@ -549,6 +552,7 @@ void TileMap::_update_dirty_quadrants() {
 			if (debug_canvas_item) {
 				vs->canvas_item_add_set_transform(debug_canvas_item, Matrix32());
 			}
+			} // collision bodies
 
 			if (navigation) {
 				Ref<NavigationPolygon> navpoly = tile_set->tile_get_navigation_polygon(c.id);
@@ -962,7 +966,13 @@ Rect2 TileMap::get_item_rect() const {
 
 void TileMap::set_collision_layer(uint32_t p_layer) {
 
+	bool had_physics = collision_layer || collision_mask;
 	collision_layer = p_layer;
+	if (had_physics != bool(collision_layer || collision_mask)) {
+		// Bodies are only created with some layer or mask set (see _update_dirty_quadrants).
+		_recreate_quadrants();
+		return;
+	}
 	for (Map<PosKey, Quadrant>::Element *E = quadrant_map.front(); E; E = E->next()) {
 
 		Quadrant &q = E->get();
@@ -974,7 +984,13 @@ void TileMap::set_collision_layer(uint32_t p_layer) {
 
 void TileMap::set_collision_mask(uint32_t p_mask) {
 
+	bool had_physics = collision_layer || collision_mask;
 	collision_mask = p_mask;
+	if (had_physics != bool(collision_layer || collision_mask)) {
+		// Bodies are only created with some layer or mask set (see _update_dirty_quadrants).
+		_recreate_quadrants();
+		return;
+	}
 	for (Map<PosKey, Quadrant>::Element *E = quadrant_map.front(); E; E = E->next()) {
 
 		Quadrant &q = E->get();
@@ -1238,6 +1254,48 @@ void TileMap::set_y_sort_mode(bool p_enable) {
 bool TileMap::is_y_sort_mode_enabled() const {
 
 	return y_sort_mode;
+}
+
+void TileMap::get_collision_shapes(List<CollisionShape> *r_shapes) const {
+
+	if (!tile_set.is_valid())
+		return;
+	Vector2 tofs = get_cell_draw_offset();
+	for (const Map<PosKey, Cell>::Element *E = tile_map.front(); E; E = E->next()) {
+
+		const Cell &c = E->get();
+		if (!tile_set->has_tile(c.id))
+			continue;
+		Vector<Ref<Shape2D> > shapes = tile_set->tile_get_shapes(c.id);
+		if (shapes.empty())
+			continue;
+
+		// Same placement as the physics bodies built in _update_dirty_quadrants.
+		Size2 s;
+		Rect2 r = tile_set->tile_get_region(c.id);
+		Ref<Texture> tex = tile_set->tile_get_texture(c.id);
+		if (r != Rect2())
+			s = r.size;
+		else if (tex.is_valid())
+			s = tex->get_size();
+		Vector2 center_ofs;
+		if (tile_origin == TILE_ORIGIN_CENTER) {
+			Vector2 tcenter = cell_size / 2; // (as in _update_dirty_quadrants: cell_size is a Size2i)
+			center_ofs = tcenter - (s / 2);
+		}
+		Vector2 shape_ofs = tile_set->tile_get_shape_offset(c.id);
+		Vector2 origin = (_map_to_world(E->key().x, E->key().y) + tofs).floor();
+
+		for (int i = 0; i < shapes.size(); i++) {
+			if (!shapes[i].is_valid())
+				continue;
+			CollisionShape cs;
+			cs.shape = shapes[i];
+			cs.xform.set_origin(origin);
+			const_cast<TileMap *>(this)->_fix_cell_transform(cs.xform, c, shape_ofs + center_ofs, s);
+			r_shapes->push_back(cs);
+		}
+	}
 }
 
 void TileMap::set_y_sort_origin(int p_origin) {
