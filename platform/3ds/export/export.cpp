@@ -36,6 +36,7 @@
 #include "os/file_access.h"
 #include "platform/3ds/logo.gen.h"
 #include "scene/resources/texture.h"
+#include "version_hash.gen.h"
 
 /*
  * Nintendo 3DS exporter.
@@ -630,6 +631,53 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 		return find_export_template(cia ? TEMPLATE_NAME_ELF : TEMPLATE_NAME, r_error);
 	}
 
+	// Build id embedded in a template (see Platform3DS::get_build_id): r_found is false for a
+	// template older than this check; the id is "" for one built without git information.
+	static String _template_build_id(const Vector<uint8_t> &p_data, bool *r_found) {
+		static const char marker[] = "GODOT3DS_BUILD_ID=";
+		const int mlen = sizeof(marker) - 1;
+		const uint8_t *d = p_data.ptr();
+		const int size = p_data.size();
+		*r_found = false;
+		for (int i = 0; i + mlen < size; i++) {
+			if (d[i] != 'G' || memcmp(d + i, marker, mlen) != 0)
+				continue;
+			int j = i + mlen;
+			String id;
+			while (j < size && j - i - mlen < 64 && d[j] != ';' && d[j] != 0)
+				id += String::chr(d[j++]);
+			if (j < size && d[j] == ';') {
+				*r_found = true;
+				return id;
+			}
+		}
+		return "";
+	}
+
+	// An editor must export with a template of its own build: an older one lacks the classes and
+	// methods the scripts use (CollisionGrid2D, Platform3DS...) and fails on the console. A custom
+	// template set in the preset is used as is.
+	Error _check_template_build(const String &p_template_path, const Vector<uint8_t> &p_data) const {
+		bool cia = format == FORMAT_CIA;
+		if ((cia ? custom_template_elf : custom_template) != "")
+			return OK;
+		String editor_id = VERSION_HASH;
+		bool found;
+		String template_id = _template_build_id(p_data, &found);
+		print_line("3DS export template: " + p_template_path + " (build " + (found ? (template_id != "" ? template_id : String("unknown")) : String("older than the build check")) + ", editor build " + (editor_id != "" ? editor_id : String("unknown")) + ")");
+		String fix = "\nUpdate the export templates next to the editor (editor_data/templates in the portable package, or the editor settings folder), or set a custom template in the export preset to use a specific one.";
+		String msg;
+		if (!found)
+			msg = "The 3DS export template is from an older engine build than this editor:\n" + p_template_path + fix;
+		else if (editor_id != "" && template_id != "" && editor_id != template_id)
+			msg = "The 3DS export template (build " + template_id + ") is not from this editor's build (" + editor_id + "):\n" + p_template_path + fix;
+		if (msg == "")
+			return OK;
+		ERR_PRINT(msg.utf8().get_data()); // also on the console for command-line exports
+		EditorNode::add_io_error(msg);
+		return ERR_INVALID_DATA;
+	}
+
 	// Unique ID in the homebrew range (0x00300-0xF7FFF). Derived from the project name unless set,
 	// so different games don't overwrite each other once installed.
 	uint32_t _get_unique_id() const {
@@ -891,6 +939,11 @@ public:
 		if (format != FORMAT_CIA && tmpl.size() == 0) {
 			EditorNode::add_io_error("Couldn't read export template:\n" + template_path);
 			return ERR_FILE_CANT_READ;
+		}
+		{
+			Error build_err = _check_template_build(template_path, format == FORMAT_CIA ? FileAccess::get_file_as_array(template_path) : tmpl);
+			if (build_err != OK)
+				return build_err;
 		}
 
 		ep.step("Packing project (data.pck)..", 1);

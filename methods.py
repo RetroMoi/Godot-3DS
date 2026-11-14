@@ -1107,6 +1107,32 @@ def update_version():
     f.write("#define VERSION_YEAR " + str(datetime.datetime.now().year) + "\n")
 
 
+def update_build_hash():
+    # The commit a build comes from (first 10 hex digits), or "" when unknown. The 3DS export
+    # template embeds it and the editor checks it when exporting, so an editor never packs a
+    # template from another build. Written to its own header (only two files include it) and
+    # only when it changes, so a new commit does not rebuild the whole engine.
+    import os
+    import subprocess
+    h = os.getenv("BUILD_HASH") or os.getenv("GITHUB_SHA") or ""
+    if not h:
+        try:
+            with open(os.devnull, "w") as null:
+                h = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=null).decode().strip()
+        except Exception:
+            h = ""
+    h = h[:10]
+    content = '#define VERSION_HASH "' + h + '"\n'
+    path = "core/version_hash.gen.h"
+    old = ""
+    if os.path.exists(path):
+        with open(path) as f:
+            old = f.read()
+    if old != content:
+        with open(path, "w") as f:
+            f.write(content)
+
+
 def parse_cg_file(fname, uniforms, sizes, conditionals):
 
     import re

@@ -12,6 +12,7 @@ import sys
 import methods
 
 methods.update_version()
+methods.update_build_hash()
 
 # scan possible build platforms
 

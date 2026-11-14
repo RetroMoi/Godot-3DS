@@ -77,6 +77,9 @@ public:
 	// Optimization level the engine was built with (scons optimize=...): "max", "speed" or "size".
 	String get_build_optimization() const;
 
+	// Commit the engine was built from (10 hex digits), or "" if unknown.
+	String get_build_id() const;
+
 	// Microsecond timer (OS.get_ticks_usec is not exposed to scripts in 2.1).
 	uint64_t get_ticks_usec() const;
 

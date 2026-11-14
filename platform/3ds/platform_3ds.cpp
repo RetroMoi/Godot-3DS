@@ -31,6 +31,7 @@
 #include <malloc.h>
 #include "os/os.h"
 #include "drivers/3ds/citro3d/rasterizer_citro3d.h"
+#include "version_hash.gen.h"
 
 extern "C" {
 #include <3ds/types.h>
@@ -110,6 +111,15 @@ String Platform3DS::get_build_optimization() const {
 #else
 	return "unknown";
 #endif
+}
+
+// The editor's 3DS exporter looks for this marker in the template to check that the template
+// comes from the same build as the editor (platform/3ds/export/export.cpp).
+static const char build_id_marker[] = "GODOT3DS_BUILD_ID=" VERSION_HASH ";";
+
+String Platform3DS::get_build_id() const {
+	const char *id = build_id_marker + sizeof("GODOT3DS_BUILD_ID=") - 1;
+	return String(id).replace(";", "");
 }
 
 uint64_t Platform3DS::get_ticks_usec() const {
@@ -197,6 +207,7 @@ void Platform3DS::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("set_cpu_speedup", "enabled"), &Platform3DS::set_cpu_speedup);
 	ObjectTypeDB::bind_method(_MD("get_cpu_speedup"), &Platform3DS::get_cpu_speedup);
 	ObjectTypeDB::bind_method(_MD("get_build_optimization"), &Platform3DS::get_build_optimization);
+	ObjectTypeDB::bind_method(_MD("get_build_id"), &Platform3DS::get_build_id);
 	ObjectTypeDB::bind_method(_MD("get_ticks_usec"), &Platform3DS::get_ticks_usec);
 }
 
