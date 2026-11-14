@@ -91,6 +91,12 @@ void CollisionGrid2D::add_rect(const Rect2 &p_rect) {
 	dirty = true;
 }
 
+void CollisionGrid2D::build() {
+
+	if (dirty)
+		_rebuild();
+}
+
 void CollisionGrid2D::clear() {
 
 	rects.clear();
@@ -112,54 +118,68 @@ void CollisionGrid2D::_rebuild() {
 		cell_size = 16;
 	int count = rects.size();
 	visit_mark.resize(count);
+	uint32_t *marks = visit_mark.ptr();
 	for (int i = 0; i < count; i++)
-		visit_mark[i] = 0;
+		marks[i] = 0;
 	query_id = 0;
 	if (!count)
 		return;
 
-	// Cell range of each rect, and the bounds of them all.
-	Vector<int> ranges;
-	ranges.resize(count * 4);
+	// Cell range of each rect, and the bounds of them all. (Raw pointers: Vector's operator[]
+	// checks copy-on-write on every write.)
+	Vector<int> ranges_v;
+	ranges_v.resize(count * 4);
+	int *ranges = ranges_v.ptr();
+	const Rect2 *rs = rects.ptr();
 	int min_x = 0x7FFFFFFF, min_y = 0x7FFFFFFF, max_x = -0x7FFFFFFF, max_y = -0x7FFFFFFF;
 	for (int i = 0; i < count; i++) {
-		const Rect2 &r = rects[i];
-		int x0 = Math::floor(r.pos.x / cell_size);
-		int y0 = Math::floor(r.pos.y / cell_size);
-		int x1 = Math::floor((r.pos.x + r.size.x) / cell_size);
-		int y1 = Math::floor((r.pos.y + r.size.y) / cell_size);
-		ranges[i * 4 + 0] = x0;
-		ranges[i * 4 + 1] = y0;
-		ranges[i * 4 + 2] = x1;
-		ranges[i * 4 + 3] = y1;
-		min_x = MIN(min_x, x0);
-		min_y = MIN(min_y, y0);
-		max_x = MAX(max_x, x1);
-		max_y = MAX(max_y, y1);
+		const Rect2 &r = rs[i];
+		int *rg = ranges + i * 4;
+		rg[0] = Math::floor(r.pos.x / cell_size);
+		rg[1] = Math::floor(r.pos.y / cell_size);
+		rg[2] = Math::floor((r.pos.x + r.size.x) / cell_size);
+		rg[3] = Math::floor((r.pos.y + r.size.y) / cell_size);
+		min_x = MIN(min_x, rg[0]);
+		min_y = MIN(min_y, rg[1]);
+		max_x = MAX(max_x, rg[2]);
+		max_y = MAX(max_y, rg[3]);
 	}
 	origin_x = min_x;
 	origin_y = min_y;
 	width = max_x - min_x + 1;
 	height = max_y - min_y + 1;
-	ERR_FAIL_COND((int64_t)width * height > 4 * 1024 * 1024); // a 2048x2048-cell world at most
+	if ((int64_t)width * height > 4 * 1024 * 1024) { // a 2048x2048-cell world at most
+		width = height = 0;
+		ERR_FAIL();
+	}
 
 	// Count, prefix sum, fill.
 	int cells = width * height;
 	cell_start.resize(cells + 1);
+	int *start = cell_start.ptr();
 	for (int i = 0; i <= cells; i++)
-		cell_start[i] = 0;
-	for (int i = 0; i < count; i++)
-		for (int y = ranges[i * 4 + 1]; y <= ranges[i * 4 + 3]; y++)
-			for (int x = ranges[i * 4 + 0]; x <= ranges[i * 4 + 2]; x++)
-				cell_start[(y - origin_y) * width + (x - origin_x) + 1]++;
+		start[i] = 0;
+	for (int i = 0; i < count; i++) {
+		const int *rg = ranges + i * 4;
+		for (int y = rg[1]; y <= rg[3]; y++)
+			for (int x = rg[0]; x <= rg[2]; x++)
+				start[(y - origin_y) * width + (x - origin_x) + 1]++;
+	}
 	for (int i = 0; i < cells; i++)
-		cell_start[i + 1] += cell_start[i];
-	cell_items.resize(cell_start[cells]);
-	Vector<int> fill = cell_start;
-	for (int i = 0; i < count; i++)
-		for (int y = ranges[i * 4 + 1]; y <= ranges[i * 4 + 3]; y++)
-			for (int x = ranges[i * 4 + 0]; x <= ranges[i * 4 + 2]; x++)
-				cell_items[fill[(y - origin_y) * width + (x - origin_x)]++] = i;
+		start[i + 1] += start[i];
+	cell_items.resize(start[cells]);
+	int *items = cell_items.ptr();
+	Vector<int> fill_v;
+	fill_v.resize(cells);
+	int *fill = fill_v.ptr();
+	for (int i = 0; i < cells; i++)
+		fill[i] = start[i];
+	for (int i = 0; i < count; i++) {
+		const int *rg = ranges + i * 4;
+		for (int y = rg[1]; y <= rg[3]; y++)
+			for (int x = rg[0]; x <= rg[2]; x++)
+				items[fill[(y - origin_y) * width + (x - origin_x)]++] = i;
+	}
 }
 
 // Indices of the rects in the cells overlapping p_area (each once).
@@ -343,6 +363,7 @@ void CollisionGrid2D::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_cell_size"), &CollisionGrid2D::get_cell_size);
 	ObjectTypeDB::bind_method(_MD("add_tilemap", "tilemap:TileMap"), &CollisionGrid2D::add_tilemap);
 	ObjectTypeDB::bind_method(_MD("add_rect", "rect"), &CollisionGrid2D::add_rect);
+	ObjectTypeDB::bind_method(_MD("build"), &CollisionGrid2D::build);
 	ObjectTypeDB::bind_method(_MD("clear"), &CollisionGrid2D::clear);
 	ObjectTypeDB::bind_method(_MD("get_rect_count"), &CollisionGrid2D::get_rect_count);
 	ObjectTypeDB::bind_method(_MD("move", "box", "motion", "corner_slide"), &CollisionGrid2D::move, DEFVAL(0));

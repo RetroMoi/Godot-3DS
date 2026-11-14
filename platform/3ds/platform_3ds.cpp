@@ -147,6 +147,17 @@ void Platform3DS::record_frame(uint64_t p_frame_ticks, uint64_t p_vblank_ticks) 
 	logic_ms += (logic - logic_ms) * a;
 	draw_ms += (draw - draw_ms) * a;
 	frame_end_ms += (end - frame_end_ms) * a;
+	// Worst frame of the last second (the averages hide single-frame hitches).
+	if (++peak_frames >= 60) {
+		peak_frames = 0;
+		frame_max_ms = cur_frame_max;
+		logic_max_ms = cur_logic_max;
+		draw_max_ms = cur_draw_max;
+		cur_frame_max = cur_logic_max = cur_draw_max = 0;
+	}
+	cur_frame_max = MAX(cur_frame_max, frame - vblank);
+	cur_logic_max = MAX(cur_logic_max, logic);
+	cur_draw_max = MAX(cur_draw_max, draw);
 	gpu_wait_ms += (gpu - gpu_wait_ms) * a;
 	vblank_ms += (vblank - vblank_ms) * a;
 }
@@ -157,6 +168,9 @@ Dictionary Platform3DS::get_frame_stats() const {
 	d["logic_ms"] = logic_ms;
 	d["draw_ms"] = draw_ms;
 	d["frame_end_ms"] = frame_end_ms;
+	d["frame_max_ms"] = frame_max_ms; // worst frame of the last second, without the VSync wait
+	d["logic_max_ms"] = logic_max_ms;
+	d["draw_max_ms"] = draw_max_ms;
 	d["gpu_wait_ms"] = gpu_wait_ms;
 	d["vblank_ms"] = vblank_ms;
 	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
@@ -193,6 +207,9 @@ Platform3DS::Platform3DS() {
 	vram_peak = 0;
 	cpu_speedup = true; // OS_3DS enables it at startup
 	frame_ms = logic_ms = draw_ms = frame_end_ms = gpu_wait_ms = vblank_ms = 0;
+	frame_max_ms = logic_max_ms = draw_max_ms = 0;
+	cur_frame_max = cur_logic_max = cur_draw_max = 0;
+	peak_frames = 0;
 }
 
 Platform3DS::~Platform3DS() {

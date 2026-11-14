@@ -46,6 +46,9 @@ class Platform3DS : public Object {
 
 	// Frame timing, smoothed (exponential moving average), in milliseconds.
 	float frame_ms, logic_ms, draw_ms, frame_end_ms, gpu_wait_ms, vblank_ms;
+	float frame_max_ms, logic_max_ms, draw_max_ms; // worst of the last second
+	float cur_frame_max, cur_logic_max, cur_draw_max;
+	int peak_frames;
 
 protected:
 	static void _bind_methods();
@@ -92,7 +95,8 @@ public:
 	// Where the frame time goes (ms, smoothed): frame_ms, logic_ms (scripts, physics, scene),
 	// draw_ms (visual server + renderer, CPU; includes frame_end_ms, the cache flush and
 	// C3D_FrameEnd that hand the frame to the GPU), gpu_wait_ms (waiting for the GPU to finish the
-	// previous frame), vblank_ms (waiting for the screen refresh), plus the last frame's
+	// previous frame), vblank_ms (waiting for the screen refresh); frame_max_ms, logic_max_ms,
+	// draw_max_ms: the worst frame of the last second (hitches); plus the last frame's
 	// draw_calls, vertices, items (canvas items drawn) and cmdbuf_percent.
 	Dictionary get_frame_stats() const;
 	// Called by OS_3DS after each frame.

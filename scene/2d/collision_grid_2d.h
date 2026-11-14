@@ -21,6 +21,7 @@ class TileMap;
 //
 //   var grid = CollisionGrid2D.new()
 //   grid.add_tilemap(get_node("trees"))
+//   grid.build()
 //   ...
 //   var moved = grid.move(Rect2(pos + feet_offset, feet_size), velocity * delta, 3)
 //   set_pos(pos + moved)
@@ -57,6 +58,9 @@ public:
 
 	void add_tilemap(Object *p_tilemap);
 	void add_rect(const Rect2 &p_rect);
+	// Builds the grid now (after adding everything, e.g. while loading). Otherwise it is built
+	// on the first query after a change, which on a slow CPU is a hitch of a few ms.
+	void build();
 	void clear();
 	int get_rect_count() const;
 
