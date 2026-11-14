@@ -680,7 +680,7 @@ public:
 	FUNC1R(int, get_render_info, RenderInfo);
 	virtual bool has_feature(Features p_feature) const { return visual_server->has_feature(p_feature); }
 
-	FUNC3(set_boot_image, const Image &, const Color &, bool);
+	FUNC4(set_boot_image, const Image &, const Color &, bool, bool);
 	FUNC1(set_default_clear_color, const Color &);
 	FUNC0RC(Color, get_default_clear_color);
 	FUNC1(set_time_scale, float);

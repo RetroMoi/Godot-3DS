@@ -932,6 +932,9 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	if (show_logo) { //boot logo!
 		String boot_logo_path = GLOBAL_DEF("application/boot_splash", String());
 		bool boot_logo_scale = GLOBAL_DEF("application/boot_splash_fullsize", true);
+		// The splash is filtered like every other image the project loads (image_loader/filter,
+		// also the default of the texture import dialogs): off keeps pixel art sharp.
+		bool boot_logo_filter = GLOBAL_DEF("image_loader/filter", true);
 		Globals::get_singleton()->set_custom_property_info("application/boot_splash", PropertyInfo(Variant::STRING, "application/boot_splash", PROPERTY_HINT_FILE, "*.png"));
 
 		Image boot_logo;
@@ -950,7 +953,7 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 			Color clear = GLOBAL_DEF("render/default_clear_color", Color(0.3, 0.3, 0.3));
 			VisualServer::get_singleton()->set_default_clear_color(clear);
 			Color boot_bg = GLOBAL_DEF("application/boot_bg_color", clear);
-			VisualServer::get_singleton()->set_boot_image(boot_logo, boot_bg, boot_logo_scale);
+			VisualServer::get_singleton()->set_boot_image(boot_logo, boot_bg, boot_logo_scale, boot_logo_filter);
 #ifndef TOOLS_ENABLED
 //no tools, so free the boot logo (no longer needed)
 //	Globals::get_singleton()->set("application/boot_logo",Image());
@@ -965,7 +968,7 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 			MAIN_PRINT("Main: ClearColor");
 			VisualServer::get_singleton()->set_default_clear_color(boot_splash_bg_color);
 			MAIN_PRINT("Main: Image");
-			VisualServer::get_singleton()->set_boot_image(splash, boot_splash_bg_color, false);
+			VisualServer::get_singleton()->set_boot_image(splash, boot_splash_bg_color, false, boot_logo_filter);
 #endif
 		}
 

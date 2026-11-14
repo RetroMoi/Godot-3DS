@@ -452,6 +452,13 @@ void EditorTextureImportDialog::_browse_target() {
 	}
 }
 
+// Default of the "Filter" flag in the import dialogs: the project's image filter setting
+// (image_loader/filter), so new textures match the images the project loads directly and its boot
+// splash.
+static uint32_t _project_filter_flag() {
+	return bool(GLOBAL_DEF("image_loader/filter", true)) ? EditorTextureImportPlugin::IMAGE_FLAG_FILTER : 0;
+}
+
 void EditorTextureImportDialog::popup_import(const String &p_from) {
 
 	popup_centered(Size2(600, 500) * EDSCALE);
@@ -532,7 +539,7 @@ void EditorTextureImportDialog::_mode_changed(int p_mode) {
 		size_label->show();
 		size->show();
 
-		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | EditorTextureImportPlugin::IMAGE_FLAG_FILTER);
+		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | _project_filter_flag());
 		texture_options->set_quality(0.7);
 		texture_options->set_format(EditorTextureImportPlugin::IMAGE_FORMAT_COMPRESS_DISK_LOSSY);
 		set_title(TTR("Import Textures for Atlas (2D)"));
@@ -551,7 +558,7 @@ void EditorTextureImportDialog::_mode_changed(int p_mode) {
 		file_select->set_mode(EditorFileDialog::MODE_OPEN_FILE);
 		save_file_select->add_filter("*.ltex;" + TTR("Large Texture"));
 
-		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | EditorTextureImportPlugin::IMAGE_FLAG_FILTER);
+		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | _project_filter_flag());
 		texture_options->set_quality(0.7);
 		texture_options->set_format(EditorTextureImportPlugin::IMAGE_FORMAT_COMPRESS_DISK_LOSSLESS);
 		set_title(TTR("Import Large Textures (2D)"));
@@ -568,7 +575,7 @@ void EditorTextureImportDialog::_mode_changed(int p_mode) {
 		size_label->hide();
 		size->hide();
 
-		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_FILTER);
+		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS | EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | _project_filter_flag());
 		texture_options->set_quality(0.7);
 		texture_options->set_format(EditorTextureImportPlugin::IMAGE_FORMAT_COMPRESS_DISK_LOSSY);
 		notice_for_2d->show();
@@ -584,7 +591,7 @@ void EditorTextureImportDialog::_mode_changed(int p_mode) {
 		size->hide();
 		//texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_);
 		//texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_NO_MIPMAPS);
-		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | EditorTextureImportPlugin::IMAGE_FLAG_FILTER | EditorTextureImportPlugin::IMAGE_FLAG_REPEAT);
+		texture_options->set_flags(EditorTextureImportPlugin::IMAGE_FLAG_FIX_BORDER_ALPHA | _project_filter_flag() | EditorTextureImportPlugin::IMAGE_FLAG_REPEAT);
 		texture_options->set_format(EditorTextureImportPlugin::IMAGE_FORMAT_COMPRESS_RAM);
 		set_title(TTR("Import Textures for 3D"));
 	}

@@ -7011,7 +7011,7 @@ void VisualServerRaster::set_time_scale(float p_scale) {
 bool VisualServerRaster::dual_screen_game = false;
 bool VisualServerRaster::dual_screen_preview = false;
 
-void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_color, bool p_scale) {
+void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_color, bool p_scale, bool p_use_filter) {
 
 	if (p_image.empty())
 		return;
@@ -7033,7 +7033,7 @@ void VisualServerRaster::set_boot_image(const Image &p_image, const Color &p_col
 	rasterizer->clear_viewport(p_color);
 	rasterizer->canvas_begin();
 	RID texture = texture_create();
-	texture_allocate(texture, p_image.get_width(), p_image.get_height(), p_image.get_format(), TEXTURE_FLAG_FILTER);
+	texture_allocate(texture, p_image.get_width(), p_image.get_height(), p_image.get_format(), p_use_filter ? TEXTURE_FLAG_FILTER : 0);
 	texture_set_data(texture, p_image);
 	rasterizer->canvas_begin_rect(Matrix32());
 	Rect2 imgrect(0, 0, p_image.get_width(), p_image.get_height());
