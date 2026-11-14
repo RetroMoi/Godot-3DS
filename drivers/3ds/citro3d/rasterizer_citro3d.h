@@ -113,6 +113,7 @@ class RasterizerCitro3d : public Rasterizer {
 		int location_modelview;
 		int location_worldTransform;
 		int location_extra;
+		int location_vscale; // 2D only: fixed-point scale of positions/texcoords (-1 if absent)
 		
 		void set_data(void* data, u32 size)
 		{
@@ -122,6 +123,7 @@ class RasterizerCitro3d : public Rasterizer {
 			location_modelview = shaderInstanceGetUniformLocation(program.vertexShader, "modelView");
 			location_worldTransform = shaderInstanceGetUniformLocation(program.vertexShader, "worldTransform");
 			location_extra = shaderInstanceGetUniformLocation(program.vertexShader, "extra");
+			location_vscale = shaderInstanceGetUniformLocation(program.vertexShader, "vscale");
 		}
 		
 		Shader()
@@ -860,6 +862,44 @@ class RasterizerCitro3d : public Rasterizer {
 	
 	Vector<VertexArray*> vertexArrays;
 	Vector<C3D_Tex> textures_to_free;
+
+	// --- Retained canvas geometry ---------------------------------------------------------
+	// Items made only of rects (TileMap quadrants, text...) keep their vertices in linear memory
+	// between frames (CanvasItem::rasterizer_cache): built once, redrawn with a uniform and one
+	// draw per texture/color run, rebuilt only when the item's commands change.
+	// Vertices are 8 bytes: 16-bit fixed point positions (1/8 px) and texcoords (1/16 texel),
+	// scaled back by the shader's vscale uniform; quads share one static index buffer.
+	struct Fixed16Vertex {
+		int16_t x, y, u, v;
+	};
+	struct CanvasCache {
+		uint32_t serial;    // CanvasItem::commands_serial it was built from
+		int command_count;  // and commands.size()
+		bool usable;        // false: draw this item the normal way
+		Fixed16Vertex *vertices;
+		struct Run {
+			RID texture;
+			Color modulate;
+			int first_quad, quad_count;
+		};
+		Vector<Run> runs;
+		CanvasCache() { serial = 0; command_count = -1; usable = false; vertices = NULL; }
+	};
+	enum { CANVAS_CACHE_MIN_QUADS = 4, CANVAS_CACHE_MAX_QUADS = 16384 };
+	uint16_t *quad_indices; // 0,1,2, 0,2,3, 4,5,6, ... in linear memory
+	Vector<CanvasCache *> canvas_caches_to_free;
+	static void _canvas_cache_free_deferred(void *p_cache);
+	void _canvas_cache_delete(CanvasCache *p_cache);
+	CanvasCache *_canvas_cache_build(CanvasItem *p_item, CanvasCache *p_cache);
+	bool _canvas_draw_cached(CanvasItem *p_item);
+
+	// Vertex layout of the canvas shader inputs (switched only when it changes).
+	enum CanvasVertexFormat { CVF_NONE = -1, CVF_FLOAT, CVF_FLOAT_COLOR, CVF_FIXED16 };
+	int canvas_vertex_format;
+	float canvas_vscale[4];
+	void _canvas_set_vertex_format(int p_format);
+	void _canvas_set_vscale(float p_x, float p_y, float p_u, float p_v);
+
 	void _free_frame_resources();
 	void _texture_release(C3D_Tex &p_tex);
 	
@@ -952,7 +992,6 @@ public:
 
 private:
 	void _draw_canvas_triangles(GPU_Primitive_t p_primitive, int p_count, const int *p_indices, const Vector2 *p_points, const Vector2 *p_uvs, const Texture *p_texture, const Color *p_colors);
-	bool canvas_vertex_colors;
 	void _draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip=false, bool p_v_flip=false, bool p_transpose=false);
 	
 	template<bool use_normalmap>

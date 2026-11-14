@@ -575,6 +575,8 @@ void Rasterizer::flush_frame() {
 	//not really necesary to implement
 }
 
+void (*Rasterizer::CanvasItem::rasterizer_cache_free)(void *p_cache) = NULL;
+
 Rasterizer::Rasterizer() {
 
 	static const char *fm_names[VS::FIXED_MATERIAL_PARAM_MAX] = {

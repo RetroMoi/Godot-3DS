@@ -1,11 +1,15 @@
 ; Uniforms
-.fvec projection[4], modelView[4], extra[4]
+; vscale: (position scale x, y, texcoord scale u, v). Retained canvas geometry stores
+; positions and texcoords as 16-bit fixed point (1/8 pixel, 1/16 texel) to keep vertices at
+; 8 bytes; vscale turns them back into pixels and normalized texcoords. The float vertex
+; paths use vscale = (1, 1, 1, 1).
+.fvec projection[4], modelView[4], extra[4], vscale
 
 ; Constants
-.constf myconst(0.0, 1.0, -1.0, -0.5)
-;.constf myconst2(0.3, 0.0, 0.0, 0.0)
+.constf myconst(0.0, 1.0, -1.0, 0.5)
 .alias  zeros myconst.xxxx ; Vector full of zeros
 .alias  ones  myconst.yyyy ; Vector full of ones
+.alias  half  myconst.wwww ; 0.5: every 2D vertex sits at depth 0.5
 
 ; Outputs
 .out outpos position
@@ -18,16 +22,17 @@
 .alias incol v2
 
 .proc main
-	; Force the w component of inpos to be 1.0
-	mov r0.xyz, inpos
-	mov r0.w,   ones
-	
-	; r1 = extra * inpos
+	; r0 = (inpos.xy * vscale.xy, 0.5, 1.0)
+	mul r0.xy, vscale.xy, inpos.xy
+	mov r0.z,  half
+	mov r0.w,  ones
+
+	; r1 = extra * r0
 	dp4 r1.x, extra[0], r0
 	dp4 r1.y, extra[1], r0
 	dp4 r1.z, extra[2], r0
 	dp4 r1.w, extra[3], r0
-	
+
 	; r2 = modelView * r1
 	dp4 r2.x, modelView[0], r1
 	dp4 r2.y, modelView[1], r1
@@ -40,9 +45,12 @@
 	dp4 outpos.z, projection[2], r2
 	dp4 outpos.w, projection[3], r2
 
- 	mov outtc0, intex
- 	
- 	mov outclr, incol
+	; outtc0 = intex * vscale.zw
+	mov r3, intex
+	mul r3.xy, vscale.zw, r3.xy
+	mov outtc0, r3
+
+	mov outclr, incol
 
 	end
 .end

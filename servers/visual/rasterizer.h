@@ -926,10 +926,18 @@ public:
 			return rect;
 		}
 
+		// Retained geometry: a rasterizer may build the item's vertices once and keep them in
+		// rasterizer_cache. Commands are only ever appended, or all removed by clear(), so
+		// (commands_serial, commands.size()) identifies the item's content.
+		uint32_t commands_serial;
+		void *rasterizer_cache;
+		static void (*rasterizer_cache_free)(void *p_cache); // set by the rasterizer that uses it
+
 		void clear() {
 			for (int i = 0; i < commands.size(); i++)
 				memdelete(commands[i]);
 			commands.clear();
+			commands_serial++;
 			clip = false;
 			rect_dirty = true;
 			final_clip_owner = NULL;
@@ -953,10 +961,14 @@ public:
 			copy_back_buffer = NULL;
 			distance_field = false;
 			light_masked = false;
+			commands_serial = 0;
+			rasterizer_cache = NULL;
 		}
 		virtual ~CanvasItem() {
 			clear();
 			if (copy_back_buffer) memdelete(copy_back_buffer);
+			if (rasterizer_cache && rasterizer_cache_free)
+				rasterizer_cache_free(rasterizer_cache);
 		}
 	};
 

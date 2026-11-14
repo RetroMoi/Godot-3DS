@@ -2098,6 +2098,171 @@ void RasterizerCitro3d::_free_frame_resources()
 	for (int i = 0; i < textures_to_free.size(); i++)
 		C3D_TexDelete(&textures_to_free[i]);
 	textures_to_free.clear();
+
+	for (int i = 0; i < canvas_caches_to_free.size(); i++)
+		_canvas_cache_delete(canvas_caches_to_free[i]);
+	canvas_caches_to_free.clear();
+}
+
+/* RETAINED CANVAS GEOMETRY */
+
+void RasterizerCitro3d::_canvas_cache_free_deferred(void *p_cache)
+{
+	// The item is gone, but the GPU may still be drawing its vertices (frame in flight).
+	if (singleton)
+		singleton->canvas_caches_to_free.push_back((CanvasCache *)p_cache);
+}
+
+void RasterizerCitro3d::_canvas_cache_delete(CanvasCache *p_cache)
+{
+	if (p_cache->vertices)
+		linearFree(p_cache->vertices);
+	memdelete(p_cache);
+}
+
+// Fixed point, rounded to the nearest step (1/8 px, 1/16 texel: at most 1/32 off, invisible;
+// it also absorbs TileMap's fp_adjust inset of 0.01 texel). Fails only out of 16-bit range.
+static _FORCE_INLINE_ bool _to_fixed16(float p_value, float p_scale, int16_t &r_out)
+{
+	float r = Math::floor(p_value * p_scale + 0.5f);
+	if (r < -32768.0f || r > 32767.0f)
+		return false;
+	r_out = (int16_t)r;
+	return true;
+}
+
+RasterizerCitro3d::CanvasCache *RasterizerCitro3d::_canvas_cache_build(CanvasItem *p_item, CanvasCache *p_cache)
+{
+	CanvasCache *cache = p_cache ? p_cache : memnew(CanvasCache);
+	p_item->rasterizer_cache = cache;
+	cache->serial = p_item->commands_serial;
+	cache->command_count = p_item->commands.size();
+	cache->usable = false;
+	cache->runs.clear();
+	// Called while drawing frame N: the old vertices were last used by frame N-1, which the GPU
+	// has finished (C3D_FrameBegin waited for it), so they can go right away.
+	if (cache->vertices) {
+		linearFree(cache->vertices);
+		cache->vertices = NULL;
+	}
+
+	int count = p_item->commands.size();
+	if (count < CANVAS_CACHE_MIN_QUADS || count > CANVAS_CACHE_MAX_QUADS || !quad_indices)
+		return cache;
+
+	CanvasItem::Command *const *commands = p_item->commands.ptr();
+	for (int i = 0; i < count; i++) {
+		if (commands[i]->type != CanvasItem::Command::TYPE_RECT)
+			return cache; // only plain rects are retained
+		const CanvasItem::CommandRect *rect = static_cast<const CanvasItem::CommandRect *>(commands[i]);
+		if (rect->flags & CANVAS_RECT_TILE)
+			return cache;
+	}
+
+	Fixed16Vertex *vertices = (Fixed16Vertex *)linearAlloc(sizeof(Fixed16Vertex) * 4 * count);
+	if (!vertices)
+		return cache;
+
+	CanvasCache::Run run;
+	run.first_quad = 0;
+	run.quad_count = 0;
+	for (int i = 0; i < count; i++) {
+		const CanvasItem::CommandRect *rect = static_cast<const CanvasItem::CommandRect *>(commands[i]);
+		Texture *texture = rect->texture.is_valid() ? texture_owner.get(rect->texture) : NULL;
+
+		Fixed16Vertex *v = vertices + i * 4;
+		const Rect2 &r = rect->rect;
+		bool ok = _to_fixed16(r.pos.x, 8, v[0].x) && _to_fixed16(r.pos.y, 8, v[0].y) &&
+				  _to_fixed16(r.pos.x + r.size.width, 8, v[2].x) && _to_fixed16(r.pos.y + r.size.height, 8, v[2].y);
+
+		int16_t u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+		if (ok && texture) {
+			Rect2 src = (rect->flags & CANVAS_RECT_REGION) ? rect->source : Rect2(0, 0, texture->width, texture->height);
+			ok = _to_fixed16(src.pos.x, 16, u0) && _to_fixed16(src.pos.y, 16, v0) &&
+				 _to_fixed16(src.pos.x + src.size.width, 16, u1) && _to_fixed16(src.pos.y + src.size.height, 16, v1);
+		}
+		if (!ok) {
+			linearFree(vertices);
+			return cache; // coordinates out of the 16-bit range: draw it the normal way
+		}
+
+		v[1].x = v[2].x; v[1].y = v[0].y;
+		v[3].x = v[0].x; v[3].y = v[2].y;
+		// Same corner order and flips as _draw_textured_quad.
+		int16_t tu[4] = { u0, u1, u1, u0 };
+		int16_t tv[4] = { v0, v0, v1, v1 };
+		if (rect->flags & CANVAS_RECT_TRANSPOSE) {
+			SWAP(tu[1], tu[3]);
+			SWAP(tv[1], tv[3]);
+		}
+		if (rect->flags & CANVAS_RECT_FLIP_H) {
+			SWAP(tu[0], tu[1]); SWAP(tv[0], tv[1]);
+			SWAP(tu[2], tu[3]); SWAP(tv[2], tv[3]);
+		}
+		if (rect->flags & CANVAS_RECT_FLIP_V) {
+			SWAP(tu[1], tu[2]); SWAP(tv[1], tv[2]);
+			SWAP(tu[0], tu[3]); SWAP(tv[0], tv[3]);
+		}
+		for (int k = 0; k < 4; k++) {
+			v[k].u = tu[k];
+			v[k].v = tv[k];
+		}
+
+		// Runs of consecutive rects with the same texture and color: one draw each.
+		if (run.quad_count && (rect->texture != run.texture || rect->modulate != run.modulate)) {
+			cache->runs.push_back(run);
+			run.first_quad = i;
+			run.quad_count = 0;
+		}
+		run.texture = rect->texture;
+		run.modulate = rect->modulate;
+		run.quad_count++;
+	}
+	cache->runs.push_back(run);
+
+	GSPGPU_FlushDataCache(vertices, sizeof(Fixed16Vertex) * 4 * count);
+	cache->vertices = vertices;
+	cache->usable = true;
+	return cache;
+}
+
+bool RasterizerCitro3d::_canvas_draw_cached(CanvasItem *p_item)
+{
+	if (p_item->commands.size() < CANVAS_CACHE_MIN_QUADS)
+		return false;
+
+	CanvasCache *cache = (CanvasCache *)p_item->rasterizer_cache;
+	if (!cache || cache->serial != p_item->commands_serial || cache->command_count != p_item->commands.size())
+		cache = _canvas_cache_build(p_item, cache);
+	if (!cache->usable || !_cmdbuf_has_room())
+		return cache->usable;
+
+	_batch_flush();
+	_canvas_set_vertex_format(CVF_FIXED16);
+	C3D_BufInfo *bufInfo = C3D_GetBufInfo();
+	BufInfo_Init(bufInfo);
+	BufInfo_Add(bufInfo, cache->vertices, sizeof(Fixed16Vertex), 2, 0x10);
+
+	const Color &m = canvas_modulate;
+	const CanvasCache::Run *runs = cache->runs.ptr();
+	for (int i = 0; i < cache->runs.size(); i++) {
+		const CanvasCache::Run &run = runs[i];
+		Texture *texture = run.texture.is_valid() ? texture_owner.get(run.texture) : NULL;
+		if (run.texture.is_valid() && !texture)
+			continue;
+		_apply_texture_state(texture);
+		if (texture) {
+			Size2 uv = texture->uv_size();
+			_canvas_set_vscale(1.0f / 8, 1.0f / 8, 1.0f / (16 * uv.width), 1.0f / (16 * uv.height));
+		} else {
+			_canvas_set_vscale(1.0f / 8, 1.0f / 8, 0, 0);
+		}
+		const Color &c = run.modulate;
+		C3D_FixedAttribSet(2, c.r * m.r, c.g * m.g, c.b * m.b, c.a * m.a * canvas_opacity);
+		C3D_DrawElements(GPU_TRIANGLES, run.quad_count * 6, C3D_UNSIGNED_SHORT, quad_indices + run.first_quad * 6);
+		_count_draw(run.quad_count * 4);
+	}
+	return true;
 }
 
 void RasterizerCitro3d::_texture_release(C3D_Tex &p_tex)
@@ -2584,12 +2749,10 @@ void RasterizerCitro3d::canvas_begin()
 	_set_uniform(canvas_shader->location_modelview, Matrix32());
 	_set_uniform(canvas_shader->location_extra, Matrix32());
 	
-	C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
-	AttrInfo_Init(attrInfo);
-	AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0=position
-	AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 2); // v1=texcoord
-	AttrInfo_AddFixed(attrInfo, 2); // v2=color
-	canvas_vertex_colors = false;
+	// Other code (3D) may have changed the attributes and uniforms: set them again.
+	canvas_vertex_format = CVF_NONE;
+	canvas_vscale[0] = canvas_vscale[1] = canvas_vscale[2] = canvas_vscale[3] = -1;
+	_canvas_set_vertex_format(CVF_FLOAT);
 
 	// Polygons and lines come in any winding: never cull in 2D.
 	C3D_CullFace(GPU_CULL_NONE);
@@ -3064,18 +3227,43 @@ void RasterizerCitro3d::_canvas_set_vertex_colors(bool p_enable)
 {
 	// v2 (color) is a fixed attribute (C3D_FixedAttribSet) for most 2D draws, and a per-vertex
 	// array only for gradients / vertex-colored polygons.
-	if (canvas_vertex_colors == p_enable)
+	_canvas_set_vertex_format(p_enable ? CVF_FLOAT_COLOR : CVF_FLOAT);
+}
+
+void RasterizerCitro3d::_canvas_set_vertex_format(int p_format)
+{
+	if (canvas_vertex_format == p_format)
 		return;
 
 	C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
 	AttrInfo_Init(attrInfo);
-	AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0=position
-	AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 2); // v1=texcoord
-	if (p_enable)
-		AttrInfo_AddLoader(attrInfo, 2, GPU_FLOAT, 4); // v2=color, per vertex
-	else
+	if (p_format == CVF_FIXED16) {
+		AttrInfo_AddLoader(attrInfo, 0, GPU_SHORT, 2); // v0=position (1/8 px)
+		AttrInfo_AddLoader(attrInfo, 1, GPU_SHORT, 2); // v1=texcoord (1/16 texel)
 		AttrInfo_AddFixed(attrInfo, 2); // v2=color, fixed
-	canvas_vertex_colors = p_enable;
+	} else {
+		AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0=position
+		AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 2); // v1=texcoord
+		if (p_format == CVF_FLOAT_COLOR)
+			AttrInfo_AddLoader(attrInfo, 2, GPU_FLOAT, 4); // v2=color, per vertex
+		else
+			AttrInfo_AddFixed(attrInfo, 2); // v2=color, fixed
+		// Float vertices are already in pixels and normalized texcoords.
+		_canvas_set_vscale(1, 1, 1, 1);
+	}
+	canvas_vertex_format = p_format;
+}
+
+void RasterizerCitro3d::_canvas_set_vscale(float p_x, float p_y, float p_u, float p_v)
+{
+	if (canvas_vscale[0] == p_x && canvas_vscale[1] == p_y && canvas_vscale[2] == p_u && canvas_vscale[3] == p_v)
+		return;
+	canvas_vscale[0] = p_x;
+	canvas_vscale[1] = p_y;
+	canvas_vscale[2] = p_u;
+	canvas_vscale[3] = p_v;
+	if (canvas_shader->location_vscale >= 0)
+		C3D_FVUnifSet(GPU_VERTEX_SHADER, canvas_shader->location_vscale, p_x, p_y, p_u, p_v);
 }
 
 RasterizerCitro3d::Texture* RasterizerCitro3d::_canvas_setup_texenv(const RID& p_texture)
@@ -3345,21 +3533,21 @@ void RasterizerCitro3d::_canvas_item_render_commands(CanvasItem *p_item,CanvasIt
 			case CanvasItem::Command::TYPE_RECT: {
 
 				CanvasItem::CommandRect* rect = static_cast<CanvasItem::CommandRect*>(c);
-//						canvas_draw_rect(rect->rect,rect->region,rect->source,rect->flags&CanvasItem::CommandRect::FLAG_TILE,rect->flags&CanvasItem::CommandRect::FLAG_FLIP_H,rect->flags&CanvasItem::CommandRect::FLAG_FLIP_V,rect->texture,rect->modulate);
+//						canvas_draw_rect(rect->rect,rect->region,rect->source,rect->flags&CANVAS_RECT_TILE,rect->flags&CANVAS_RECT_FLIP_H,rect->flags&CANVAS_RECT_FLIP_V,rect->texture,rect->modulate);
 #if 0
 				int flags=0;
 
-				if (rect->flags&CanvasItem::CommandRect::FLAG_REGION) {
+				if (rect->flags&CANVAS_RECT_REGION) {
 					flags|=Rasterizer::CANVAS_RECT_REGION;
 				}
-				if (rect->flags&CanvasItem::CommandRect::FLAG_TILE) {
+				if (rect->flags&CANVAS_RECT_TILE) {
 					flags|=Rasterizer::CANVAS_RECT_TILE;
 				}
-				if (rect->flags&CanvasItem::CommandRect::FLAG_FLIP_H) {
+				if (rect->flags&CANVAS_RECT_FLIP_H) {
 
 					flags|=Rasterizer::CANVAS_RECT_FLIP_H;
 				}
-				if (rect->flags&CanvasItem::CommandRect::FLAG_FLIP_V) {
+				if (rect->flags&CANVAS_RECT_FLIP_V) {
 
 					flags|=Rasterizer::CANVAS_RECT_FLIP_V;
 				}
@@ -3563,8 +3751,10 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 
 		canvas_opacity = ci->final_opacity;
 		
-		if (unshaded || (p_modulate.a>0.001 && (!material || material->shading_mode!=VS::CANVAS_ITEM_SHADING_ONLY_LIGHT) && !ci->light_masked ))
-			_canvas_item_render_commands<false>(ci, current_clip, reclip);
+		if (unshaded || (p_modulate.a>0.001 && (!material || material->shading_mode!=VS::CANVAS_ITEM_SHADING_ONLY_LIGHT) && !ci->light_masked )) {
+			if (!_canvas_draw_cached(ci))
+				_canvas_item_render_commands<false>(ci, current_clip, reclip);
+		}
 		
 		if (reclip)
 		{
@@ -5257,6 +5447,19 @@ void RasterizerCitro3d::init()
 	vertex_ring = (uint8_t *)linearAlloc(VERTEX_RING_SIZE);
 	draw_next_frame = false;
 
+	// Shared index buffer for retained quads: quad q uses vertices 4q..4q+3.
+	quad_indices = (uint16_t *)linearAlloc(sizeof(uint16_t) * 6 * CANVAS_CACHE_MAX_QUADS);
+	if (quad_indices) {
+		for (int q = 0; q < CANVAS_CACHE_MAX_QUADS; q++) {
+			uint16_t *i = quad_indices + q * 6;
+			uint16_t b = q * 4;
+			i[0] = b; i[1] = b + 1; i[2] = b + 2;
+			i[3] = b; i[4] = b + 2; i[5] = b + 3;
+		}
+		GSPGPU_FlushDataCache(quad_indices, sizeof(uint16_t) * 6 * CANVAS_CACHE_MAX_QUADS);
+	}
+	CanvasItem::rasterizer_cache_free = &RasterizerCitro3d::_canvas_cache_free_deferred;
+
 	canvas_shader = memnew(Shader);
 	canvas_shader->set_data(shader_builtin_2d, sizeof(shader_builtin_2d));
 	
@@ -5430,7 +5633,9 @@ RasterizerCitro3d::RasterizerCitro3d()
 	cmdbuf_full_warned = false;
 	canvas_screen = 0;
 	canvas_modulate = Color(1, 1, 1, 1);
-	canvas_vertex_colors = false;
+	canvas_vertex_format = CVF_NONE;
+	canvas_vscale[0] = canvas_vscale[1] = canvas_vscale[2] = canvas_vscale[3] = -1;
+	quad_indices = NULL;
 	canvas_opacity = 1.0;
 	
 };
