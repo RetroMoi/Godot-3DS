@@ -440,7 +440,10 @@ Address: 0x0010366c   Error code: 0xd8606408
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
 
-**Bugs antigos do 2.1 conhecidos (não corrigidos):** `bool / 0` e `bool % 0` derrubam o programa (SIGFPE); `substr` com 1 argumento derruba o template release (índice fora em `default_args`).
+**Bugs antigos do 2.1:**
+- Corrigidos em release (antes só checados em debug): método inexistente num tipo que não é objeto (ex.: método em `null`) dava *data abort* em `Variant::call_ptr` (FAR 0x1C); chamar método built-in com argumentos de menos (ex.: `substr(1)`) lia `default_args` fora do vetor. Agora os dois viram erro de script ("Nonexistent function 'x' in base 'Nil'"; "Expected 2 arguments") e o jogo segue.
+- Ainda não corrigidos: `bool / 0` e `bool % 0` derrubam o programa (SIGFPE).
+- Em release, o erro de script aparece na saída de depuração (no Azahar, no log; no harness, com `LR_VERBOSE=1`). A linha mostrada é a do início da função; no PC (editor/debug) aparece a linha exata.
 
 **Itens possíveis da engine (ainda não pedidos):**
 - VM: constantes de classe resolvidas na carga; entrada de função mais barata (~970 instruções vazia).

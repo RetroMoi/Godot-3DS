@@ -91,14 +91,14 @@ struct _VariantCall {
 #endif
 					if (p_argcount < arg_count) {
 				int def_argcount = default_args.size();
-#ifdef DEBUG_ENABLED
+				// Checked in release builds too: missing arguments without defaults would read
+				// default_args out of bounds (e.g. "text".substr(1)).
 				if (p_argcount < (arg_count - def_argcount)) {
 					r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
 					r_error.argument = arg_count - def_argcount;
 					return;
 				}
 
-#endif
 				ERR_FAIL_COND(p_argcount > VARIANT_ARG_MAX);
 				const Variant *newargs[VARIANT_ARG_MAX];
 				for (int i = 0; i < p_argcount; i++)
@@ -1016,12 +1016,12 @@ void Variant::call_ptr(const StringName &p_method, const Variant **p_args, int p
 		r_error.error = Variant::CallError::CALL_OK;
 
 		Map<StringName, _VariantCall::FuncData>::Element *E = _VariantCall::type_funcs[type].functions.find(p_method);
-#ifdef DEBUG_ENABLED
+		// Checked in release builds too: a method that does not exist for this type (or any
+		// method on null) is a script error, not a crash.
 		if (!E) {
 			r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 			return;
 		}
-#endif
 		_VariantCall::FuncData &funcdata = E->get();
 		funcdata.call(ret, *this, p_args, p_argcount, r_error);
 	}
