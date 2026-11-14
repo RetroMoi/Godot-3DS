@@ -2061,7 +2061,11 @@ void RasterizerCitro3d::begin_frame()
 	scaled_time += time_delta;
 	last_time=time;
 	frame++;
+	uint64_t t0 = svcGetSystemTick();
 	C3D_FrameBegin(0);
+	stat_frame_begin_tick = svcGetSystemTick();
+	stat_gpu_wait_ticks = stat_frame_begin_tick - t0;
+	stat_draw_calls = stat_vertices = stat_items = 0;
 
 	// C3D_FrameBegin waits for the GPU to finish the previous frame: only now is it safe to free
 	// the vertex buffers it drew from and the textures deleted since then.
@@ -2070,6 +2074,7 @@ void RasterizerCitro3d::begin_frame()
 
 void RasterizerCitro3d::_free_frame_resources()
 {
+	vertex_ring_used = 0;
 	VertexArray **varray = vertexArrays.ptr();
 	for (int i = 0; i < vertexArrays.size(); ++i)
 		memdelete(*varray++);
@@ -2290,7 +2295,14 @@ void RasterizerCitro3d::end_shadow_map() {
 void RasterizerCitro3d::end_frame()
 {
 	_batch_flush();
+	stat_cmdbuf_usage = C3D_GetCmdBufUsage();
 	C3D_FrameEnd(GX_CMDLIST_UPDATE_GAS_ACC);
+	last_frame_stats.draw_calls = stat_draw_calls;
+	last_frame_stats.vertices = stat_vertices;
+	last_frame_stats.items = stat_items;
+	last_frame_stats.cmdbuf_usage = stat_cmdbuf_usage;
+	last_frame_stats.gpu_wait_ticks = stat_gpu_wait_ticks;
+	last_frame_stats.draw_ticks = svcGetSystemTick() - stat_frame_begin_tick; // up to the swap
 	cmdbuf_full_warned = false;
 	
 	print("end_frame %d %f\n", vertexArrays.size(), C3D_GetCmdBufUsage());
@@ -2740,18 +2752,32 @@ void RasterizerCitro3d::_batch_flush()
 	_apply_texture_state(batch_texture);
 	C3D_FixedAttribSet(2, batch_color.r, batch_color.g, batch_color.b, batch_color.a);
 
-	VertexArray *varray = memnew(VertexArray(count));
-	if (!varray->vertices) {
-		memdelete(varray);
-		ERR_FAIL();
-	}
-	memcpy(varray->vertices, batch_vertices, sizeof(Vertex) * count);
+	Vertex *vertices = (Vertex *)_alloc_frame_vertices(sizeof(Vertex) * count);
+	ERR_FAIL_COND(!vertices);
+	memcpy(vertices, batch_vertices, sizeof(Vertex) * count);
 
 	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
 	BufInfo_Init(bufInfo);
-	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
+	BufInfo_Add(bufInfo, vertices, sizeof(Vertex), 2, 0x10);
 	C3D_DrawArrays(GPU_TRIANGLES, 0, count);
+	_count_draw(count);
+}
+
+void *RasterizerCitro3d::_alloc_frame_vertices(size_t p_bytes)
+{
+	size_t start = (vertex_ring_used + 15) & ~(size_t)15;
+	if (vertex_ring && start + p_bytes <= VERTEX_RING_SIZE) {
+		vertex_ring_used = start + p_bytes;
+		return vertex_ring + start;
+	}
+	// Ring full this frame: a buffer of its own, freed at the next begin_frame.
+	VertexArray *varray = memnew(VertexArray(p_bytes, true));
+	if (!varray->vertices) {
+		memdelete(varray);
+		return NULL;
+	}
 	vertexArrays.push_back(varray);
+	return varray->vertices;
 }
 
 void RasterizerCitro3d::_canvas_scissor_off()
@@ -2834,12 +2860,9 @@ void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src
 	Size2 uv = p_texture->uv_size();
 	int count = nx * ny * 6;
 	_canvas_set_vertex_colors(false);
-	VertexArray *varray = memnew(VertexArray(count));
-	Vertex *v = varray->vertices;
-	if (!v) {
-		memdelete(varray);
-		ERR_FAIL();
-	}
+	Vertex *vertices = (Vertex *)_alloc_frame_vertices(sizeof(Vertex) * count);
+	ERR_FAIL_COND(!vertices);
+	Vertex *v = vertices;
 
 	for (int j = 0; j < ny; j++) {
 		float y0 = p_v_flip ? 1.0f - dy0[j] : dy0[j];
@@ -2870,10 +2893,11 @@ void RasterizerCitro3d::_draw_tiled_quad(const Rect2& p_rect, const Rect2& p_src
 
 	C3D_BufInfo* bufInfo = C3D_GetBufInfo();
 	BufInfo_Init(bufInfo);
-	BufInfo_Add(bufInfo, varray->vertices, sizeof(Vertex), 2, 0x10);
-	if (_cmdbuf_has_room())
+	BufInfo_Add(bufInfo, vertices, sizeof(Vertex), 2, 0x10);
+	if (_cmdbuf_has_room()) {
 		C3D_DrawArrays(GPU_TRIANGLES, 0, count);
-	vertexArrays.push_back(varray);
+		_count_draw(count);
+	}
 }
 
 void RasterizerCitro3d::canvas_draw_style_box(const Rect2& p_rect, const Rect2& p_src_region, RID p_texture,const float *p_margin, bool p_draw_center,const Color& p_modulate)
@@ -3053,15 +3077,9 @@ void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int 
 	if (p_texture && p_texture->tex.width && p_texture->tex.height)
 		uv_scale = Vector2(p_texture->width, p_texture->height) / p_texture->uv_size();
 
-	VertexArray *varray;
-
 	if (p_colors) {
-		varray = memnew(VertexArray(sizeof(ColorVertex) * p_count, true));
-		ColorVertex *v = reinterpret_cast<ColorVertex*>(varray->vertices);
-		if (!v) {
-			memdelete(varray);
-			ERR_FAIL();
-		}
+		ColorVertex *v = (ColorVertex *)_alloc_frame_vertices(sizeof(ColorVertex) * p_count);
+		ERR_FAIL_COND(!v);
 		for (int i = 0; i < p_count; i++) {
 			int idx = p_indices ? p_indices[i] : i;
 			v[i].position[0] = p_points[idx].x;
@@ -3081,12 +3099,8 @@ void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int 
 		BufInfo_Init(bufInfo);
 		BufInfo_Add(bufInfo, v, sizeof(ColorVertex), 3, 0x210);
 	} else {
-		varray = memnew(VertexArray(p_count));
-		Vertex *v = varray->vertices;
-		if (!v) {
-			memdelete(varray);
-			ERR_FAIL();
-		}
+		Vertex *v = (Vertex *)_alloc_frame_vertices(sizeof(Vertex) * p_count);
+		ERR_FAIL_COND(!v);
 		for (int i = 0; i < p_count; i++) {
 			int idx = p_indices ? p_indices[i] : i;
 			v[i].position = Vector3(p_points[idx].x, p_points[idx].y, 0.5f);
@@ -3099,9 +3113,10 @@ void RasterizerCitro3d::_draw_canvas_triangles(GPU_Primitive_t p_primitive, int 
 		BufInfo_Add(bufInfo, v, sizeof(Vertex), 2, 0x10);
 	}
 
-	if (_cmdbuf_has_room())
+	if (_cmdbuf_has_room()) {
 		C3D_DrawArrays(p_primitive, 0, p_count);
-	vertexArrays.push_back(varray);
+		_count_draw(p_count);
+	}
 }
 
 RasterizerCitro3d::Texture* RasterizerCitro3d::_bind_texture(const RID& p_texture)
@@ -3415,6 +3430,34 @@ void RasterizerCitro3d::_canvas_item_render_commands(CanvasItem *p_item,CanvasIt
 
 }
 
+void RasterizerCitro3d::set_layer_screens(int p_layer, int p_screens)
+{
+	if (p_screens == 3)
+		layer_screens.erase(p_layer);
+	else
+		layer_screens[p_layer] = p_screens & 3;
+}
+
+int RasterizerCitro3d::get_layer_screens(int p_layer) const
+{
+	const Map<int, int>::Element *E = layer_screens.find(p_layer);
+	return E ? E->get() : 3;
+}
+
+Rect2 RasterizerCitro3d::canvas_begin_layer(int p_layer, const Rect2 &p_area)
+{
+	canvas_layer_screens = 3;
+	if (!dual_screen || current_rt)
+		return p_area;
+	canvas_layer_screens = get_layer_screens(p_layer);
+	switch (canvas_layer_screens) {
+		case 0: return Rect2(); // hidden
+		case 1: return _screen_region(0);
+		case 2: return _screen_region(1);
+		default: return p_area;
+	}
+}
+
 void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,const Color& p_modulate,CanvasLight *p_light)
 {
 	canvas_modulate = p_modulate;
@@ -3423,6 +3466,8 @@ void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,cons
 		// The 400x480 canvas is drawn once per screen, each with its own projection, scissor and
 		// culling. Bottom first, so the top screen is current afterwards like in single mode.
 		for (int s = 1; s >= 0; s--) {
+			if (!(canvas_layer_screens & (1 << s)))
+				continue; // this layer is not shown on this screen
 			_canvas_draw_on_screen(s);
 			Rect2 region = _screen_region(s);
 			_canvas_render_item_list(p_item_list, p_modulate, &region);
@@ -3446,6 +3491,7 @@ void RasterizerCitro3d::_canvas_render_item_list(CanvasItem *p_item_list, const 
 		// Not on this screen.
 		if (p_cull && !p_cull->intersects(ci->global_rect_cache))
 			continue;
+		stat_items++;
 
 		// Handle clipping (scissor test)
 		if (current_clip != ci->final_clip_owner)
@@ -5166,6 +5212,7 @@ void RasterizerCitro3d::init()
 	print("citro init ");
 	// 1 MB of GPU commands per frame (default 256 KB): two screens of tiles and text.
 	C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
+	vertex_ring = (uint8_t *)linearAlloc(VERTEX_RING_SIZE);
 	draw_next_frame = false;
 
 	canvas_shader = memnew(Shader);
@@ -5238,6 +5285,10 @@ void RasterizerCitro3d::finish()
 	}
 	
 	_free_frame_resources();
+	if (vertex_ring) {
+		linearFree(vertex_ring);
+		vertex_ring = NULL;
+	}
 	C3D_Fini();
 }
 
@@ -5314,11 +5365,21 @@ void RasterizerCitro3d::restore_framebuffer()
 	C3D_SetFrameBuf(&base_framebuffer->target->frameBuf);
 }
 
+RasterizerCitro3d *RasterizerCitro3d::singleton = NULL;
+
 RasterizerCitro3d::RasterizerCitro3d()
 : current_rt (NULL)
 {
 	dual_screen = false;
 	bottom_framebuffer = NULL;
+	singleton = this;
+	vertex_ring = NULL;
+	vertex_ring_used = 0;
+	canvas_layer_screens = 3;
+	stat_draw_calls = stat_vertices = stat_items = 0;
+	stat_frame_begin_tick = stat_gpu_wait_ticks = stat_draw_ticks = 0;
+	stat_cmdbuf_usage = 0;
+	memset(&last_frame_stats, 0, sizeof(last_frame_stats));
 	batch_vertices = (Vertex *)memalloc(sizeof(Vertex) * MAX_BATCH_VERTICES);
 	batch_count = 0;
 	batch_texture = NULL;

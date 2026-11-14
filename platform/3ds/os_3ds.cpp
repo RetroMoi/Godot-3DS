@@ -218,7 +218,11 @@ void OS_3DS::run()
 		processInput();
 		_dispatch_apt_events();
 
-		if (Main::iteration()==true)
+		uint64_t frame_start = svcGetSystemTick();
+		vblank_ticks = 0;
+		bool quit = Main::iteration();
+		platform_3ds->record_frame(svcGetSystemTick() - frame_start, vblank_ticks);
+		if (quit)
 			break;
 		
 		//printf("fps:%f\n", get_frames_per_second());
@@ -581,8 +585,11 @@ void OS_3DS::swap_buffers()
 {
  	//gfxFlushBuffers();
 	gfxSwapBuffersGpu();
-	if (use_vsync)
+	if (use_vsync) {
+		uint64_t t = svcGetSystemTick();
 		gspWaitForVBlank();
+		vblank_ticks += svcGetSystemTick() - t;
+	}
 }
 
 int OS_3DS::get_processor_count() const

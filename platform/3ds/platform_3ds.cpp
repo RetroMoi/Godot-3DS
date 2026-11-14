@@ -30,6 +30,7 @@
 
 #include <malloc.h>
 #include "os/os.h"
+#include "drivers/3ds/citro3d/rasterizer_citro3d.h"
 
 extern "C" {
 #include <3ds/types.h>
@@ -115,7 +116,65 @@ uint64_t Platform3DS::get_ticks_usec() const {
 	return OS::get_singleton()->get_ticks_usec();
 }
 
+void Platform3DS::set_canvas_layer_screens(int p_layer, int p_screens) {
+	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
+	ERR_FAIL_COND(!r);
+	r->set_layer_screens(p_layer, p_screens);
+}
+
+int Platform3DS::get_canvas_layer_screens(int p_layer) const {
+	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
+	return r ? r->get_layer_screens(p_layer) : SCREEN_BOTH;
+}
+
+static inline float _ticks_to_ms(uint64_t p_ticks) {
+	return p_ticks / (SYSCLOCK_ARM11 / 1000.0f);
+}
+
+void Platform3DS::record_frame(uint64_t p_frame_ticks, uint64_t p_vblank_ticks) {
+	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
+	if (!r)
+		return;
+	const RasterizerCitro3d::FrameStats &fs = r->last_frame_stats;
+	float frame = _ticks_to_ms(p_frame_ticks);
+	float gpu = _ticks_to_ms(fs.gpu_wait_ticks);
+	float draw = _ticks_to_ms(fs.draw_ticks);
+	float vblank = _ticks_to_ms(p_vblank_ticks);
+	float logic = MAX(frame - gpu - draw - vblank, 0.0f);
+	const float a = 0.1f;
+	frame_ms += (frame - frame_ms) * a;
+	logic_ms += (logic - logic_ms) * a;
+	draw_ms += (draw - draw_ms) * a;
+	gpu_wait_ms += (gpu - gpu_wait_ms) * a;
+	vblank_ms += (vblank - vblank_ms) * a;
+}
+
+Dictionary Platform3DS::get_frame_stats() const {
+	Dictionary d;
+	d["frame_ms"] = frame_ms;
+	d["logic_ms"] = logic_ms;
+	d["draw_ms"] = draw_ms;
+	d["gpu_wait_ms"] = gpu_wait_ms;
+	d["vblank_ms"] = vblank_ms;
+	RasterizerCitro3d *r = RasterizerCitro3d::get_singleton();
+	if (r) {
+		const RasterizerCitro3d::FrameStats &fs = r->last_frame_stats;
+		d["draw_calls"] = (int)fs.draw_calls;
+		d["vertices"] = (int)fs.vertices;
+		d["items"] = (int)fs.items;
+		d["cmdbuf_percent"] = (int)(fs.cmdbuf_usage * 100.0f);
+	}
+	return d;
+}
+
 void Platform3DS::_bind_methods() {
+	ObjectTypeDB::bind_method(_MD("set_canvas_layer_screens", "layer", "screens"), &Platform3DS::set_canvas_layer_screens);
+	ObjectTypeDB::bind_method(_MD("get_canvas_layer_screens", "layer"), &Platform3DS::get_canvas_layer_screens);
+	ObjectTypeDB::bind_method(_MD("get_frame_stats"), &Platform3DS::get_frame_stats);
+	BIND_CONSTANT(SCREEN_NONE);
+	BIND_CONSTANT(SCREEN_TOP);
+	BIND_CONSTANT(SCREEN_BOTTOM);
+	BIND_CONSTANT(SCREEN_BOTH);
 	ObjectTypeDB::bind_method(_MD("get_memory_info"), &Platform3DS::get_memory_info);
 	ObjectTypeDB::bind_method(_MD("is_new_3ds"), &Platform3DS::is_new_3ds);
 	ObjectTypeDB::bind_method(_MD("set_cpu_speedup", "enabled"), &Platform3DS::set_cpu_speedup);
@@ -130,6 +189,7 @@ Platform3DS::Platform3DS() {
 	linear_peak = 0;
 	vram_peak = 0;
 	cpu_speedup = true; // OS_3DS enables it at startup
+	frame_ms = logic_ms = draw_ms = gpu_wait_ms = vblank_ms = 0;
 }
 
 Platform3DS::~Platform3DS() {

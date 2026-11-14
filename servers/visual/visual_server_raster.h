@@ -580,6 +580,11 @@ class VisualServerRaster : public VisualServer {
 	bool shadows_enabled;
 	int black_margin[4];
 
+	// Canvas layer being drawn, and the area its items are culled against (see
+	// Rasterizer::canvas_begin_layer), in the same coordinates as the clip rect.
+	int canvas_layer_current;
+	Rect2 canvas_cull_rect;
+
 public:
 	// Nintendo 3DS dual screen layout (display/3ds_dual_screen) while running the game, not the
 	// editor: the boot splash goes on the top screen, and on the PC the parts of the 400x480 area

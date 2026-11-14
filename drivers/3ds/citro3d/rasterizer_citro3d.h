@@ -46,6 +46,7 @@
 extern "C" {
 #include <3ds/types.h>
 #include <3ds/gpu/gpu.h>
+#include <3ds/svc.h>
 #include <3ds/gfx.h>
 #include <3ds/gpu/gx.h>
 #include <3ds/gpu/shaderProgram.h>
@@ -912,6 +913,41 @@ class RasterizerCitro3d : public Rasterizer {
 	// The GPU command buffer is fixed per frame: past the limit, libctru stops the program.
 	bool cmdbuf_full_warned;
 	bool _cmdbuf_has_room();
+
+	// Per-frame vertex memory: one linear buffer, reset at begin_frame (the GPU is done with
+	// the previous frame by then), instead of a linearAlloc per draw.
+	enum { VERTEX_RING_SIZE = 1024 * 1024 };
+	uint8_t *vertex_ring;
+	size_t vertex_ring_used;
+	void *_alloc_frame_vertices(size_t p_bytes);
+
+	// Dual screen: which screens each canvas layer is drawn on (bit 0 top, bit 1 bottom).
+	Map<int, int> layer_screens;
+	int canvas_layer_screens;
+
+	// Frame statistics (Platform3DS.get_frame_stats).
+	uint32_t stat_draw_calls, stat_vertices, stat_items;
+	uint64_t stat_frame_begin_tick, stat_gpu_wait_ticks, stat_draw_ticks;
+	float stat_cmdbuf_usage;
+	void _count_draw(int p_vertices) { stat_draw_calls++; stat_vertices += p_vertices; }
+
+	static RasterizerCitro3d *singleton;
+
+public:
+	struct FrameStats {
+		uint32_t draw_calls, vertices, items;
+		uint64_t draw_ticks, gpu_wait_ticks;
+		float cmdbuf_usage;
+	};
+	FrameStats last_frame_stats;
+	static RasterizerCitro3d *get_singleton() { return singleton; }
+
+	// Dual screen mode: draw canvas layer p_layer only on these screens (1 top, 2 bottom, 3 both).
+	void set_layer_screens(int p_layer, int p_screens);
+	int get_layer_screens(int p_layer) const;
+	virtual Rect2 canvas_begin_layer(int p_layer, const Rect2 &p_area);
+
+private:
 	void _draw_canvas_triangles(GPU_Primitive_t p_primitive, int p_count, const int *p_indices, const Vector2 *p_points, const Vector2 *p_uvs, const Texture *p_texture, const Color *p_colors);
 	bool canvas_vertex_colors;
 	void _draw_textured_quad(const Rect2& p_rect, const Rect2& p_src_region, const Size2& p_tex_size,bool p_h_flip=false, bool p_v_flip=false, bool p_transpose=false);

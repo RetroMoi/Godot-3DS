@@ -964,6 +964,10 @@ public:
 
 	virtual void begin_canvas_bg() = 0;
 	virtual void canvas_begin() = 0;
+	// Called before each canvas layer is drawn, with the viewport area. A rasterizer may return
+	// a smaller area that the layer is visible in (Nintendo 3DS: only the screens it is shown
+	// on), so the items outside it are skipped.
+	virtual Rect2 canvas_begin_layer(int p_layer, const Rect2 &p_area) { return p_area; }
 	virtual void canvas_disable_blending() = 0;
 	virtual void canvas_set_opacity(float p_opacity) = 0;
 	virtual void canvas_set_blend_mode(VS::MaterialBlendMode p_mode) = 0;

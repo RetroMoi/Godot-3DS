@@ -6388,6 +6388,24 @@ void VisualServerRaster::_render_canvas_item(CanvasItem *p_canvas_item, const Ma
 
 	if (ci->sort_y) {
 
+		// Children without children of their own that are outside the visible area are dropped
+		// before sorting: a Y-sorted TileMap has hundreds or thousands of them, and sorting and
+		// visiting all of them every frame is too slow on small CPUs (Nintendo 3DS).
+		int visible_count = 0;
+		for (int i = 0; i < child_item_count; i++) {
+			CanvasItem *c = child_items[i];
+			if (c->child_items.empty() && !c->copy_back_buffer && !c->viewport.is_valid()) {
+				if (!c->visible)
+					continue;
+				Rect2 r = (xform * c->xform).xform(c->get_rect());
+				r.pos += p_clip_rect.pos;
+				if (!canvas_cull_rect.intersects(r))
+					continue;
+			}
+			child_items[visible_count++] = c;
+		}
+		child_item_count = visible_count;
+
 		SortArray<CanvasItem *, CanvasItemPtrSort> sorter;
 		sorter.sort(child_items, child_item_count);
 	}
@@ -6409,7 +6427,7 @@ void VisualServerRaster::_render_canvas_item(CanvasItem *p_canvas_item, const Ma
 		ci->copy_back_buffer->screen_rect = xform.xform(ci->copy_back_buffer->rect).clip(p_clip_rect);
 	}
 
-	if ((!ci->commands.empty() && p_clip_rect.intersects(global_rect)) || ci->vp_render || ci->copy_back_buffer) {
+	if ((!ci->commands.empty() && canvas_cull_rect.intersects(global_rect)) || ci->vp_render || ci->copy_back_buffer) {
 		//something to draw?
 		ci->final_transform = xform;
 		ci->final_opacity = opacity * ci->self_opacity;
@@ -6478,6 +6496,8 @@ void VisualServerRaster::_render_canvas(Canvas *p_canvas, const Matrix32 &p_tran
 	}
 
 	Rect2 clip_rect(viewport_rect.x, viewport_rect.y, viewport_rect.width, viewport_rect.height);
+	canvas_cull_rect = rasterizer->canvas_begin_layer(canvas_layer_current, Rect2(0, 0, viewport_rect.width, viewport_rect.height));
+	canvas_cull_rect.pos += clip_rect.pos;
 	if (!has_mirror) {
 
 		static const int z_range = CANVAS_ITEM_Z_MAX - CANVAS_ITEM_Z_MIN + 1;
@@ -6738,6 +6758,7 @@ void VisualServerRaster::_draw_viewport(Viewport *p_viewport, int p_ofs_x, int p
 				ptr = ptr->filter_next_ptr;
 			}
 
+			canvas_layer_current = E->key().layer;
 			_render_canvas(E->get()->canvas, xform, canvas_lights, lights_with_mask);
 			i++;
 
@@ -7123,6 +7144,7 @@ VisualServerRaster::VisualServerRaster(Rasterizer *p_rasterizer) {
 	clear_color = Color(0.3, 0.3, 0.3, 1.0);
 	OctreeAllocator::allocator = &octree_allocator;
 	draw_extra_frame = false;
+	canvas_layer_current = 0;
 }
 
 VisualServerRaster::~VisualServerRaster() {

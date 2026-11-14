@@ -44,6 +44,9 @@ class Platform3DS : public Object {
 	mutable uint32_t vram_peak;
 	bool cpu_speedup;
 
+	// Frame timing, smoothed (exponential moving average), in milliseconds.
+	float frame_ms, logic_ms, draw_ms, gpu_wait_ms, vblank_ms;
+
 protected:
 	static void _bind_methods();
 
@@ -73,6 +76,26 @@ public:
 
 	// Microsecond timer (OS.get_ticks_usec is not exposed to scripts in 2.1).
 	uint64_t get_ticks_usec() const;
+
+	enum {
+		SCREEN_NONE = 0,
+		SCREEN_TOP = 1,
+		SCREEN_BOTTOM = 2,
+		SCREEN_BOTH = 3,
+	};
+
+	// Dual screen mode: draw canvas layer p_layer (0 = the world, CanvasLayer nodes = their
+	// "layer") only on these screens. Default: both.
+	void set_canvas_layer_screens(int p_layer, int p_screens);
+	int get_canvas_layer_screens(int p_layer) const;
+
+	// Where the frame time goes (ms, smoothed): frame_ms, logic_ms (scripts, physics, scene),
+	// draw_ms (visual server + renderer, CPU), gpu_wait_ms (waiting for the GPU to finish the
+	// previous frame), vblank_ms (waiting for the screen refresh), plus the last frame's
+	// draw_calls, vertices, items (canvas items drawn) and cmdbuf_percent.
+	Dictionary get_frame_stats() const;
+	// Called by OS_3DS after each frame.
+	void record_frame(uint64_t p_frame_ticks, uint64_t p_vblank_ticks);
 
 	Platform3DS();
 	~Platform3DS();

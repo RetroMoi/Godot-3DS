@@ -187,7 +187,11 @@ private:
 	void _update_all_items_material_state();
 	_FORCE_INLINE_ void _update_item_material_state(const RID &p_canvas_item);
 
-	_FORCE_INLINE_ int _get_quadrant_size() const;
+	// Quadrant size in cells, horizontally and vertically. In Y-sort mode quadrants are one
+	// row high (square mode: every cell of a row sorts at the same Y), so a sorted TileMap
+	// has a few hundred items instead of one per cell.
+	_FORCE_INLINE_ int _get_quadrant_size_x() const;
+	_FORCE_INLINE_ int _get_quadrant_size_y() const;
 
 	void _set_tile_data(const DVector<int> &p_data);
 	DVector<int> _get_tile_data() const;

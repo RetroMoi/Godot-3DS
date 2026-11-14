@@ -34,12 +34,19 @@
 #include "os/os.h"
 #include "servers/physics_2d_server.h"
 
-int TileMap::_get_quadrant_size() const {
+int TileMap::_get_quadrant_size_x() const {
+
+	// Y-sort in isometric/custom modes: a map row is not one screen Y, one cell per quadrant.
+	if (y_sort_mode && mode != MODE_SQUARE)
+		return 1;
+	return quadrant_size;
+}
+
+int TileMap::_get_quadrant_size_y() const {
 
 	if (y_sort_mode)
 		return 1;
-	else
-		return quadrant_size;
+	return quadrant_size;
 }
 
 void TileMap::_notification(int p_what) {
@@ -624,10 +631,11 @@ void TileMap::_recompute_rect_cache() {
 	for (Map<PosKey, Quadrant>::Element *E = quadrant_map.front(); E; E = E->next()) {
 
 		Rect2 r;
-		r.pos = _map_to_world(E->key().x * _get_quadrant_size(), E->key().y * _get_quadrant_size());
-		r.expand_to(_map_to_world(E->key().x * _get_quadrant_size() + _get_quadrant_size(), E->key().y * _get_quadrant_size()));
-		r.expand_to(_map_to_world(E->key().x * _get_quadrant_size() + _get_quadrant_size(), E->key().y * _get_quadrant_size() + _get_quadrant_size()));
-		r.expand_to(_map_to_world(E->key().x * _get_quadrant_size(), E->key().y * _get_quadrant_size() + _get_quadrant_size()));
+		int qx = _get_quadrant_size_x(), qy = _get_quadrant_size_y();
+		r.pos = _map_to_world(E->key().x * qx, E->key().y * qy);
+		r.expand_to(_map_to_world(E->key().x * qx + qx, E->key().y * qy));
+		r.expand_to(_map_to_world(E->key().x * qx + qx, E->key().y * qy + qy));
+		r.expand_to(_map_to_world(E->key().x * qx, E->key().y * qy + qy));
 		if (E == quadrant_map.front())
 			r_total = r;
 		else
@@ -637,7 +645,7 @@ void TileMap::_recompute_rect_cache() {
 	if (r_total == Rect2()) {
 		rect_cache = Rect2(-10, -10, 20, 20);
 	} else {
-		rect_cache = r_total.grow(MAX(cell_size.x, cell_size.y) * _get_quadrant_size());
+		rect_cache = r_total.grow(MAX(cell_size.x, cell_size.y) * MAX(_get_quadrant_size_x(), _get_quadrant_size_y()));
 	}
 
 	item_rect_changed();
@@ -649,7 +657,7 @@ void TileMap::_recompute_rect_cache() {
 Map<TileMap::PosKey, TileMap::Quadrant>::Element *TileMap::_create_quadrant(const PosKey &p_qk) {
 
 	Quadrant q;
-	q.pos = _map_to_world(p_qk.x * _get_quadrant_size(), p_qk.y * _get_quadrant_size());
+	q.pos = _map_to_world(p_qk.x * _get_quadrant_size_x(), p_qk.y * _get_quadrant_size_y());
 	q.pos += get_cell_draw_offset();
 	if (tile_origin == TILE_ORIGIN_CENTER)
 		q.pos += cell_size / 2;
@@ -723,7 +731,7 @@ void TileMap::set_cell(int p_x, int p_y, int p_tile, bool p_flip_x, bool p_flip_
 	if (!E && p_tile == INVALID_CELL)
 		return; //nothing to do
 
-	PosKey qk(p_x / _get_quadrant_size(), p_y / _get_quadrant_size());
+	PosKey qk(p_x / _get_quadrant_size_x(), p_y / _get_quadrant_size_y());
 	if (p_tile == INVALID_CELL) {
 		//erase existing
 		tile_map.erase(pk);
@@ -821,7 +829,7 @@ void TileMap::_recreate_quadrants() {
 
 	for (Map<PosKey, Cell>::Element *E = tile_map.front(); E; E = E->next()) {
 
-		PosKey qk(E->key().x / _get_quadrant_size(), E->key().y / _get_quadrant_size());
+		PosKey qk(E->key().x / _get_quadrant_size_x(), E->key().y / _get_quadrant_size_y());
 
 		Map<PosKey, Quadrant>::Element *Q = quadrant_map.find(qk);
 		if (!Q) {

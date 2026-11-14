@@ -77,6 +77,7 @@ class OS_3DS : public OS {
 	Point2 touch_pos;
 	bool touch_pressed;
 	bool dual_screen;
+	uint64_t vblank_ticks; // time waiting for the screen refresh in this frame
 	int mouse_button_state;
 	Point2 _touch_to_canvas(int p_x, int p_y) const;
 	void _send_mouse_motion(const Point2 &p_pos, int p_button_mask);
