@@ -515,6 +515,33 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 **Dica para o jogo:** usando sempre o mesmo `ImageTexture` misturado, depois do primeiro passo (que aplica a textura nos tiles e chama `update()`) os passos seguintes só trocam os pixels, com o mesmo RID. Não precisa chamar `tile_set_texture` nem `update()` de novo, o que poupa a reconstrução dos quadrantes do TileMap. No fim, aplicar a variante destino e liberar a misturada.
 
+### 5.10 Troca de paleta: `PaletteTexture` (substitui o blend de imagens no dia/noite; `ed89634`, `fbe1b9e`)
+**Ideia (do usuário):** os 5 atlas do mapa são PNGs indexados com **o mesmo mapa de índices** (0 pixels diferentes) e paletas de 44 cores na mesma ordem (índice 0 transparente). Os `.hex` do jogo (commit `98c1202`, formato Lospec: uma cor `RRGGBB` por linha, linha N = índice N) batem cor por cor com as paletas dos PNGs. Misturar as paletas dá o mesmo resultado, pixel a pixel, que misturar as imagens.
+
+**Engine:**
+- **`PaletteTexture`** (`scene/resources/palette_texture.*`) é uma `Texture`, usável como textura dos tiles.
+  - Guarda no próprio recurso o mapa de índices e as paletas nomeadas, com as fontes.
+  - API: `set_palette`, `blend_palettes(de, para, t)` (pré-multiplicado onde o alfa difere), `set_colors`, `get/set_palette_colors`, `remove_palette`, `get_palette_names`, `get_data`, `create_from_sources(png, [paletas])`, `get_last_error`.
+  - O RID da textura na GPU nunca muda.
+- **Fontes das paletas:** `.hex` (`RRGGBB` ou `RRGGBBAA`; sem alfa, o alfa de cada índice vem do PNG) ou PNG indexado com o mesmo mapa de índices (a ferramenta acusa quantos pixels diferem). O nome vem do sufixo: `outside_atlas-dusk.hex` vira `dusk`, e o arquivo sem sufixo vira `base` e substitui a paleta do próprio PNG.
+- **Leitura do PNG:** o leitor expandia para RGBA todo PNG com paleta que tivesse tRNS. Agora há uma opção que mantém os índices (`Image::_png_load_indexed_func`). O carregamento normal das texturas não mudou.
+- **VisualServer:** `texture_set_palette_indices`/`texture_set_palette` e `FEATURE_PALETTE_TEXTURE`.
+  - No 3DS, o rasterizador guarda os índices já na ordem em blocos da GPU e escreve `paleta[índice]` direto na memória da textura. Depois da primeira passada, com nearest e clamp, reescreve só os blocos da imagem.
+  - No PC, o próprio recurso monta a imagem RGBA (o GLES2 não mudou).
+- **Editor:**
+  - **Importar > Palette Texture:** PNG indexado + `.hex`/PNGs, gravado em **`.res`** (só o binário guarda os metadados de reimportação), com as fontes em `res://`.
+  - **Menu do painel TileSet > "Use Palette Texture...":** troca nos tiles (e na grade do atlas) a textura PNG de origem pelo `PaletteTexture`, com desfazer.
+
+**Testes:**
+- Cada paleta reproduz exatamente o PNG da variante (diferença 0). A mistura bate com `create_from_blend` (até 1/255).
+- `.tres`/`.res` salvam e carregam. As mensagens de erro saem certas (PNG não indexado, `.hex` com cores de menos).
+- **Custo (Old 3DS emulado):** `blend_palettes` 0,76 ms, `set_palette` 0,73 ms, contra 6,3 ms do `create_from_blend`. No PC, ~0,04 ms.
+- **Jogo inteiro** (cópia no scratchpad, TileSet usando o `.res` e ciclo de paletas a cada quadro): 59–60 FPS; quadro com lógica 1,6–1,8 ms (mistura incluída) + desenho 2,3 ms. Memória: um mapa de índices (~30 KB) e uma textura, em vez de 5 PNGs e 5 texturas.
+
+**Para o jogo (Open):** ver as pendências.
+
+**Defeito do 2.1 visto nos testes:** `Image.convert(...)` chamado pelo GDScript numa imagem que já está no formato pedido trava. Evitar no jogo e nos testes.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -562,7 +589,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
 - Testar no console a exportação com "Visible Collision Shapes" (só testado no emulador) e, no editor, os ajustes do painel TileSet (prévia, Shape Settings, setas).
-- Open: trocar o estilo de transição `"fade"` por `"blend"` usando `ImageTexture.create_from_blend` (5.9), testar no PC e no 3DS e reexportar.
+- Open: migrar o dia/noite para o `PaletteTexture` (5.10). Importar > Palette Texture com `outside_atlas.png` e os 5 `.hex`, gerando `res://tileset/outside_palettes.res`; no painel TileSet, "Use Palette Texture..."; salvar o TileSet. No `day_night.gd`: tirar os `preload` dos PNGs, o pré-cálculo e o `set_data`; a transição chama `blend_palettes(de, para, t)` a cada quadro e termina com `set_palette(destino)`. Os nomes das paletas: `base` (dia), `mrng`, `dusk`, `night`, `latenight`. O `create_from_blend` (5.9) fica como alternativa para arte sem paleta.
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
 **Engine, próximo passo (combinado com o usuário):**
@@ -599,6 +626,8 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `fbe1b9e` | editor: Importar > Palette Texture; "Use Palette Texture..." no painel TileSet |
+| `ed89634` | `PaletteTexture`: índices + paletas nomeadas; troca/mistura de paleta sem reenviar imagem (3DS: escrita direta na textura) |
 | `19ad51e` | CI: actions em Node 24 (`checkout@v5`, `upload-artifact@v7`, `download-artifact@v8`); some o aviso de Node 20 |
 | `f9aff17` | editor de TileSet: shape de colisão editada arrastando na prévia; "+ Rect Shape" |
 | `021cb82` | TileSet: camadas de dados customizados; `TileMap.get_cell_custom_data` |
