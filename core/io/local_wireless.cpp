@@ -440,11 +440,14 @@ void LocalWireless::poll() {
 			emit_signal("player_left", i + 1);
 		}
 	}
+	// No reset on join: a slot is already clean (reset when its previous player left, or when
+	// this console hosted/joined), and packets may already be in flight with this player,
+	// e.g. the first reliable message sent right after join(), before the system lists the
+	// host; wiping it would drop it for good if its first copy was lost (common on UDS just
+	// after connecting).
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (joined & (1 << i)) {
-			peers[i].reset();
+		if (joined & (1 << i))
 			emit_signal("player_joined", i + 1);
-		}
 	}
 
 	// Resend what was not confirmed.

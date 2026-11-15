@@ -594,6 +594,12 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - O `poll` roda sozinho no início de cada quadro.
 - Medido no PC com 3 janelas, 30% de perda e 50 ms de latência: confiável 50/50, em ordem; convidado→convidado 30/30; `disconnected` quando o host sai.
 
+**Correção (pós-teste em 2 consoles):** o convidado ficava preso em "Entrando...".
+- O `poll()` zerava o estado de um jogador quando ele "entrava" na máscara. Isso apagava o hello confiável enviado logo após o `join()`, antes de o sistema listar o host. Se a primeira cópia se perdesse (comum no UDS logo após conectar), não havia reenvio.
+- Agora só a saída zera o estado.
+- Reproduzido e validado no PC: com a primeira cópia perdida de propósito, e com 50% de perda.
+- O `coop_test` também desiste depois de 10 s sem "welcome" e volta ao lobby com aviso.
+
 **Correção (`f2337f2`):** `StreamPeerBuffer::get_partial_data` (do 2.1) não tinha o `return` final. Em build otimizado, toda leitura (`get_u8`, `get_16`...) derrubava o jogo. Afeta qualquer uso de `StreamPeerBuffer`, não só o co-op.
 
 **Referência (`misc/3ds-build/coop_test`, ver o README):**
@@ -603,7 +609,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Validado:
   - no PC, duas janelas com 20% de perda e 60 ms de latência: os dois players e os inimigos sincronizados, renascimento e saída com aviso ao outro;
   - no emulador do Old 3DS, como host: 60 FPS, A cria a sala, direcional move, B abre a confirmação.
-- Falta: teste com 2 consoles.
+- Falta: teste com 2 consoles depois da correção do "Entrando..." (o primeiro teste travou aí).
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;

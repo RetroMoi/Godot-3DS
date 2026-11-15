@@ -34,6 +34,8 @@ var net = null
 var lw = null
 var in_world = false
 var waiting_welcome = false
+var welcome_wait = 0.0      # s esperando o "welcome" do host
+const WELCOME_TIMEOUT = 10.0
 var scanning = false
 var msg = ""
 
@@ -119,6 +121,7 @@ func _join(i):
 		return
 	net.reset()
 	waiting_welcome = true
+	welcome_wait = 0.0
 	msg = "Entrando..."
 	net.send_event(["hello", net.PROTOCOL], 1)
 	for j in range(3):
@@ -195,6 +198,10 @@ func _process(delta):
 
 	if lw.get_status() != 0:
 		_handle_network()
+	if waiting_welcome:
+		welcome_wait += delta
+		if welcome_wait > WELCOME_TIMEOUT:
+			_leave("O host não respondeu.")
 
 	if in_world:
 		_update_player(delta)
