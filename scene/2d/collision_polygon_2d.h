@@ -66,6 +66,7 @@ protected:
 
 protected:
 	void _notification(int p_what);
+	virtual void add_child_notify(Node *p_child);
 	static void _bind_methods();
 
 public:

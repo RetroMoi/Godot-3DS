@@ -97,8 +97,8 @@ static bool init_windowed = false;
 static bool init_fullscreen = false;
 static bool init_always_on_top = false;
 static bool init_use_custom_pos = false;
-#ifdef DEBUG_ENABLED
 static bool debug_collisions = false;
+#ifdef DEBUG_ENABLED
 static bool debug_navigation = false;
 #endif
 static int frame_delay = 0;
@@ -521,9 +521,9 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 		} else if (I->get() == "-debug" || I->get() == "-d") {
 			debug_mode = "local";
-#ifdef DEBUG_ENABLED
 		} else if (I->get() == "-debugcol" || I->get() == "-dc") {
 			debug_collisions = true;
+#ifdef DEBUG_ENABLED
 		} else if (I->get() == "-debugnav" || I->get() == "-dn") {
 			debug_navigation = true;
 #endif
@@ -1224,10 +1224,13 @@ bool Main::start() {
 
 		SceneTree *sml = main_loop->cast_to<SceneTree>();
 
-#ifdef DEBUG_ENABLED
-		if (debug_collisions) {
+		// Also from the project settings, for builds without a command line (3DS). Defined in the
+		// editor too, so it shows in Project Settings.
+		bool visible_collisions_setting = GLOBAL_DEF("debug/visible_collision_shapes", false);
+		if (debug_collisions || (!editor && visible_collisions_setting)) {
 			sml->set_debug_collisions_hint(true);
 		}
+#ifdef DEBUG_ENABLED
 		if (debug_navigation) {
 			sml->set_debug_navigation_hint(true);
 		}

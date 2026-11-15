@@ -37,6 +37,8 @@
 #include "scene/resources/rectangle_shape_2d.h"
 #include "scene/resources/segment_shape_2d.h"
 #include "scene/resources/shape_line_2d.h"
+#include "scene/main/scene_main_loop.h"
+#include "servers/visual_server.h"
 
 void CollisionShape2D::_add_to_collision_object(Object *p_obj) {
 
@@ -79,6 +81,26 @@ void CollisionShape2D::_update_parent() {
 	co->_update_shapes_from_children();
 }
 
+// In a running game without "Visible Collision Shapes" this node draws nothing: its canvas item
+// leaves the visual server's walk (the node's own visibility is untouched), unless it has
+// children that draw.
+static void _collision_debug_skip_draw(CanvasItem *p_ci) {
+
+	SceneTree *st = p_ci->get_tree();
+	bool skip = st && !st->is_editor_hint() && !st->is_debugging_collisions_hint();
+	for (int i = 0; skip && i < p_ci->get_child_count(); i++) {
+		if (p_ci->get_child(i)->cast_to<CanvasItem>())
+			skip = false;
+	}
+	VisualServer::get_singleton()->canvas_item_set_visible(p_ci->get_canvas_item(), !skip && !p_ci->is_hidden());
+}
+
+void CollisionShape2D::add_child_notify(Node *p_child) {
+
+	if (is_inside_tree() && p_child->cast_to<CanvasItem>())
+		_collision_debug_skip_draw(this);
+}
+
 void CollisionShape2D::_notification(int p_what) {
 
 	switch (p_what) {
@@ -92,6 +114,7 @@ void CollisionShape2D::_notification(int p_what) {
 				set_z_as_relative(false);
 				set_z(VS::CANVAS_ITEM_Z_MAX - 1);
 			}
+			_collision_debug_skip_draw(this);
 
 		} break;
 		case NOTIFICATION_LOCAL_TRANSFORM_CHANGED: {

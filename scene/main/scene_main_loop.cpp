@@ -607,7 +607,6 @@ bool SceneTree::is_editor_hint() const {
 }
 #endif
 
-#ifdef DEBUG_ENABLED
 void SceneTree::set_debug_collisions_hint(bool p_enabled) {
 
 	debug_collisions_hint = p_enabled;
@@ -618,6 +617,7 @@ bool SceneTree::is_debugging_collisions_hint() const {
 	return debug_collisions_hint;
 }
 
+#ifdef DEBUG_ENABLED
 void SceneTree::set_debug_navigation_hint(bool p_enabled) {
 
 	debug_navigation_hint = p_enabled;
@@ -1633,8 +1633,8 @@ SceneTree::SceneTree() {
 #ifdef TOOLS_ENABLED
 	editor_hint = false;
 #endif
-#ifdef DEBUG_ENABLED
 	debug_collisions_hint = false;
+#ifdef DEBUG_ENABLED
 	debug_navigation_hint = false;
 #endif
 	debug_collisions_color = GLOBAL_DEF("debug/collision_shape_color", Color(0.0, 0.6, 0.7, 0.5));

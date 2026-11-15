@@ -90,8 +90,8 @@ private:
 #ifdef TOOLS_ENABLED
 	bool editor_hint;
 #endif
+	bool debug_collisions_hint; // in every build: the 3DS templates are release builds
 #ifdef DEBUG_ENABLED
-	bool debug_collisions_hint;
 	bool debug_navigation_hint;
 #endif
 	bool pause;
@@ -291,16 +291,13 @@ public:
 	void set_camera(const RID &p_camera);
 	RID get_camera() const;
 
-#ifdef DEBUG_ENABLED
 	void set_debug_collisions_hint(bool p_enabled);
 	bool is_debugging_collisions_hint() const;
 
+#ifdef DEBUG_ENABLED
 	void set_debug_navigation_hint(bool p_enabled);
 	bool is_debugging_navigation_hint() const;
 #else
-	void set_debug_collisions_hint(bool p_enabled) {}
-	bool is_debugging_collisions_hint() const { return false; }
-
 	void set_debug_navigation_hint(bool p_enabled) {}
 	bool is_debugging_navigation_hint() const { return false; }
 #endif

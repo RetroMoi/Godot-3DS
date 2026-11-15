@@ -44,6 +44,12 @@ class CollisionGrid2D : public Reference {
 	mutable Vector<uint32_t> visit_mark; // per rect: last query that saw it (dedup)
 	mutable uint32_t query_id;
 
+	// "Visible Collision Shapes" (debug run): the obstacles drawn on the first TileMap's canvas.
+	RID debug_canvas;
+	RID debug_item;
+	Color debug_color;
+	void _update_debug_draw();
+
 	void _rebuild();
 	template <class F>
 	void _for_each_rect(const Rect2 &p_area, F &p_func) const;
@@ -74,6 +80,7 @@ public:
 	Array get_rects_in(const Rect2 &p_area) const;
 
 	CollisionGrid2D();
+	~CollisionGrid2D();
 };
 
 #endif

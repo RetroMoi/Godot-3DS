@@ -9,6 +9,8 @@
 #include "scene/resources/convex_polygon_shape_2d.h"
 #include "scene/resources/rectangle_shape_2d.h"
 #include "scene/resources/segment_shape_2d.h"
+#include "scene/main/scene_main_loop.h"
+#include "servers/visual_server.h"
 
 #define GRID_EPSILON 0.001f
 #define MAX_CANDIDATES 256
@@ -71,6 +73,10 @@ void CollisionGrid2D::add_tilemap(Object *p_tilemap) {
 	List<TileMap::CollisionShape> shapes;
 	tm->get_collision_shapes(&shapes);
 	Matrix32 global = tm->is_inside_tree() ? tm->get_global_transform() : tm->get_transform();
+	if (tm->is_inside_tree() && !debug_canvas.is_valid() && tm->get_tree()->is_debugging_collisions_hint()) {
+		debug_canvas = tm->get_canvas();
+		debug_color = tm->get_tree()->get_debug_collisions_color();
+	}
 	int skipped = 0;
 	for (List<TileMap::CollisionShape>::Element *E = shapes.front(); E; E = E->next()) {
 		Rect2 local;
@@ -108,9 +114,35 @@ int CollisionGrid2D::get_rect_count() const {
 	return rects.size();
 }
 
+void CollisionGrid2D::_update_debug_draw() {
+
+	if (!debug_canvas.is_valid())
+		return;
+	VisualServer *vs = VisualServer::get_singleton();
+	if (!debug_item.is_valid()) {
+		debug_item = vs->canvas_item_create();
+		vs->canvas_item_set_parent(debug_item, debug_canvas);
+		// Above everything, like CollisionShape2D in a debug run.
+		vs->canvas_item_set_z_as_relative_to_parent(debug_item, false);
+		vs->canvas_item_set_z(debug_item, VS::CANVAS_ITEM_Z_MAX - 1);
+	}
+	vs->canvas_item_clear(debug_item);
+	Color edge = debug_color;
+	edge.a = MIN(1.0, edge.a * 2);
+	for (int i = 0; i < rects.size(); i++) {
+		const Rect2 &r = rects[i];
+		vs->canvas_item_add_rect(debug_item, r, debug_color);
+		vs->canvas_item_add_line(debug_item, r.pos, r.pos + Vector2(r.size.x, 0), edge);
+		vs->canvas_item_add_line(debug_item, r.pos + Vector2(r.size.x, 0), r.pos + r.size, edge);
+		vs->canvas_item_add_line(debug_item, r.pos + r.size, r.pos + Vector2(0, r.size.y), edge);
+		vs->canvas_item_add_line(debug_item, r.pos + Vector2(0, r.size.y), r.pos, edge);
+	}
+}
+
 void CollisionGrid2D::_rebuild() {
 
 	dirty = false;
+	_update_debug_draw();
 	cell_start.clear();
 	cell_items.clear();
 	width = height = 0;
@@ -377,4 +409,10 @@ CollisionGrid2D::CollisionGrid2D() {
 	dirty = true;
 	origin_x = origin_y = width = height = 0;
 	query_id = 0;
+}
+
+CollisionGrid2D::~CollisionGrid2D() {
+
+	if (debug_item.is_valid() && VisualServer::get_singleton())
+		VisualServer::get_singleton()->free(debug_item);
 }

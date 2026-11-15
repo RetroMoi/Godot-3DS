@@ -336,6 +336,7 @@ void Viewport::_notification(int p_what) {
 				Physics2DServer::get_singleton()->space_set_debug_contacts(find_world_2d()->get_space(), get_tree()->get_collision_debug_contact_count());
 				contact_2d_debug = VisualServer::get_singleton()->canvas_item_create();
 				VisualServer::get_singleton()->canvas_item_set_parent(contact_2d_debug, find_world_2d()->get_canvas());
+#ifndef _3D_DISABLED
 				//3D
 				PhysicsServer::get_singleton()->space_set_debug_contacts(find_world()->get_space(), get_tree()->get_collision_debug_contact_count());
 				contact_3d_debug_multimesh = VisualServer::get_singleton()->multimesh_create();
@@ -346,6 +347,7 @@ void Viewport::_notification(int p_what) {
 				VisualServer::get_singleton()->instance_set_base(contact_3d_debug_instance, contact_3d_debug_multimesh);
 				VisualServer::get_singleton()->instance_set_scenario(contact_3d_debug_instance, find_world()->get_scenario());
 				VisualServer::get_singleton()->instance_geometry_set_flag(contact_3d_debug_instance, VS::INSTANCE_FLAG_VISIBLE_IN_ALL_ROOMS, true);
+#endif
 			}
 
 		} break;

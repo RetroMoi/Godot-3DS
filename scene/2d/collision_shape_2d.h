@@ -53,6 +53,7 @@ class CollisionShape2D : public Node2D {
 protected:
 	void _update_parent();
 	void _notification(int p_what);
+	virtual void add_child_notify(Node *p_child);
 	static void _bind_methods();
 
 	void _add_to_collision_object(Object *p_obj);
