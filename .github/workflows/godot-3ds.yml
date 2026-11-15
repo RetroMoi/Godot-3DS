@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     container: devkitpro/devkitarm:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install SCons (vendored wheel; the image has no pip)
         run: python3 -m zipfile -e "$SCONS_WHEEL" /opt/scons
@@ -40,7 +40,7 @@ jobs:
           3dsxtool bin/godot.3ds.elf bin/3ds_release.3dsx --smdh=bin/godot.smdh
           arm-none-eabi-strip --strip-debug -o bin/3ds_release.elf bin/godot.3ds.elf
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: templates-3ds
           path: |
@@ -51,7 +51,7 @@ jobs:
     name: Editor (Windows)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install MinGW-w64
         run: |
@@ -65,7 +65,7 @@ jobs:
             -j$(nproc) platform=windows tools=yes target=release_debug bits=64
           ls -la bin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: editor-windows
           path: bin/godot.windows.opt.tools.64.exe
@@ -74,7 +74,7 @@ jobs:
     name: Editor (Linux/WSL)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -91,7 +91,7 @@ jobs:
             -j$(nproc) platform=x11 tools=yes target=release_debug
           ls -la bin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: editor-linux
           path: bin/godot.x11.opt.tools.64
@@ -138,7 +138,7 @@ jobs:
           & "$env:GITHUB_WORKSPACE\out\bannertool.exe" 2>&1 | Select-Object -First 3
           Get-ChildItem "$env:GITHUB_WORKSPACE\out"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tools-windows
           path: out/*.exe
@@ -148,11 +148,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ templates-3ds, editor-windows, tools-windows ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: misc/3ds-build
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -188,7 +188,7 @@ jobs:
           sed -i 's/^          //' $P/LEIA-ME.txt
           find $P -maxdepth 3 | sort
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Godot3DS-windows
           path: Godot3DS-windows
