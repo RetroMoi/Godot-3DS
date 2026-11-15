@@ -104,6 +104,7 @@
 #include "plugins/tile_set_editor_plugin.h"
 // end
 #include "editor/io_plugins/editor_bitmask_import_plugin.h"
+#include "editor/io_plugins/editor_palette_texture_import_plugin.h"
 #include "editor/io_plugins/editor_export_scene.h"
 #include "editor/io_plugins/editor_font_import_plugin.h"
 #include "editor/io_plugins/editor_mesh_import_plugin.h"
@@ -6228,6 +6229,7 @@ EditorNode::EditorNode() {
 	editor_import_export->add_import_plugin(Ref<EditorSampleImportPlugin>(memnew(EditorSampleImportPlugin(this))));
 	editor_import_export->add_import_plugin(Ref<EditorTranslationImportPlugin>(memnew(EditorTranslationImportPlugin(this))));
 	editor_import_export->add_import_plugin(Ref<EditorBitMaskImportPlugin>(memnew(EditorBitMaskImportPlugin(this))));
+	editor_import_export->add_import_plugin(Ref<EditorPaletteTextureImportPlugin>(memnew(EditorPaletteTextureImportPlugin(this))));
 
 	editor_import_export->add_export_plugin(Ref<EditorTextureExportPlugin>(memnew(EditorTextureExportPlugin)));
 	editor_import_export->add_export_plugin(Ref<EditorSampleExportPlugin>(memnew(EditorSampleExportPlugin)));

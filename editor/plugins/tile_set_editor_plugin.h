@@ -161,10 +161,12 @@ class TileSetEditor : public VBoxContainer {
 	SpinBox *size_x, *size_y, *margin_x, *margin_y, *sep_x, *sep_y;
 	CheckBox *show_ids;
 	EditorFileDialog *file_dialog;
+	EditorFileDialog *palette_dialog;
 	MenuButton *menu;
 	ConfirmationDialog *cd;
 	EditorNameDialog *nd;
 	AcceptDialog *err_dialog;
+	AcceptDialog *info_dialog;
 
 	enum {
 
@@ -175,6 +177,7 @@ class TileSetEditor : public VBoxContainer {
 		MENU_OPTION_CREATE_TILES_IN_ATLAS,
 		MENU_OPTION_REMOVE_ATLAS,
 		MENU_OPTION_CUSTOM_DATA_LAYERS,
+		MENU_OPTION_USE_PALETTE_TEXTURE,
 	};
 
 	int option;
@@ -189,6 +192,7 @@ class TileSetEditor : public VBoxContainer {
 	void _grid_changed(double);
 	void _add_atlas_pressed();
 	void _atlas_file_selected(const String &p_path);
+	void _palette_texture_selected(const String &p_path);
 	void _cells_selected(const Rect2 &p_cells, bool p_shift, bool p_ctrl);
 	void _cells_rmb(const Rect2 &p_cells);
 	void _remove_tile_pressed();

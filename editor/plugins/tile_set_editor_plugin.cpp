@@ -39,6 +39,7 @@
 #include "scene/2d/physics_body_2d.h"
 #include "scene/2d/sprite.h"
 #include "scene/2d/tile_map.h"
+#include "scene/resources/palette_texture.h"
 #include "scene/resources/circle_shape_2d.h"
 #include "scene/resources/rectangle_shape_2d.h"
 #include "servers/visual_server.h"
@@ -835,8 +836,11 @@ void TileSetEditor::_create_tiles_in_atlas() {
 	const TileAtlasView::Source &s = sources[current_source];
 	Image img;
 	Ref<ImageTexture> itex = s.texture;
+	Ref<PaletteTexture> ptex = s.texture;
 	if (itex.is_valid())
 		img = itex->get_data();
+	else if (ptex.is_valid())
+		img = ptex->get_data();
 	if (img.empty())
 		img.load(s.texture->get_path());
 	if (img.empty()) {
@@ -948,6 +952,11 @@ void TileSetEditor::_menu_cbk(int p_option) {
 
 			_create_tiles_in_atlas();
 		} break;
+		case MENU_OPTION_USE_PALETTE_TEXTURE: {
+
+			if (tileset.is_valid())
+				palette_dialog->popup_centered_ratio();
+		} break;
 		case MENU_OPTION_CUSTOM_DATA_LAYERS: {
 
 			// The layers (name + type) are TileSet properties: edit them in the Inspector. Each
@@ -997,6 +1006,7 @@ void TileSetEditor::_bind_methods() {
 	ObjectTypeDB::bind_method("_grid_changed", &TileSetEditor::_grid_changed);
 	ObjectTypeDB::bind_method("_add_atlas_pressed", &TileSetEditor::_add_atlas_pressed);
 	ObjectTypeDB::bind_method("_atlas_file_selected", &TileSetEditor::_atlas_file_selected);
+	ObjectTypeDB::bind_method("_palette_texture_selected", &TileSetEditor::_palette_texture_selected);
 	ObjectTypeDB::bind_method("_cells_selected", &TileSetEditor::_cells_selected);
 	ObjectTypeDB::bind_method("_cells_rmb", &TileSetEditor::_cells_rmb);
 	ObjectTypeDB::bind_method("_remove_tile_pressed", &TileSetEditor::_remove_tile_pressed);
@@ -1031,6 +1041,48 @@ void TileSetEditor::set_cell_context(const Size2 &p_cell_size, int p_origin) {
 void TileSetEditor::_preview_origin_selected(int p_index) {
 
 	tile_preview->set_cell(tile_preview->get_cell_size(), preview_origin->get_item_ID(p_index));
+}
+
+void TileSetEditor::_palette_texture_selected(const String &p_path) {
+
+	// Tiles (and atlas grids) drawn from the PaletteTexture's source PNG now use the
+	// PaletteTexture: same pixels and regions, colors from its palettes.
+	Ref<PaletteTexture> pt = ResourceLoader::load(p_path);
+	if (pt.is_null()) {
+		err_dialog->set_text(p_path.get_file() + ": " + TTR("not a PaletteTexture (import one with Import > Palette Texture)."));
+		err_dialog->popup_centered_minsize();
+		return;
+	}
+	String src = Globals::get_singleton()->localize_path(pt->get_source_image());
+	UndoRedo *ur = editor->get_undo_redo();
+	ur->create_action(TTR("Use Palette Texture"));
+	int count = 0;
+	List<int> ids;
+	tileset->get_tile_list(&ids);
+	for (List<int>::Element *E = ids.front(); E; E = E->next()) {
+		Ref<Texture> t = tileset->tile_get_texture(E->get());
+		if (t.is_valid() && t != pt && t->get_path() == src) {
+			ur->add_do_method(tileset.ptr(), "tile_set_texture", E->get(), pt);
+			ur->add_undo_method(tileset.ptr(), "tile_set_texture", E->get(), t);
+			count++;
+		}
+	}
+	for (int i = 0; i < tileset->atlas_get_count(); i++) {
+		Ref<Texture> t = tileset->atlas_get_texture(i);
+		if (t.is_valid() && t != pt && t->get_path() == src) {
+			String prop = "atlas/" + itos(i) + "/texture";
+			ur->add_do_property(tileset.ptr(), prop, pt);
+			ur->add_undo_property(tileset.ptr(), prop, t);
+		}
+	}
+	ur->commit_action(); // (empty when nothing matched)
+	if (!count) {
+		err_dialog->set_text(TTR("No tile uses") + " " + src + " " + TTR("(the PNG this PaletteTexture was made from)."));
+		err_dialog->popup_centered_minsize();
+		return;
+	}
+	info_dialog->set_text(itos(count) + " " + TTR("tiles now use") + " " + p_path.get_file() + ".\n" + TTR("Save the TileSet to keep it."));
+	info_dialog->popup_centered_minsize();
 }
 
 void TileSetEditor::_preview_shape_edited() {
@@ -1109,6 +1161,7 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	p->add_item(TTR("Forget Atlas Grid"), MENU_OPTION_REMOVE_ATLAS);
 	p->add_separator();
 	p->add_item(TTR("Custom Data Layers (Inspector)..."), MENU_OPTION_CUSTOM_DATA_LAYERS);
+	p->add_item(TTR("Use Palette Texture..."), MENU_OPTION_USE_PALETTE_TEXTURE);
 	p->add_separator();
 	p->add_item(TTR("Add Empty Tile"), MENU_OPTION_ADD_ITEM);
 	p->add_item(TTR("Remove Tile by Name or ID..."), MENU_OPTION_REMOVE_ITEM);
@@ -1235,6 +1288,19 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	tile_properties->connect("property_edited", this, "_property_edited");
 	tile_properties->connect("resource_selected", this, "_resource_selected");
 	props_body->add_child(tile_properties);
+
+	info_dialog = memnew(AcceptDialog);
+	info_dialog->set_title(TTR("Use Palette Texture"));
+	add_child(info_dialog);
+
+	palette_dialog = memnew(EditorFileDialog);
+	palette_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
+	palette_dialog->set_mode(EditorFileDialog::MODE_OPEN_FILE);
+	palette_dialog->set_title(TTR("Use Palette Texture (replaces its PNG in the tiles)"));
+	palette_dialog->add_filter("*.res ; Binary Resource");
+	palette_dialog->add_filter("*.tres ; Text Resource");
+	palette_dialog->connect("file_selected", this, "_palette_texture_selected");
+	add_child(palette_dialog);
 
 	file_dialog = memnew(EditorFileDialog);
 	file_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
