@@ -483,6 +483,27 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - `C3D_FrameSplit`/`GPUCMD_Split` não ajudariam: dividir só manda a GPU começar antes; o espaço total do buffer no quadro continua o mesmo.
 - Nesta versão do citro3d, `C3D_FixedAttribSet` só marca o estado como sujo, sem escrever no buffer.
 
+### 5.9 Crossfade dia/noite: `ImageTexture.create_from_blend` (pedido do Open; feito em `bc450f7`)
+**Pedido:** o `world/day_night.gd` do jogo troca o atlas do mapa entre 5 variantes (96x320, mesmo layout) com fade para preto. O Open quer um crossfade em N passos (8; útil de 6 a 12), com a mistura na CPU, sem TEV nem segunda textura no renderizador. O contexto do jogo registra isso na seção 15.12.
+
+**API:** `var tex = ImageTexture.new()`; `tex.create_from_blend(from, to, t)`.
+- `t` vai de 0 (`from`) a 1 (`to`), limitado a 0..1.
+- Os dois precisam ser `ImageTexture` do mesmo tamanho; senão, erro claro.
+- A mistura usa alfa pré-multiplicado (sem halo nas bordas transparentes) e sai em RGBA. As flags vêm de `from`.
+- Chamado de novo no mesmo `ImageTexture` com o mesmo tamanho e flags, reaproveita a textura na GPU (mesmo RID, sem nova alocação).
+- Devolve a própria textura.
+- Lê os pixels com `get_data()`: o 3DS (RGBA) e o PC (GLES2 com cópia em RAM) guardam a imagem de toda textura.
+
+**Medições:**
+- PC: ~2 ms por passo, com upload.
+- 3DS emulado (Old 3DS), antes da otimização: 12,7 ms por passo, sendo 8 ms só no upload (`texture_tile_sw` calculava o endereço Morton pixel a pixel na textura POT de 128x512).
+- Otimizações: tabela Morton e 8 pixels por linha de bloco no `texture_tile_sw`, que acelera **todo upload de textura** no 3DS; mistura de dois canais por multiplicação nos pixels opacos.
+- Resultado: upload 2,1 ms, passo 6,3 ms. Cabe num quadro (o jogo usa ~3,6 ms dos 16,7).
+- O atlas só tem pixels opacos (26.547) ou totalmente transparentes (4.173); nenhum semitransparente.
+- A troca no `texture_tile_sw` foi conferida: um quadro do jogo sai idêntico ao de antes (só o texto de tempo do HUD muda).
+
+**Dica para o jogo:** usando sempre o mesmo `ImageTexture` misturado, depois do primeiro passo (que aplica a textura nos tiles e chama `update()`) os passos seguintes só trocam os pixels, com o mesmo RID. Não precisa chamar `tile_set_texture` nem `update()` de novo, o que poupa a reconstrução dos quadrantes do TileMap. No fim, aplicar a variante destino e liberar a misturada.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -530,6 +551,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
 - Testar no console a exportação com "Visible Collision Shapes" (só testado no emulador) e, no editor, os ajustes do painel TileSet (prévia, Shape Settings, setas).
+- Open: trocar o estilo de transição `"fade"` por `"blend"` usando `ImageTexture.create_from_blend` (5.9), testar no PC e no 3DS e reexportar.
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
 **Engine, próximo passo (combinado com o usuário):**
@@ -565,6 +587,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `bc450f7` | `ImageTexture.create_from_blend` (crossfade dia/noite) e upload de textura ~4x mais rápido no 3DS |
 | `9d85be4` | `.gitignore`: binário do harness do emulador |
 | `7f9d563` | editor de TileSet: prévia do tile (célula, origem, tex offset, shape), shape editada no próprio painel, setas nos campos |
 | `195cad5` | 3DS: colisões visíveis sem encher o command buffer; opção movida para a exportação |
