@@ -669,6 +669,20 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - **Pausa (START):** no co-op não pode pausar a árvore. Abrir um menu local sem parar o mundo, ou não ter pausa.
 - **HOME, fechar a tampa, sair do alcance:** tratar o sinal `disconnected` (aviso e volta ao título ou ao modo solo). No host, `player_left` remove a marionete e o jogo segue.
 
+### 5.13 Desempenho no Old 3DS e tamanho do binário (investigação em andamento)
+**Situação:** o Open está implementando o co-op no jogo (mensagem final entregue). Enquanto isso, a engine investiga o desempenho no Old 3DS.
+
+**Perguntas do usuário:**
+- O `.3dsx` nunca fica abaixo de ~12 MB, mesmo com um projeto minúsculo, enquanto alguns apps têm poucos KB. A engine inclui coisas demais?
+- Isso pode ter relação com o desempenho, especialmente no multiplayer (o `coop_test` a 45 FPS no Old 3DS)?
+
+**Plano:**
+1. Tamanho: medir o que compõe o binário (código, dados, RomFS; por pasta e módulo) e ver o que pode sair sem perder recurso usado pelo jogo.
+2. Relação com o desempenho: separar o que o tamanho afeta (RAM, carga, cache de instruções) do custo por quadro.
+3. Os 45 FPS:
+   - medir no console o tempo gasto na rede por quadro (chamadas ao serviço UDS) e o detalhamento do quadro (`Platform3DS.get_frame_stats`);
+   - comparar lobby (sem rede) x sala, host x convidado.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -720,7 +734,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
 - Open: co-op no jogo com os gráficos reais, seguindo 5.12 (mensagem + complemento entregues ao usuário). Testar no PC com duas janelas antes do console.
-- Engine: medir por que o Old 3DS fica a 45 FPS no `coop_test` (custo da rede por quadro?) (5.12).
+- Engine: medir por que o Old 3DS fica a 45 FPS no `coop_test` (custo da rede por quadro?) e o que compõe os ~12 MB do `.3dsx` (5.13).
 
 **Engine, próximo passo (combinado com o usuário):**
 - Editor de TileSet, fase 4 (padrões) e depois fase 5 (terrenos/autotile, só no editor) (5.7). A fase 3 está feita.
