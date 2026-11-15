@@ -110,7 +110,7 @@ São dois projetos ligados:
   - Vector2, Rect2 e Vector3 com campos na mesma linha.
 - Guias das duas telas no canvas do editor.
 - **Layout padrão dos docks:** Cena (em cima) e Arquivos (embaixo) à esquerda; Inspetor e Node (sinais/grupos) em abas à direita, na altura toda. Vale para projetos sem layout salvo e para Editor → Layout do Editor → Padrão. Em telas com menos de 1200 px de largura, fica a coluna única original.
-  - O layout que o usuário ajusta fica por projeto em `editor_data/` e é apagado a cada `sync-engine.ps1` (ele substitui a pasta do editor inteira). Sugestão ao Open: preservar `editor_data/` no sync, trocando só o executável e os templates.
+  - O layout que o usuário ajusta fica por projeto em `editor_data/`. Desde o ARPG-3DS `4155e91`, o `sync-engine.ps1` preserva o `editor_data/` (só `templates/` e `tmp/` vêm do pacote novo; um `editor_data.keep` interrompido é restaurado na execução seguinte). Testado pelo Open com o run #31 (`9535e746ce`): preferências mantidas, templates trocados, exportação com `build 9535e746ce, editor build 9535e746ce`.
 - **Filtro de imagem do projeto** (`image_loader/filter`, `gen_mipmaps`, `repeat`, nas Configurações do Projeto): é a configuração padrão de todos os gráficos. Vale para os PNGs carregados direto, para o **splash de boot** e para o padrão de "Filter" nos diálogos de importação de textura (2D, atlas, grande, 3D). Desligado = nearest, para pixel art (commit `fd4f4a6`).
 
 ### 3.4 Engine/renderizador 3DS: pontos técnicos
@@ -392,13 +392,20 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - corrigido o `image_loader/repeat` invertido na importação do diálogo de exportação.
 - Validado no PC: com o filtro desligado, 5 cores (nítido); ligado, 46 cores (borrado). Falta ver no console ou no Azahar com renderizador de hardware.
 
-### 5.6 Data abort em `Variant::call_ptr` (resolvido na engine, `9535e74`; bug do jogo pendente com o Open)
+### 5.6 Data abort em `Variant::call_ptr` (resolvido: engine `9535e74`, jogo `9bf1d84`)
 - **Dump do console:** *data abort*, leitura em `0x1C`, PC em `Variant::call_ptr`, LR em `GDFunction::call` (simbolizado com o ELF do run #26).
 - **Causa:** um script do jogo chamou um método num valor que não é objeto, quase certamente `null`. No release, `call_ptr` não checava se o método existe para o tipo e usava o resultado nulo da busca no mapa (`0x1C` é o deslocamento do valor no nó).
 - **Correção na engine (proposta pelo Open):** a checagem do método passou a valer no release (`Nonexistent function 'x' in base 'Nil'`). A checagem de argumentos de menos em métodos built-in também (`"texto".substr(1)` → `Expected 2 arguments`).
 - **Testes:** no PC, o release antigo dava *segfault* e o novo mostra os erros e segue; o mesmo no template do 3DS pelo emulador; a semântica da VM continua idêntica (2.924 resultados).
-- **Pendente (Open):** achar no jogo o `x.metodo()` com `x` nulo. Os suspeitos são as mudanças do morcego (HurtBox na morte, explosão, recheck do golpe): `get_node` com caminho inexistente, `onready` usado antes de preenchido, referência zerada na morte e usada por timer ou sinal depois. Para achar a linha: rodar a cena pelo editor no PC (debug mostra arquivo e linha).
-- **Mensagem dedicada ao Open:** já enviada pelo usuário (explicação, suspeitos, como achar a linha, cuidados com `null` e `weakref`).
+- **Causa no jogo (achada pelo Open):** `struggle_frames` no `state_death.gd`. O `player.tscn` tinha salvo `struggle_frames = null` no nó `Death`, e a morte chamava `.size()` e `[0]` em Nil.
+  - Corrigido no ARPG-3DS (`9bf1d84`): a cena tem `IntArray( 50, 51 )`; o `init()` preenche 50/51 se vier null ou vazio; o default `IntArray([...])` do export foi removido.
+  - Validado no Old 3DS: a sequência de morte completa roda sem crash.
+- **Por que o editor salvou `null`** (comportamento original do 2.1, não regressão; o parser não mudou desde `dcb1fec`):
+  - O default de um `export` só é registrado no editor quando a expressão vira constante na análise (`gd_parser.cpp`, ramo do export).
+  - Num inicializador de variável, o literal `[50, 51]` não é reduzido a constante (só em contexto `const`), então `IntArray([50, 51])` não vira constante.
+  - O editor fica com default `null` e salva `null` na cena; em tempo de execução, sem a cena, o inicializador funciona.
+  - **Regra:** não usar construtor com literal (`IntArray([...])`, `Vector2Array([...])` etc.) como default de `export`; definir o valor na cena ou preencher no `init()`/`_ready()`.
+  - **Possível melhoria na engine (não pedida):** calcular só o default do editor reduzindo uma cópia da expressão a constante, sem mudar o inicializador (arrays não podem ser constantes compartilhadas entre instâncias).
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
@@ -443,8 +450,6 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 **Do usuário / do Open:**
 - Atualizar a engine (`sync-engine.ps1`) para o run com `9535e74` e conferir que a exportação usa o template certo (o console mostra "3DS export template: ... (build X, editor build X)").
-- Open: achar e corrigir a chamada de método em `null` no jogo (5.6).
-- Open: avaliar preservar `editor_data/` no `sync-engine.ps1` (mensagem com o código já enviada); hoje cada atualização apaga as preferências e os layouts por projeto.
 - Ver o novo layout padrão dos docks (Cena/Arquivos à esquerda, Inspetor/Node à direita) após atualizar.
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
@@ -516,6 +521,9 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `4155e91` | `sync-engine.ps1` preserva `editor_data/` (exceto templates e tmp) |
+| `9bf1d84` | Morte: `struggle_frames` null corrigido (crash no release do 3DS) |
+| `6664442` | Morcego: combate e perseguição (APIs do 2.1, áreas de golpe) |
 | `fa42624` | Morcego: pisca ao morrer, HurtBox desligada na morte |
 | `936e0f4` | Morcego: base de inimigo, patrulha/perseguição, explosão |
 | `5831d1c` | `CONTEXTO.md` do jogo com os números do run #26 e a decisão do 2x |
