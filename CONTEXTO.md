@@ -592,7 +592,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
     - Animação nova `spawn` (aprovada): `Sprite` 0,1 → 1,15 (0,35 s) → 1,0 (0,5 s), opacidade 0 → 1 nos primeiros 0,1 s; HitBox, HurtBox e DetectRadius desligados e a IA parada; ao terminar, começa a patrulha.
   - **Alvo do morcego:** segue o primeiro jogador detectado e ignora o outro que entrar no raio nesse meio tempo.
     - Ao sair do modo agressivo (desistência, alvo sumiu), volta a considerar os dois e varre o raio (`get_overlapping_bodies`).
-    - Leitura da engine, a confirmar com o usuário: apanhar do outro jogador também não troca o alvo; sem alvo, quem bateu vira o alvo.
+    - Exceção (confirmada pelo usuário): quem bate no morcego vira o alvo dele, mesmo que ele estivesse seguindo o outro.
 
 **Quem decide o quê:**
 - Cada console decide o movimento e a vida do próprio player, sem atraso nos controles. O dano por contato com inimigo é detectado no próprio console.
