@@ -60,27 +60,56 @@ static inline u32 get_morton_offset(u32 x, u32 y, u32 bytes_per_pixel)
 	return (i + offset) * bytes_per_pixel;
 }
 
+// Morton (Z-order) position of each pixel inside an 8x8 tile, indexed [y][x].
+static u8 morton_table[64];
+static bool morton_table_ready = false;
+
 void texture_tile_sw(C3D_Tex *tex, const void *data, int w, int h)
-{	
+{
 	const u32* src = reinterpret_cast<const u32*>(data);
 	u32* dest = reinterpret_cast<u32*>(tex->data);
 	if (w <= 0 || h <= 0)
 		return;
+	if (!morton_table_ready) {
+		for (u32 y = 0; y < 8; y++)
+			for (u32 x = 0; x < 8; x++)
+				morton_table[y * 8 + x] = morton_interleave(x, y);
+		morton_table_ready = true;
+	}
 	// The image goes in the top-left corner of the (power-of-two) texture. The padding repeats
 	// the last column/row instead of keeping whatever was in memory: linear filtering and
 	// clamping at the image's edges then look as they do on the PC.
+	// Row by row, 8 pixels (one tile row) at a time with the Morton offsets from the table: the
+	// same layout as get_morton_offset() per pixel, several times faster (this runs for every
+	// texture upload, e.g. each step of an ImageTexture.create_from_blend crossfade).
+	const int tw = tex->width;
 	for (int y = 0; y < tex->height; y++)
-		for (int x = 0; x < tex->width; x++)
+	{
+		const u32 *src_row = src + (y < h ? y : h - 1) * w;
+		int dest_y = tex->height - 1 - y;
+		u32 *row_base = dest + (dest_y & ~7) * tw;
+		const u8 *m = morton_table + (dest_y & 7) * 8;
+		for (int bx = 0; bx < tw; bx += 8)
 		{
-			int sx = x < w ? x : w - 1;
-			int sy = y < h ? y : h - 1;
-			int dest_y = (tex->height - 1 - y);
-			u32 coarse_y = dest_y & ~7;
-			u32 dst_offset = get_morton_offset(x, dest_y, 1) + coarse_y * tex->width;
-
-			u32 v = src[sx + sy * w];
-			dest[dst_offset] = __builtin_bswap32(v);
+			u32 *tile = row_base + bx * 8;
+			if (bx + 8 <= w) {
+				const u32 *s = src_row + bx;
+				tile[m[0]] = __builtin_bswap32(s[0]);
+				tile[m[1]] = __builtin_bswap32(s[1]);
+				tile[m[2]] = __builtin_bswap32(s[2]);
+				tile[m[3]] = __builtin_bswap32(s[3]);
+				tile[m[4]] = __builtin_bswap32(s[4]);
+				tile[m[5]] = __builtin_bswap32(s[5]);
+				tile[m[6]] = __builtin_bswap32(s[6]);
+				tile[m[7]] = __builtin_bswap32(s[7]);
+			} else {
+				for (int k = 0; k < 8; k++) {
+					int sx = bx + k < w ? bx + k : w - 1;
+					tile[m[k]] = __builtin_bswap32(src_row[sx]);
+				}
+			}
 		}
+	}
 
 	C3D_TexFlush(tex);
 }

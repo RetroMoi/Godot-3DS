@@ -116,6 +116,12 @@ protected:
 public:
 	void create(int p_width, int p_height, Image::Format p_format, uint32_t p_flags = FLAGS_DEFAULT);
 	void create_from_image(const Image &p_image, uint32_t p_flags = FLAGS_DEFAULT);
+	// This texture becomes p_from and p_to mixed by p_weight (0 = p_from, 1 = p_to), blended in
+	// C++ with premultiplied alpha (no halos at transparent edges). Both must be ImageTextures of
+	// the same size. Called again with the same size, it reuses its GPU texture (no new
+	// allocation). Flags come from p_from. Returns this texture. For crossfades in steps (e.g.
+	// day/night atlases) without a second texture in the renderer.
+	Ref<ImageTexture> create_from_blend(const Ref<Texture> &p_from, const Ref<Texture> &p_to, float p_weight);
 
 	void set_flags(uint32_t p_flags);
 	uint32_t get_flags() const;

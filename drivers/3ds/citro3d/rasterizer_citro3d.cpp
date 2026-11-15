@@ -148,7 +148,6 @@ void RasterizerCitro3d::_texture_apply_params(Texture *p_texture)
 
 Image RasterizerCitro3d::texture_get_data(RID p_texture,VS::CubeMapSide p_cube_side) const
 {
-	print("texture_get_data\n");
 	Texture * texture = texture_owner.get(p_texture);
 
 	ERR_FAIL_COND_V(!texture,Image());

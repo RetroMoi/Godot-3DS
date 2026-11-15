@@ -210,6 +210,96 @@ void ImageTexture::create_from_image(const Image &p_image, uint32_t p_flags) {
 	_change_notify();
 }
 
+static bool _blend_source_image(const Ref<Texture> &p_tex, Image &r_image, const char *p_which) {
+
+	Ref<ImageTexture> it = p_tex;
+	if (it.is_null()) {
+		ERR_EXPLAIN(String("create_from_blend: '") + p_which + "' must be an ImageTexture.");
+		ERR_FAIL_V(false);
+	}
+	r_image = it->get_data();
+	if (r_image.empty()) {
+		ERR_EXPLAIN(String("create_from_blend: '") + p_which + "' has no image data.");
+		ERR_FAIL_V(false);
+	}
+	if (r_image.is_compressed())
+		r_image.decompress();
+	r_image.convert(Image::FORMAT_RGBA);
+	if (r_image.get_format() != Image::FORMAT_RGBA) {
+		ERR_EXPLAIN(String("create_from_blend: '") + p_which + "' could not be converted to RGBA.");
+		ERR_FAIL_V(false);
+	}
+	return true;
+}
+
+Ref<ImageTexture> ImageTexture::create_from_blend(const Ref<Texture> &p_from, const Ref<Texture> &p_to, float p_weight) {
+
+	Ref<ImageTexture> self(this);
+	Image a, b;
+	if (!_blend_source_image(p_from, a, "from") || !_blend_source_image(p_to, b, "to"))
+		return self;
+	if (a.get_width() != b.get_width() || a.get_height() != b.get_height()) {
+		ERR_EXPLAIN("create_from_blend: the textures differ in size (" + itos(a.get_width()) + "x" + itos(a.get_height()) + " and " + itos(b.get_width()) + "x" + itos(b.get_height()) + ").");
+		ERR_FAIL_V(self);
+	}
+
+	// Integer weights: wb in 0..256.
+	int wb = CLAMP(int(Math::round(CLAMP(p_weight, 0.0f, 1.0f) * 256)), 0, 256);
+	int wa = 256 - wb;
+	int count = a.get_width() * a.get_height();
+
+	DVector<uint8_t> out;
+	out.resize(count * 4);
+	{
+		DVector<uint8_t>::Read ra = a.get_data().read();
+		DVector<uint8_t>::Read rb = b.get_data().read();
+		DVector<uint8_t>::Write w = out.write();
+		const uint8_t *pa = ra.ptr();
+		const uint8_t *pb = rb.ptr();
+		uint8_t *po = w.ptr();
+		for (int i = 0; i < count; i++, pa += 4, pb += 4, po += 4) {
+			int aa = pa[3], ab = pb[3];
+			if ((aa & ab) == 255) {
+				// Both opaque (most of a tile atlas): plain lerp, two channels per multiply (R and B,
+				// then G and A, 16 bits apart: 255 * 256 + 128 fits, nothing spills into the next).
+				// Alpha is 255 in both, so it comes out 255. (Byte order does not matter: each byte is
+				// blended with its counterpart.)
+				uint32_t ca, cb;
+				memcpy(&ca, pa, 4);
+				memcpy(&cb, pb, 4);
+				uint32_t rb = (((ca & 0x00FF00FFu) * wa + (cb & 0x00FF00FFu) * wb + 0x00800080u) >> 8) & 0x00FF00FFu;
+				uint32_t ga = ((((ca >> 8) & 0x00FF00FFu) * wa + ((cb >> 8) & 0x00FF00FFu) * wb + 0x00800080u)) & 0xFF00FF00u;
+				uint32_t o = rb | ga;
+				memcpy(po, &o, 4);
+				continue;
+			}
+			// Premultiplied: colors weighted by their alpha, so a transparent pixel's (meaningless)
+			// color does not bleed into the result.
+			int ka = aa * wa, kb = ab * wb; // up to 255 * 256
+			int k = ka + kb;
+			if (k == 0) {
+				po[0] = po[1] = po[2] = po[3] = 0;
+				continue;
+			}
+			po[0] = (pa[0] * ka + pb[0] * kb + k / 2) / k;
+			po[1] = (pa[1] * ka + pb[1] * kb + k / 2) / k;
+			po[2] = (pa[2] * ka + pb[2] * kb + k / 2) / k;
+			po[3] = (k + 128) >> 8;
+		}
+	}
+	Image blended(a.get_width(), a.get_height(), 0, Image::FORMAT_RGBA, out);
+
+	uint32_t f = p_from->get_flags();
+	if (texture.is_valid() && w == blended.get_width() && h == blended.get_height() && format == Image::FORMAT_RGBA && flags == f) {
+		// Same size: new pixels in the same GPU texture.
+		VisualServer::get_singleton()->texture_set_data(texture, blended);
+		_change_notify();
+	} else {
+		create_from_image(blended, f);
+	}
+	return self;
+}
+
 void ImageTexture::set_flags(uint32_t p_flags) {
 
 	/*	uint32_t cube = flags & FLAG_CUBEMAP;
@@ -396,6 +486,7 @@ void ImageTexture::_bind_methods() {
 
 	ObjectTypeDB::bind_method(_MD("create", "width", "height", "format", "flags"), &ImageTexture::create, DEFVAL(FLAGS_DEFAULT));
 	ObjectTypeDB::bind_method(_MD("create_from_image", "image", "flags"), &ImageTexture::create_from_image, DEFVAL(FLAGS_DEFAULT));
+	ObjectTypeDB::bind_method(_MD("create_from_blend:ImageTexture", "from:Texture", "to:Texture", "weight"), &ImageTexture::create_from_blend);
 	ObjectTypeDB::bind_method(_MD("get_format"), &ImageTexture::get_format);
 	ObjectTypeDB::bind_method(_MD("load", "path"), &ImageTexture::load);
 	ObjectTypeDB::bind_method(_MD("set_data", "image"), &ImageTexture::set_data);
