@@ -85,15 +85,41 @@ class TileSetTilePreview : public Control {
 	Size2 cell_size;
 	int origin; // TileMap::TILE_ORIGIN_*
 
+	UndoRedo *undo_redo;
+
+	// Last drawn mapping: screen = view_ofs + tile space * view_zoom.
+	Vector2 view_ofs;
+	float view_zoom;
+
+	// Dragging the collision shape: move it (Shape Offset) or resize it (a rectangle's extents
+	// from its corner handle, a circle's radius from its right handle).
+	enum Drag {
+		DRAG_NONE,
+		DRAG_MOVE,
+		DRAG_EXTENTS,
+		DRAG_RADIUS,
+	};
+	Drag drag;
+	Vector2 drag_from; // tile space
+	Vector2 drag_start_offset;
+	Variant drag_start_value;
+
 	Vector2 _cell_anchor() const; // in cell coordinates (0,0 = the cell's top-left)
 	Vector2 _texture_pos(const Size2 &p_size, const Vector2 &p_ofs) const;
+	Size2 _tile_size() const;
+	Vector2 _shape_pos() const; // where the TileMap puts the shape's origin, in cell coordinates
+	Vector2 _handle_pos() const; // the resize handle, in the shape's coordinates (Vector2() if none)
 
 protected:
 	void _notification(int p_what);
+	void _input_event(const InputEvent &p_event);
+	static void _bind_methods();
 
 public:
+	void set_undo_redo(UndoRedo *p_undo_redo) { undo_redo = p_undo_redo; }
 	void set_tile(const Ref<TileSet> &p_tileset, int p_tile);
 	void set_cell(const Size2 &p_cell_size, int p_origin);
+	void add_rect_shape(); // a RectangleShape2D covering the cell
 	Size2 get_cell_size() const { return cell_size; }
 	int get_origin() const { return origin; }
 
@@ -131,6 +157,7 @@ class TileSetEditor : public VBoxContainer {
 	TileSetTilePreview *tile_preview;
 	OptionButton *preview_origin;
 	Label *preview_info;
+	Button *preview_add_shape;
 	SpinBox *size_x, *size_y, *margin_x, *margin_y, *sep_x, *sep_y;
 	CheckBox *show_ids;
 	EditorFileDialog *file_dialog;
@@ -170,6 +197,8 @@ class TileSetEditor : public VBoxContainer {
 	void _select_tile(int p_id);
 	void _update_preview();
 	void _preview_origin_selected(int p_origin);
+	void _preview_shape_edited();
+	void _preview_add_shape_pressed();
 	void _property_edited(const Variant &p_prop); // a String, or an Array when it comes through UndoRedo
 	void _resource_selected(Object *p_res, const String &p_prop);
 	void _create_tile(const Rect2 &p_cells);

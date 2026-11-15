@@ -39,6 +39,8 @@
 #include "scene/2d/physics_body_2d.h"
 #include "scene/2d/sprite.h"
 #include "scene/2d/tile_map.h"
+#include "scene/resources/circle_shape_2d.h"
+#include "scene/resources/rectangle_shape_2d.h"
 #include "servers/visual_server.h"
 void TileSetEditor::_import_node(Node *p_node, Ref<TileSet> p_library) {
 
@@ -276,6 +278,123 @@ TileSetTilePreview::TileSetTilePreview() {
 	tile = -1;
 	cell_size = Size2(16, 16);
 	origin = TileMap::TILE_ORIGIN_TOP_LEFT;
+	undo_redo = NULL;
+	view_zoom = 1;
+	drag = DRAG_NONE;
+	set_focus_mode(FOCUS_CLICK);
+}
+
+Size2 TileSetTilePreview::_tile_size() const {
+
+	Ref<Texture> tex = tileset->tile_get_texture(tile);
+	Rect2 region = tileset->tile_get_region(tile);
+	return region != Rect2() ? region.size : (tex.is_valid() ? tex->get_size() : cell_size);
+}
+
+Vector2 TileSetTilePreview::_shape_pos() const {
+
+	// The TileMap places the shape like the texture, moved by Shape Offset instead of Tex Offset.
+	return _texture_pos(_tile_size(), tileset->tile_get_shape_offset(tile));
+}
+
+Vector2 TileSetTilePreview::_handle_pos() const {
+
+	Ref<Shape2D> shape = tileset->tile_get_shape(tile);
+	if (shape.is_null())
+		return Vector2();
+	if (shape->cast_to<RectangleShape2D>())
+		return shape->cast_to<RectangleShape2D>()->get_extents();
+	if (shape->cast_to<CircleShape2D>())
+		return Vector2(shape->cast_to<CircleShape2D>()->get_radius(), 0);
+	return Vector2();
+}
+
+void TileSetTilePreview::add_rect_shape() {
+
+	if (tileset.is_null() || !tileset->has_tile(tile) || !undo_redo)
+		return;
+	Ref<RectangleShape2D> rect;
+	rect.instance();
+	rect->set_extents(cell_size / 2);
+	// Shape Offset that puts the rectangle's center (its origin) at the cell's center.
+	Vector2 ofs = cell_size / 2 - _texture_pos(_tile_size(), Vector2());
+	undo_redo->create_action(TTR("Add Tile Collision Shape"));
+	undo_redo->add_do_method(tileset.ptr(), "tile_set_shape", tile, rect);
+	undo_redo->add_do_method(tileset.ptr(), "tile_set_shape_offset", tile, ofs);
+	undo_redo->add_undo_method(tileset.ptr(), "tile_set_shapes", tile, tileset->call("tile_get_shapes", tile));
+	undo_redo->add_undo_method(tileset.ptr(), "tile_set_shape_offset", tile, tileset->tile_get_shape_offset(tile));
+	undo_redo->commit_action();
+	emit_signal("shape_edited");
+}
+
+void TileSetTilePreview::_input_event(const InputEvent &p_event) {
+
+	if (tileset.is_null() || !tileset->has_tile(tile))
+		return;
+	Ref<Shape2D> shape = tileset->tile_get_shape(tile);
+
+	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.button_index == BUTTON_LEFT) {
+		Vector2 p = (Vector2(p_event.mouse_button.x, p_event.mouse_button.y) - view_ofs) / view_zoom;
+		if (p_event.mouse_button.pressed) {
+			if (shape.is_null())
+				return;
+			Vector2 local = p - _shape_pos();
+			Vector2 h = _handle_pos();
+			drag = DRAG_NONE;
+			if (h != Vector2() && (local - h).length() * view_zoom <= 6) {
+				drag = shape->cast_to<RectangleShape2D>() ? DRAG_EXTENTS : DRAG_RADIUS;
+				drag_start_value = drag == DRAG_EXTENTS ? Variant(shape->cast_to<RectangleShape2D>()->get_extents()) : Variant(shape->cast_to<CircleShape2D>()->get_radius());
+			} else if (shape->get_rect().grow(2 / view_zoom).has_point(local)) {
+				drag = DRAG_MOVE;
+			}
+			drag_from = p;
+			drag_start_offset = tileset->tile_get_shape_offset(tile);
+			accept_event();
+		} else if (drag != DRAG_NONE) {
+			// One undoable action for the whole drag (the values were applied live).
+			if (undo_redo && shape.is_valid()) {
+				if (drag == DRAG_MOVE) {
+					undo_redo->create_action(TTR("Move Tile Collision Shape"));
+					undo_redo->add_do_method(tileset.ptr(), "tile_set_shape_offset", tile, tileset->tile_get_shape_offset(tile));
+					undo_redo->add_undo_method(tileset.ptr(), "tile_set_shape_offset", tile, drag_start_offset);
+				} else {
+					String prop = drag == DRAG_EXTENTS ? "extents" : "radius";
+					undo_redo->create_action(TTR("Resize Tile Collision Shape"));
+					undo_redo->add_do_property(shape.ptr(), prop, shape->get(prop));
+					undo_redo->add_undo_property(shape.ptr(), prop, drag_start_value);
+				}
+				undo_redo->add_do_method(this, "update");
+				undo_redo->add_undo_method(this, "update");
+				undo_redo->commit_action();
+			}
+			drag = DRAG_NONE;
+			update(); // refit the view
+			emit_signal("shape_edited");
+			accept_event();
+		}
+	}
+
+	if (p_event.type == InputEvent::MOUSE_MOTION && drag != DRAG_NONE && shape.is_valid()) {
+		Vector2 p = (Vector2(p_event.mouse_motion.x, p_event.mouse_motion.y) - view_ofs) / view_zoom;
+		Vector2 delta = (p - drag_from).snapped(Vector2(1, 1)); // whole pixels
+		if (drag == DRAG_MOVE) {
+			tileset->tile_set_shape_offset(tile, drag_start_offset + delta);
+		} else if (drag == DRAG_EXTENTS) {
+			Vector2 e = drag_start_value;
+			shape->cast_to<RectangleShape2D>()->set_extents(Vector2(MAX(1, e.x + delta.x), MAX(1, e.y + delta.y)));
+		} else if (drag == DRAG_RADIUS) {
+			float r = drag_start_value;
+			shape->cast_to<CircleShape2D>()->set_radius(MAX(1, r + delta.x));
+		}
+		update();
+		accept_event();
+	}
+}
+
+void TileSetTilePreview::_bind_methods() {
+
+	ObjectTypeDB::bind_method("_input_event", &TileSetTilePreview::_input_event);
+	ADD_SIGNAL(MethodInfo("shape_edited"));
 }
 
 void TileSetTilePreview::set_tile(const Ref<TileSet> &p_tileset, int p_tile) {
@@ -346,6 +465,14 @@ void TileSetTilePreview::_notification(int p_what) {
 	zoom = MIN(zoom, 8.0f);
 	Vector2 ofs = (area - bounds.size * zoom) / 2 - bounds.pos * zoom; // screen = ofs + world * zoom
 	ofs = ofs.floor();
+	if (drag != DRAG_NONE) {
+		// Keep the view still while dragging: refitting it to a growing shape would feed back
+		// into the drag.
+		ofs = view_ofs;
+		zoom = view_zoom;
+	}
+	view_ofs = ofs;
+	view_zoom = zoom;
 
 	// Neighbouring cells, faint; the tile's cell, bright.
 	Color grid_col(1, 1, 1, 0.08);
@@ -383,6 +510,13 @@ void TileSetTilePreview::_notification(int p_what) {
 		draw_set_transform(ofs + shape_pos * zoom, 0, Size2(zoom, zoom));
 		shape->draw(get_canvas_item(), Color(0.0, 0.6, 0.7, 0.5));
 		draw_set_transform(Point2(), 0, Size2(1, 1));
+		Vector2 h = _handle_pos();
+		if (h != Vector2()) {
+			// Drag the shape to move it, this handle to resize it.
+			Vector2 hp = (ofs + (shape_pos + h) * zoom).floor();
+			draw_rect(Rect2(hp - Vector2(4, 4), Size2(8, 8)), Color(1, 1, 1));
+			draw_rect(Rect2(hp - Vector2(3, 3), Size2(6, 6)), Color(0.0, 0.6, 0.7));
+		}
 	}
 
 	// The cell's origin for the TileMap's Tile Origin.
@@ -869,6 +1003,8 @@ void TileSetEditor::_bind_methods() {
 	ObjectTypeDB::bind_method("_show_ids_toggled", &TileSetEditor::_show_ids_toggled);
 	ObjectTypeDB::bind_method("_mode_pressed", &TileSetEditor::_mode_pressed);
 	ObjectTypeDB::bind_method("_preview_origin_selected", &TileSetEditor::_preview_origin_selected);
+	ObjectTypeDB::bind_method("_preview_shape_edited", &TileSetEditor::_preview_shape_edited);
+	ObjectTypeDB::bind_method("_preview_add_shape_pressed", &TileSetEditor::_preview_add_shape_pressed);
 	ObjectTypeDB::bind_method("_property_edited", &TileSetEditor::_property_edited);
 	ObjectTypeDB::bind_method("_resource_selected", &TileSetEditor::_resource_selected);
 }
@@ -877,6 +1013,7 @@ void TileSetEditor::_update_preview() {
 
 	bool has = tileset.is_valid() && selected_tile >= 0 && tileset->has_tile(selected_tile);
 	tile_preview->set_tile(tileset, has ? selected_tile : -1);
+	preview_add_shape->set_hidden(!(has && tileset->tile_get_shape(selected_tile).is_null()));
 	if (!has) {
 		preview_info->set_text("");
 		return;
@@ -894,6 +1031,19 @@ void TileSetEditor::set_cell_context(const Size2 &p_cell_size, int p_origin) {
 void TileSetEditor::_preview_origin_selected(int p_index) {
 
 	tile_preview->set_cell(tile_preview->get_cell_size(), preview_origin->get_item_ID(p_index));
+}
+
+void TileSetEditor::_preview_shape_edited() {
+
+	// Shape settings changed in the shape itself: refresh the fields.
+	if (tileset.is_valid() && selected_tile >= 0 && tileset->has_tile(selected_tile))
+		_get_proxy(selected_tile)->notify_changed();
+	_update_preview();
+}
+
+void TileSetEditor::_preview_add_shape_pressed() {
+
+	tile_preview->add_rect_shape();
 }
 
 void TileSetEditor::_property_edited(const Variant &p_prop) {
@@ -1068,6 +1218,13 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	preview_info = memnew(Label);
 	preview_info->set_clip_text(true);
 	preview_vb->add_child(preview_info);
+	preview_add_shape = memnew(Button);
+	preview_add_shape->set_text(TTR("+ Rect Shape"));
+	preview_add_shape->set_tooltip(TTR("Give the tile a rectangle collision shape covering its cell (then drag it, or its corner, in the preview)."));
+	preview_add_shape->connect("pressed", this, "_preview_add_shape_pressed");
+	preview_vb->add_child(preview_add_shape);
+	tile_preview->set_undo_redo(editor->get_undo_redo());
+	tile_preview->connect("shape_edited", this, "_preview_shape_edited");
 
 	tile_properties = memnew(PropertyEditor);
 	tile_properties->set_h_size_flags(SIZE_EXPAND_FILL);
