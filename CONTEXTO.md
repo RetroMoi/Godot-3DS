@@ -407,7 +407,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - **Regra:** não usar construtor com literal (`IntArray([...])`, `Vector2Array([...])` etc.) como default de `export`; definir o valor na cena ou preencher no `init()`/`_ready()`.
   - **Possível melhoria na engine (não pedida):** calcular só o default do editor reduzindo uma cópia da expressão a constante, sem mudar o inicializador (arrays não podem ser constantes compartilhadas entre instâncias).
 
-### 5.7 Editor de TileSet no estilo do Godot 4 (em andamento)
+### 5.7 Editor de TileSet no estilo do Godot 4 (em andamento: fases 1 e 2 feitas)
 **Diagnóstico do 2.1:**
 - O TileSet é uma lista de tiles soltos (textura + região), sem atlas, grade ou grupos.
 - A edição era no Inspetor (`0/name`, `0/region`... digitados), por "Converter para TileSet" a partir de uma cena de Sprites, ou pelo menu "Tile Set" (só adicionar/remover).
@@ -430,7 +430,14 @@ Também gasta memória e tempo de carga, com centenas de itens.
      - Tudo com desfazer.
    - Painel inferior **TileMap**: os atlas em grade; clicar escolhe o tile, sincronizado com a lista lateral.
    - O TileSet ganhou `atlas/<n>/texture|tile_size|margin|separation` (só do editor) e os métodos `atlas_*`.
-2. Blocos (seleção múltipla como carimbo) e aleatório com probabilidade (dado e espalhamento), mais grupos aleatórios.
+2. **Feita (`30caa95`):**
+   - Paleta do TileMap: arrastar sobre os tiles do atlas monta um **bloco**. O lápis carimba o bloco na célula; linha, retângulo e balde repetem o padrão a partir da âncora; Ctrl+clique põe ou tira tiles do pincel.
+   - Botão **Random** (o "dado"): um sorteio por célula, ponderado pela **Probability** de cada tile (propriedade nova do tile, 0 a 100, padrão 1).
+     - O sorteio usa um hash (finalizador do murmur3) da célula e de uma semente por traço, então a prévia bate com o resultado.
+     - **Scattering** deixa uma fração das células sem mexer.
+   - **Grupos aleatórios** salvos no TileSet (`random_group/<n>/name|tiles`): "Save…" guarda o pincel com um nome e já pinta com ele; escolher na lista liga o Random com o grupo; "Delete" remove. Tudo com desfazer.
+   - O pincel sobrevive a mudanças no TileSet (só saem os tiles removidos) e é zerado ao editar um TileMap com outro TileSet.
+   - Testado no editor (bloco, aleatório variado, salvar/escolher grupo) e salvando/carregando em `.tres` e `.res`.
 3. Colisão visual por tile, dados customizados e **z por tile** (itens extras só nos quadrantes que precisam; medir no 3DS).
 4. Padrões.
 5. Terrenos/autotile (só no editor).
@@ -519,6 +526,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `30caa95` | editor: pincel de bloco, aleatório com probabilidade, espalhamento e grupos aleatórios |
 | `35fa8fd` | editor: TileSet com atlas (painel inferior) e paleta em grade no TileMap |
 | `9535e74` | release: método inexistente e argumentos de menos viram erro de script em vez de crash |
 | `179fd19` | `CONTEXTO.md`: repositório do jogo é somente leitura para o lado da engine |
