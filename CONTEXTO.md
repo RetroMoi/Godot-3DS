@@ -414,7 +414,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - **Regra:** não usar construtor com literal (`IntArray([...])`, `Vector2Array([...])` etc.) como default de `export`; definir o valor na cena ou preencher no `init()`/`_ready()`.
   - **Possível melhoria na engine (não pedida):** calcular só o default do editor reduzindo uma cópia da expressão a constante, sem mudar o inicializador (arrays não podem ser constantes compartilhadas entre instâncias).
 
-### 5.7 Editor de TileSet no estilo do Godot 4 (em andamento: fases 1 e 2 feitas)
+### 5.7 Editor de TileSet no estilo do Godot 4 (em andamento: fases 1, 2 e 3 feitas)
 **Diagnóstico do 2.1:**
 - O TileSet é uma lista de tiles soltos (textura + região), sem atlas, grade ou grupos.
 - A edição era no Inspetor (`0/name`, `0/region`... digitados), por "Converter para TileSet" a partir de uma cena de Sprites, ou pelo menu "Tile Set" (só adicionar/remover).
@@ -449,7 +449,16 @@ Também gasta memória e tempo de carga, com centenas de itens.
      - Prévia do tile no painel TileSet: célula e vizinhas, cruz vermelha na origem da célula (o Tile Origin do TileMap editado, com seletor), textura deslocada pelo Tex Offset (contorno amarelo e ponto no canto) e a shape de colisão deslocada pelo Shape Offset (azul).
      - A shape de colisão é editada no próprio painel: as propriedades dela (extents, radius...) aparecem em "Shape Settings", logo abaixo de "Shape", sem abrir outra página. Outros recursos (material, navegação, oclusor) abrem no Inspetor.
      - Setas para cima/baixo funcionavam uma vez só: o painel se reconstruía no "changed" do TileSet causado pela própria edição. Também passaram a funcionar nos SpinBox (Shift = 10 passos).
-3. Colisão visual por tile, dados customizados e **z por tile** (itens extras só nos quadrantes que precisam; medir no 3DS).
+3. **Feita:**
+   - **z por tile (`c5e14b7`):** `<id>/z_index` (-4096 a 4096; gravado só quando diferente de 0) e `tile_set_z_index`/`tile_get_z_index`. O TileMap cria um item de canvas novo no quadrante quando o z muda de um tile para o seguinte (como já fazia com material), com esse z relativo ao TileMap. Mapas sem z desenham exatamente como antes. Como o z de CanvasItem, vale acima do Y-sort: um tile com z 1 fica sobre irmãos de z 0 (ex.: copa sobre o player). Testado no PC e no emulador.
+   - **Dados customizados (`021cb82`):** camadas como no Godot 4.
+     - `custom_data_layer_count` e `custom_data_layer/<n>/name|type` (bool, int, float, String, Vector2, Color), editadas no Inspetor do TileSet. O menu do painel tem "Custom Data Layers (Inspector)...".
+     - Cada tile ganha um campo tipado por camada (`<id>/custom_data/<nome>`, seção "Custom Data").
+     - Os valores ficam num dicionário por tile (`<id>/custom_data`, gravado só se não vazio). O valor padrão do tipo não é gravado. Renomear uma camada renomeia em todos os tiles.
+     - API: `tile_set/get_custom_data`, `find_custom_data_layer` etc., e `TileMap.get_cell_custom_data(x, y, camada)`.
+     - Testado em `.tres` e `.res`.
+   - **Colisão visual (`f9aff17`):** na prévia do tile, arrastar a shape move o Shape Offset; a alça muda o extents do retângulo (canto) ou o raio do círculo (lado direito). Pixels inteiros, uma ação de desfazer por arrasto. Tile sem shape ganha "+ Rect Shape" (retângulo cobrindo a célula, conforme o Tile Origin).
+   - **No ambiente de teste, o clique simulado em Cena > Desfazer às vezes não dispara; o Ctrl+Z com o mouse sobre o mapa funciona.**
 4. Padrões.
 5. Terrenos/autotile (só no editor).
 
@@ -555,7 +564,8 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
 **Engine, próximo passo (combinado com o usuário):**
-- Editor de TileSet, fase 3: **z de desenho por tile** (prioridade), colisão visual por tile e dados customizados (5.7). Depois, fases 4 (padrões) e 5 (terrenos/autotile).
+- Editor de TileSet, fase 4 (padrões) e depois fase 5 (terrenos/autotile, só no editor) (5.7). A fase 3 está feita.
+- Investigar: no 3DS, o que passa de y=240 na tela de cima reaparece como 1 linha no topo (visto num teste com uma faixa de tiles cruzando a borda; anterior às mudanças de hoje). Ver se acontece no jogo.
 
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
@@ -587,6 +597,9 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `f9aff17` | editor de TileSet: shape de colisão editada arrastando na prévia; "+ Rect Shape" |
+| `021cb82` | TileSet: camadas de dados customizados; `TileMap.get_cell_custom_data` |
+| `c5e14b7` | TileSet: z de desenho por tile |
 | `bc450f7` | `ImageTexture.create_from_blend` (crossfade dia/noite) e upload de textura ~4x mais rápido no 3DS |
 | `9d85be4` | `.gitignore`: binário do harness do emulador |
 | `7f9d563` | editor de TileSet: prévia do tile (célula, origem, tex offset, shape), shape editada no próprio painel, setas nos campos |
