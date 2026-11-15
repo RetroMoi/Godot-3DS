@@ -438,6 +438,10 @@ Também gasta memória e tempo de carga, com centenas de itens.
    - **Grupos aleatórios** salvos no TileSet (`random_group/<n>/name|tiles`): "Save…" guarda o pincel com um nome e já pinta com ele; escolher na lista liga o Random com o grupo; "Delete" remove. Tudo com desfazer.
    - O pincel sobrevive a mudanças no TileSet (só saem os tiles removidos) e é zerado ao editar um TileMap com outro TileSet.
    - Testado no editor (bloco, aleatório variado, salvar/escolher grupo) e salvando/carregando em `.tres` e `.res`.
+   - **Ajustes pedidos pelo usuário (`7f9d563`):**
+     - Prévia do tile no painel TileSet: célula e vizinhas, cruz vermelha na origem da célula (o Tile Origin do TileMap editado, com seletor), textura deslocada pelo Tex Offset (contorno amarelo e ponto no canto) e a shape de colisão deslocada pelo Shape Offset (azul).
+     - A shape de colisão é editada no próprio painel: as propriedades dela (extents, radius...) aparecem em "Shape Settings", logo abaixo de "Shape", sem abrir outra página. Outros recursos (material, navegação, oclusor) abrem no Inspetor.
+     - Setas para cima/baixo funcionavam uma vez só: o painel se reconstruía no "changed" do TileSet causado pela própria edição. Também passaram a funcionar nos SpinBox (Shift = 10 passos).
 3. Colisão visual por tile, dados customizados e **z por tile** (itens extras só nos quadrantes que precisam; medir no 3DS).
 4. Padrões.
 5. Terrenos/autotile (só no editor).
@@ -457,11 +461,18 @@ Também gasta memória e tempo de carga, com centenas de itens.
 **Correção na engine (`88e9e69`):**
 - CollisionShape2D/CollisionPolygon2D: com o jogo rodando sem a opção, o item de desenho sai sozinho da lista do servidor visual (a visibilidade do nó não muda; fica se o nó tiver filhos que desenham). Assim o `hide()` no jogo fica desnecessário.
 - `CollisionGrid2D`: com a opção ligada, desenha os obstáculos (preenchimento + contorno, acima de tudo) no canvas do primeiro TileMap adicionado.
-- A flag existe em todos os builds e pode ser ligada pela configuração de projeto **`debug/visible_collision_shapes`** (para o 3DS; no PC continua valendo o menu Depurar).
+- A flag existe em todos os builds. No PC continua valendo o menu Depurar. No 3DS, desde `195cad5`, ela é uma opção **Debug > Visible Collision Shapes da exportação do Nintendo 3DS** (o exportador grava `debug/visible_collision_shapes` no `engine.cfb` exportado). Não é mais configuração de projeto; se a chave ainda estiver no `engine.cfg`, continua valendo e deve ser apagada.
 - Viewport: os contatos 3D de depuração não são criados com 3D desligado.
 - Testado no PC com uma cópia do jogo sem os `hide()`: aparecem a grade das árvores, as formas do player, o raio de detecção do morcego e a área de ataque. Por `-debugcol` e pela configuração de projeto.
 
 **Para o Open:** remover os dois laços de `hide()` (player.gd e enemy.gd). Não há perda de desempenho com a engine nova.
+
+**PANIC no 3DS com a opção ligada (relatado pelo Open; corrigido em `195cad5`):**
+- Causa: o desenho de depuração da `CollisionGrid2D` levava 5 draws separados por obstáculo (o preenchimento e 4 linhas de outra cor quebram o lote), para o mapa inteiro, todo quadro. Com 861 obstáculos, eram ~4.300 draws, o que enchia o command buffer do citro3d. No emulador local o rasterizador cortava o quadro (tela cinza, "GPU command buffer full"); no Azahar do Open deu PANIC em `GPUCMD_Add`.
+- Correção: obstáculos em blocos de 256 px (um item por bloco, descartado fora da tela); em cada bloco, os preenchimentos e depois os contornos (retângulos finos), formando dois lotes. O cache do TileMap no citro3d passou a checar o espaço antes de cada draw, não uma vez por item.
+- Resultado no emulador (cena do jogo exportada com a opção): 60 FPS, 35 a 44 draws por quadro, sem buffer cheio.
+- `C3D_FrameSplit`/`GPUCMD_Split` não ajudariam: dividir só manda a GPU começar antes; o espaço total do buffer no quadro continua o mesmo.
+- Nesta versão do citro3d, `C3D_FixedAttribSet` só marca o estado como sujo, sem escrever no buffer.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
@@ -509,7 +520,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Ver o novo layout padrão dos docks (Cena/Arquivos à esquerda, Inspetor/Node à direita) após atualizar.
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
-- Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd` (5.8).
+- Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
@@ -541,6 +552,8 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `7f9d563` | editor de TileSet: prévia do tile (célula, origem, tex offset, shape), shape editada no próprio painel, setas nos campos |
+| `195cad5` | 3DS: colisões visíveis sem encher o command buffer; opção movida para a exportação |
 | `88e9e69` | colisões visíveis: formas escondidas pela engine, desenho da `CollisionGrid2D`, opção `debug/visible_collision_shapes` (3DS) |
 | `30caa95` | editor: pincel de bloco, aleatório com probabilidade, espalhamento e grupos aleatórios |
 | `35fa8fd` | editor: TileSet com atlas (painel inferior) e paleta em grade no TileMap |
