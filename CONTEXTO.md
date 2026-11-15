@@ -449,6 +449,20 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 **Repositório:** o `.gitignore` tem `editor/*`, então arquivos **novos** em `editor/` precisam de `git add -f`.
 
+### 5.8 "Colisões visíveis" não aparecia (resolvido na engine `88e9e69`; falta um ajuste no jogo)
+**Causa (no jogo):** `player.gd` (`_ready`, ~linha 95) e `enemy.gd` (`_ready`, ~linha 47) dão `hide()` nos CollisionShape2D para o servidor visual não percorrê-los. Escondidos, a opção Depurar > Colisões Visíveis não tem o que mostrar. Além disso:
+- a colisão do mundo (árvores) é a `CollisionGrid2D`, que não tinha desenho de depuração;
+- no 3DS a opção não tinha como ser ligada: o template é `target=release` (sem `DEBUG_ENABLED`, a flag era sempre falsa) e não recebe linha de comando.
+
+**Correção na engine (`88e9e69`):**
+- CollisionShape2D/CollisionPolygon2D: com o jogo rodando sem a opção, o item de desenho sai sozinho da lista do servidor visual (a visibilidade do nó não muda; fica se o nó tiver filhos que desenham). Assim o `hide()` no jogo fica desnecessário.
+- `CollisionGrid2D`: com a opção ligada, desenha os obstáculos (preenchimento + contorno, acima de tudo) no canvas do primeiro TileMap adicionado.
+- A flag existe em todos os builds e pode ser ligada pela configuração de projeto **`debug/visible_collision_shapes`** (para o 3DS; no PC continua valendo o menu Depurar).
+- Viewport: os contatos 3D de depuração não são criados com 3D desligado.
+- Testado no PC com uma cópia do jogo sem os `hide()`: aparecem a grade das árvores, as formas do player, o raio de detecção do morcego e a área de ataque. Por `-debugcol` e pela configuração de projeto.
+
+**Para o Open:** remover os dois laços de `hide()` (player.gd e enemy.gd). Não há perda de desempenho com a engine nova.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -495,6 +509,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Ver o novo layout padrão dos docks (Cena/Arquivos à esquerda, Inspetor/Node à direita) após atualizar.
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
+- Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd` (5.8).
 
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
@@ -526,6 +541,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `88e9e69` | colisões visíveis: formas escondidas pela engine, desenho da `CollisionGrid2D`, opção `debug/visible_collision_shapes` (3DS) |
 | `30caa95` | editor: pincel de bloco, aleatório com probabilidade, espalhamento e grupos aleatórios |
 | `35fa8fd` | editor: TileSet com atlas (painel inferior) e paleta em grade no TileMap |
 | `9535e74` | release: método inexistente e argumentos de menos viram erro de script em vez de crash |
