@@ -579,6 +579,14 @@ Também gasta memória e tempo de carga, com centenas de itens.
     - O player toca a animação de dano e solta a explosão dos morcegos (`fx/explosion.tscn`).
     - Depois renasce no ponto de origem (`host-pos`/`guest-pos`), com a vida cheia e piscando invencível (`start_invulnerability()`).
     - Sem câmera lenta e sem recarregar a cena.
+  - **Sprites:** o host é o player 1 e o convidado usa o `player2.png`, nas duas telas.
+  - **Morcegos por spawn (substitui as instâncias fixas do teste):**
+    - Cada mapa mantém X morcegos vivos; quando um morre, nasce outro.
+    - Só o host (ou o jogo solo) faz o spawn. Os IDs são dados pelo host e avisados por evento confiável; o welcome leva a lista atual.
+    - Animação nova `spawn` (sugestão): `Sprite` de 10% a 100% de escala (com um leve exagero antes de assentar), com HitBox, HurtBox e DetectRadius desligados e a IA parada; ao terminar, começa a patrulha.
+  - **Alvo do morcego:** segue o primeiro jogador detectado e ignora o outro que entrar no raio nesse meio tempo.
+    - Ao sair do modo agressivo (desistência, alvo sumiu), volta a considerar os dois e varre o raio (`get_overlapping_bodies`).
+    - Leitura da engine, a confirmar com o usuário: apanhar do outro jogador também não troca o alvo; sem alvo, quem bateu vira o alvo.
 
 **Quem decide o quê:**
 - Cada console decide o movimento e a vida do próprio player, sem atraso nos controles. O dano por contato com inimigo é detectado no próprio console.
