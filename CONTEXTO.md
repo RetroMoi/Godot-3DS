@@ -572,6 +572,13 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Drops individuais.
 - Quem morre renasce no ponto de origem do mapa.
 - Qualquer um pode sair. Antes aparece uma confirmação dizendo que sair encerra a sessão multiplayer.
+- **Decididos depois do teste em consoles:**
+  - **Dia/noite:** vale a hora do host. Ele manda a hora no welcome e a cada troca de fase; o convidado guarda a diferença.
+  - **START:** abre o prompt de sair da sala, sem pausar o jogo.
+  - **Morte no co-op:** sem animação de morte.
+    - O player toca a animação de dano e solta a explosão dos morcegos (`fx/explosion.tscn`).
+    - Depois renasce no ponto de origem (`host-pos`/`guest-pos`), com a vida cheia e piscando invencível (`start_invulnerability()`).
+    - Sem câmera lenta e sem recarregar a cena.
 
 **Quem decide o quê:**
 - Cada console decide o movimento e a vida do próprio player, sem atraso nos controles. O dano por contato com inimigo é detectado no próprio console.
