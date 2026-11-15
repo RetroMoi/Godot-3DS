@@ -96,7 +96,7 @@ public:
 		MAX_PLAYERS = 16,
 		MAX_ROOM_INFO = 200, // bytes of application data in the room's announcement
 		HEADER_SIZE = 3, // kind + sequence number, taken from each packet
-		MAX_PACKET_SIZE = 1478 - HEADER_SIZE, // UDS_DATAFRAME_MAXSIZE minus the header
+		MAX_PACKET_SIZE = 1478 - 1 - HEADER_SIZE, // UDS_DATAFRAME_MAXSIZE minus the 3DS destination byte and the header
 	};
 
 private:

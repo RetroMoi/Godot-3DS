@@ -606,7 +606,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Causa provável (inferida, sem console aqui): o envio para um nó específico não chega.
 - Mudança:
   - o transporte UDS manda tudo em broadcast, com o destino no 1º byte; quem recebe descarta o que não é para si;
-  - pacote máximo 1.477 bytes (1.475 úteis);
+  - pacote máximo 1.477 bytes no UDS (1.474 úteis; `MAX_PACKET_SIZE` acompanha);
   - o pulo não fatal agora conta como falha.
 - Diagnóstico novo: `LocalWireless.get_stats()` (sent, send_failed, received, received_reliable, acks_received, resent, gave_up, pending). O `coop_test` mostra os contadores na tela de baixo e na mensagem de tempo esgotado.
 - Validado: PC com 2 janelas e 30% de perda; host no emulador do Old 3DS (200 envios em broadcast, 0 falhas, 60 FPS).
