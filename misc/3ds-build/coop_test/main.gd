@@ -201,7 +201,7 @@ func _process(delta):
 	if waiting_welcome:
 		welcome_wait += delta
 		if welcome_wait > WELCOME_TIMEOUT:
-			_leave("O host não respondeu.")
+			_leave("O host não respondeu.\n" + _net_stats())
 
 	if in_world:
 		_update_player(delta)
@@ -398,10 +398,23 @@ func _update_hud():
 	var others = ""
 	for id in remotes:
 		others += "  J%d: %d/%d" % [id, remotes[id]["hp"], MAX_HP]
-	var text = "%s (id %d)   FPS %d\nVida: %d/%d%s\n%s" % [who, lw.get_my_id(), OS.get_frames_per_second(), hp, MAX_HP, others, msg]
+	var text
+	if in_world:
+		text = "%s (id %d)   FPS %d\nVida: %d/%d%s\n%s" % [who, lw.get_my_id(), OS.get_frames_per_second(), hp, MAX_HP, others, msg]
+	else:
+		text = "%s   FPS %d\n%s" % [who, OS.get_frames_per_second(), msg]
+	if lw.get_status() != 0:
+		text += "\n" + _net_stats()
 	if prompt_open:
 		text = "SAIR ENCERRA A SESSÃO MULTIPLAYER.\nA: sair   B: voltar\n\n" + text
 	get_node("info").set_text(text)
+
+# Contadores da rede (LocalWireless.get_stats): mostram onde os pacotes se perdem.
+#   env = enviados, falha = recusados pelo sistema, rec = recebidos (todos), conf = confiáveis
+#   recebidos, ack = confirmações recebidas, reenv = reenvios, pend = esperando confirmação.
+func _net_stats():
+	var st = lw.get_stats()
+	return "rede id%d: env %d falha %d rec %d conf %d ack %d reenv %d pend %d" % [lw.get_my_id(), st["sent"], st["send_failed"], st["received"], st["received_reliable"], st["acks_received"], st["resent"], st["pending"]]
 
 func _draw():
 	if not in_world:

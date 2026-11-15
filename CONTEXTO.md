@@ -600,6 +600,21 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Reproduzido e validado no PC: com a primeira cópia perdida de propósito, e com 50% de perda.
 - O `coop_test` também desiste depois de 10 s sem "welcome" e volta ao lobby com aviso.
 
+**Segundo teste em 2 consoles (com `ceb9cef`):** o convidado agora volta ao lobby com "O host não respondeu.". Nenhum hello ou welcome atravessou em 60 reenvios (9 s).
+- Leitura do código: as chamadas UDS são as mesmas da versão validada. O teste antigo (`local_wireless_test`) só usava broadcast (`send_var(v)`, destino 0), e foi só ele que passou em 2 consoles.
+- O co-op depende de envio para um nó só (`udsSendTo` com NetworkNodeID): hello para o host, welcome e ACKs para o convidado. Esse caminho nunca foi visto funcionando em hardware. O libctru chama a flag `UDS_SENDFLAG_Default` de "desconhecida", e o erro não fatal 0xC86113F0 faz o sistema pular o quadro em silêncio (antes contado como sucesso).
+- Causa provável (inferida, sem console aqui): o envio para um nó específico não chega.
+- Mudança:
+  - o transporte UDS manda tudo em broadcast, com o destino no 1º byte; quem recebe descarta o que não é para si;
+  - pacote máximo 1.477 bytes (1.475 úteis);
+  - o pulo não fatal agora conta como falha.
+- Diagnóstico novo: `LocalWireless.get_stats()` (sent, send_failed, received, received_reliable, acks_received, resent, gave_up, pending). O `coop_test` mostra os contadores na tela de baixo e na mensagem de tempo esgotado.
+- Validado: PC com 2 janelas e 30% de perda; host no emulador do Old 3DS (200 envios em broadcast, 0 falhas, 60 FPS).
+- Como ler os contadores se falhar de novo:
+  - convidado com `rec 0`: não chega nada do host, nem os pacotes rápidos;
+  - convidado com `rec` > 0 e `conf 0`: os rápidos chegam e o welcome não;
+  - `falha` alto: o sistema recusa os envios.
+
 **Correção (`f2337f2`):** `StreamPeerBuffer::get_partial_data` (do 2.1) não tinha o `return` final. Em build otimizado, toda leitura (`get_u8`, `get_16`...) derrubava o jogo. Afeta qualquer uso de `StreamPeerBuffer`, não só o co-op.
 
 **Referência (`misc/3ds-build/coop_test`, ver o README):**
@@ -609,7 +624,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Validado:
   - no PC, duas janelas com 20% de perda e 60 ms de latência: os dois players e os inimigos sincronizados, renascimento e saída com aviso ao outro;
   - no emulador do Old 3DS, como host: 60 FPS, A cria a sala, direcional move, B abre a confirmação.
-- Falta: teste com 2 consoles depois da correção do "Entrando..." (o primeiro teste travou aí).
+- Falta: teste com 2 consoles com o envio só em broadcast. Os dois primeiros testes falharam: o 1º travou em "Entrando..."; o 2º deu "O host não respondeu.". Se falhar, anotar a linha "rede ..." dos dois consoles.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;

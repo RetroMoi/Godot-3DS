@@ -36,6 +36,12 @@
 
 // LocalWireless over UDS (the 3DS's local wireless). Rooms only seen by the same game: the
 // network ID comes from the project name.
+//
+// Every frame goes out as a UDS broadcast, with the destination player in its first byte (0 =
+// everyone); receivers drop frames addressed to someone else. UDS sends to a single node
+// (udsSendTo with a NetworkNodeID) were never seen working on hardware: a co-op test built on
+// them never got the host's answer, while broadcasts were validated between two consoles. For
+// the 2-4 players of a local session the cost is nil (the radio broadcasts anyway).
 class LocalWirelessUDS : public LocalWirelessTransport {
 
 	enum {
@@ -58,6 +64,7 @@ class LocalWirelessUDS : public LocalWirelessTransport {
 	String passphrase;
 	List<RawPacket> raw_packets;
 	uint8_t *recv_buffer;
+	uint8_t *send_buffer; // destination byte + data
 
 	// Scan, done in a thread (it takes a moment and would stall the game).
 	Mutex *mutex;
@@ -98,7 +105,7 @@ public:
 	virtual int get_my_id();
 	virtual uint32_t get_player_mask();
 	virtual String get_player_name(int p_id);
-	virtual int get_max_packet_size() const { return MAX_UDS_PACKET; }
+	virtual int get_max_packet_size() const { return MAX_UDS_PACKET - 1; } // 1 byte: destination
 	virtual Error send_raw(const uint8_t *p_data, int p_size, int p_to);
 	virtual bool pull_raw(Vector<uint8_t> *r_data, int *r_sender);
 

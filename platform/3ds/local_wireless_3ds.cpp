@@ -356,13 +356,18 @@ String LocalWirelessUDS::get_player_name(int p_id) {
 Error LocalWirelessUDS::send_raw(const uint8_t *p_data, int p_size, int p_to) {
 
 	ERR_FAIL_COND_V(!in_room, ERR_UNCONFIGURED);
-	ERR_FAIL_COND_V(p_size <= 0 || p_size > MAX_UDS_PACKET, ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(p_size <= 0 || p_size > MAX_UDS_PACKET - 1, ERR_INVALID_PARAMETER);
 
-	u16 to = p_to <= 0 ? UDS_BROADCAST_NETWORKNODEID : (u16)p_to;
-	Result res = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, p_data, p_size);
-	if (UDS_CHECK_SENDTO_FATALERROR(res)) {
-		ERR_PRINTS("LocalWireless: send failed (0x" + _uds_error(res) + ").");
-		return ERR_CONNECTION_ERROR;
+	// Always a broadcast; the destination goes in the first byte (see the header).
+	send_buffer[0] = (p_to <= 0 || p_to > MAX_PLAYERS) ? 0 : (uint8_t)p_to;
+	memcpy(send_buffer + 1, p_data, p_size);
+	Result res = udsSendTo(UDS_BROADCAST_NETWORKNODEID, DATA_CHANNEL, UDS_SENDFLAG_Default, send_buffer, p_size + 1);
+	if (R_FAILED(res)) {
+		if (UDS_CHECK_SENDTO_FATALERROR(res)) {
+			ERR_PRINTS("LocalWireless: send failed (0x" + _uds_error(res) + ").");
+			return ERR_CONNECTION_ERROR;
+		}
+		return ERR_BUSY; // the system skipped this frame (not fatal); counted in get_stats()
 	}
 	return OK;
 }
@@ -384,17 +389,27 @@ void LocalWirelessUDS::_pull_packets() {
 		return;
 	pull_frame = frame;
 
+	// Frames addressed to another player are dropped. Until this console knows its own ID
+	// (just after joining), only frames for everyone are taken; reliable ones are resent anyway.
+	_refresh_status();
+	int me = status_valid ? my_id : 0;
+
 	while (true) {
 		size_t size = 0;
 		u16 sender = 0;
 		Result res = udsPullPacket(ctx, recv_buffer, MAX_UDS_PACKET, &size, &sender);
 		if (R_FAILED(res) || size == 0)
 			break;
+		if (size < 2)
+			continue;
+		int to = recv_buffer[0];
+		if (to != 0 && to != me)
+			continue; // for someone else
 
 		RawPacket p;
 		p.sender = sender;
-		p.data.resize(size);
-		memcpy(p.data.ptr(), recv_buffer, size);
+		p.data.resize(size - 1);
+		memcpy(p.data.ptr(), recv_buffer + 1, size - 1);
 		raw_packets.push_back(p);
 		if (raw_packets.size() > MAX_QUEUED_PACKETS)
 			raw_packets.pop_front(); // nobody is reading: keep the newest
@@ -433,6 +448,7 @@ LocalWirelessUDS::LocalWirelessUDS() {
 	bind_context = memalloc(sizeof(udsBindContext));
 	memset(bind_context, 0, sizeof(udsBindContext));
 	recv_buffer = (uint8_t *)memalloc(MAX_UDS_PACKET);
+	send_buffer = (uint8_t *)memalloc(MAX_UDS_PACKET);
 }
 
 LocalWirelessUDS::~LocalWirelessUDS() {
@@ -448,5 +464,6 @@ LocalWirelessUDS::~LocalWirelessUDS() {
 	_clear_rooms();
 	memfree(bind_context);
 	memfree(recv_buffer);
+	memfree(send_buffer);
 	memdelete(mutex);
 }

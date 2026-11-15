@@ -62,6 +62,7 @@ LocalWireless::LocalWireless(LocalWirelessTransport *p_transport) {
 	known_mask = 0;
 	sim_loss = 0;
 	sim_latency = 0;
+	stats.clear();
 	_reset_peers();
 }
 
@@ -90,6 +91,7 @@ Error LocalWireless::host(int p_max_players, const String &p_room_info, int p_mo
 		return err;
 	packets.clear();
 	_reset_peers();
+	stats.clear();
 	status = STATUS_HOST;
 	return OK;
 }
@@ -129,6 +131,7 @@ Error LocalWireless::join(int p_room_index) {
 		return err;
 	packets.clear();
 	_reset_peers();
+	stats.clear();
 	status = STATUS_CLIENT;
 	return OK;
 }
@@ -190,6 +193,16 @@ int LocalWireless::get_max_packet_size() const {
 /////////////////////////////////////////////////////////////////////////////
 // Sending
 
+Error LocalWireless::_transmit(const Vector<uint8_t> &p_raw, int p_to) {
+
+	Error err = transport->send_raw(p_raw.ptr(), p_raw.size(), p_to);
+	if (err == OK)
+		stats.sent++;
+	else
+		stats.send_failed++;
+	return err;
+}
+
 Error LocalWireless::_send_raw(const Vector<uint8_t> &p_raw, int p_to) {
 
 	if (sim_loss > 0 && Math::randf() < sim_loss)
@@ -202,7 +215,7 @@ Error LocalWireless::_send_raw(const Vector<uint8_t> &p_raw, int p_to) {
 		delayed.push_back(d);
 		return OK;
 	}
-	return transport->send_raw(p_raw.ptr(), p_raw.size(), p_to);
+	return _transmit(p_raw, p_to);
 }
 
 Error LocalWireless::send(const DVector<uint8_t> &p_data, int p_to) {
@@ -231,7 +244,8 @@ Error LocalWireless::_send_reliable_to(const DVector<uint8_t> &p_data, int p_to)
 	p.sent_msec = OS::get_singleton()->get_ticks_msec();
 	p.tries = 1;
 	peer.pending.push_back(p);
-	return _send_raw(p.raw, p_to);
+	_send_raw(p.raw, p_to);
+	return OK; // queued: resent until confirmed, even if this first copy did not go out
 }
 
 Error LocalWireless::send_reliable(const DVector<uint8_t> &p_data, int p_to) {
@@ -294,6 +308,20 @@ int LocalWireless::get_pending_reliable_count() const {
 	return n;
 }
 
+Dictionary LocalWireless::get_stats() const {
+
+	Dictionary d;
+	d["sent"] = (int)stats.sent;
+	d["send_failed"] = (int)stats.send_failed;
+	d["received"] = (int)stats.received;
+	d["received_reliable"] = (int)stats.received_reliable;
+	d["acks_received"] = (int)stats.acks_received;
+	d["resent"] = (int)stats.resent;
+	d["gave_up"] = (int)stats.gave_up;
+	d["pending"] = get_pending_reliable_count();
+	return d;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Receiving
 
@@ -323,6 +351,7 @@ void LocalWireless::_receive() {
 	while (transport->pull_raw(&raw, &sender)) {
 		if (raw.size() < 1 || sender < 1 || sender > MAX_PLAYERS)
 			continue;
+		stats.received++;
 		const uint8_t *d = raw.ptr();
 		int size = raw.size();
 		Peer &peer = peers[sender - 1];
@@ -330,6 +359,7 @@ void LocalWireless::_receive() {
 			if (size > 1)
 				_deliver(d + 1, size - 1, sender, false);
 		} else if (d[0] == KIND_ACK && size >= 3) {
+			stats.acks_received++;
 			uint16_t seq = d[1] | (d[2] << 8);
 			for (List<Pending>::Element *E = peer.pending.front(); E; E = E->next()) {
 				if (E->get().seq == seq) {
@@ -338,6 +368,7 @@ void LocalWireless::_receive() {
 				}
 			}
 		} else if (d[0] == KIND_RELIABLE && size >= 4) {
+			stats.received_reliable++;
 			uint16_t seq = d[1] | (d[2] << 8);
 			// Confirm every copy (the previous confirmation may have been lost).
 			Vector<uint8_t> ack;
@@ -420,7 +451,7 @@ void LocalWireless::poll() {
 	// Simulated latency: release what is due.
 	while (!delayed.empty() && delayed.front()->get().at_msec <= now) {
 		const Delayed &d = delayed.front()->get();
-		transport->send_raw(d.raw.ptr(), d.raw.size(), d.to);
+		_transmit(d.raw, d.to);
 		delayed.pop_front();
 	}
 
@@ -461,8 +492,10 @@ void LocalWireless::poll() {
 				if (p.tries >= MAX_TRIES) {
 					WARN_PRINT(("LocalWireless: player " + itos(i + 1) + " did not confirm a reliable packet; giving up on it.").utf8().get_data());
 					peer.pending.erase(E);
+					stats.gave_up++;
 				} else {
 					p.tries++;
+					stats.resent++;
 					p.sent_msec = now;
 					_send_raw(p.raw, i + 1);
 				}
@@ -505,6 +538,7 @@ void LocalWireless::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_packet_sender"), &LocalWireless::get_packet_sender);
 	ObjectTypeDB::bind_method(_MD("was_packet_reliable"), &LocalWireless::was_packet_reliable);
 	ObjectTypeDB::bind_method(_MD("get_pending_reliable_count"), &LocalWireless::get_pending_reliable_count);
+	ObjectTypeDB::bind_method(_MD("get_stats"), &LocalWireless::get_stats);
 	ObjectTypeDB::bind_method(_MD("add_scan_address", "ip"), &LocalWireless::add_scan_address);
 	ObjectTypeDB::bind_method(_MD("set_simulated_loss", "ratio"), &LocalWireless::set_simulated_loss);
 	ObjectTypeDB::bind_method(_MD("get_simulated_loss"), &LocalWireless::get_simulated_loss);

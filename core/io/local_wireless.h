@@ -145,6 +145,13 @@ private:
 	};
 	List<Delayed> delayed;
 
+	// Diagnostics (get_stats); cleared by host() and join().
+	struct Stats {
+		uint32_t sent, send_failed, received, received_reliable, acks_received, resent, gave_up;
+		void clear() { sent = send_failed = received = received_reliable = acks_received = resent = gave_up = 0; }
+	} stats;
+
+	Error _transmit(const Vector<uint8_t> &p_raw, int p_to); // to the transport, counted
 	Error _send_raw(const Vector<uint8_t> &p_raw, int p_to);
 	Error _send_reliable_to(const DVector<uint8_t> &p_data, int p_to);
 	void _receive();
@@ -188,6 +195,9 @@ public:
 	int get_packet_sender() const { return last_sender; }
 	bool was_packet_reliable() const { return last_reliable; }
 	int get_pending_reliable_count() const; // sent but not confirmed yet
+	// Counters since host()/join(), to find out where packets get lost: { "sent", "send_failed",
+	// "received", "received_reliable", "acks_received", "resent", "gave_up", "pending" }.
+	Dictionary get_stats() const;
 
 	void set_simulated_loss(float p_ratio); // 0..1 of outgoing packets dropped (testing)
 	float get_simulated_loss() const { return sim_loss; }

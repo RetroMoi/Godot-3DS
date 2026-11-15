@@ -26,6 +26,26 @@ Os botões da tela de baixo também funcionam pelo toque. As ações `coop_*` es
 
 Atenção: os `ui_*` padrão do Godot 2.1 seguem o layout do Xbox. Por isso, no 3DS, `ui_accept` é o B e `ui_cancel` é o A.
 
+## Diagnóstico
+
+A tela de baixo mostra os contadores de `LocalWireless.get_stats()`:
+
+```
+rede id2: env 102 falha 0 rec 289 conf 2 ack 1 reenv 0 pend 0
+```
+
+| Campo | O que conta |
+|---|---|
+| `env` | pacotes enviados |
+| `falha` | envios recusados pelo sistema |
+| `rec` | pacotes recebidos (todos) |
+| `conf` | pacotes confiáveis recebidos |
+| `ack` | confirmações recebidas |
+| `reenv` | reenvios |
+| `pend` | pacotes esperando confirmação |
+
+Se um teste entre consoles falhar, anote essa linha nos dois aparelhos.
+
 ## Testar no PC com duas janelas
 
 ```sh
