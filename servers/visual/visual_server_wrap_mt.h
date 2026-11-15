@@ -86,6 +86,8 @@ public:
 	FUNCRID(texture);
 	FUNC5(texture_allocate, RID, int, int, Image::Format, uint32_t);
 	FUNC3(texture_set_data, RID, const Image &, CubeMapSide);
+	FUNC2(texture_set_palette_indices, RID, const DVector<uint8_t> &);
+	FUNC2(texture_set_palette, RID, const DVector<uint8_t> &);
 	FUNC2RC(Image, texture_get_data, RID, CubeMapSide);
 	FUNC2(texture_set_flags, RID, uint32_t);
 	FUNC1RC(Image::Format, texture_get_format, RID);

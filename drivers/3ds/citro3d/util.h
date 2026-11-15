@@ -40,6 +40,8 @@ extern "C" {
 u32 next_pow2(u32 v);
 
 void texture_tile_sw(C3D_Tex *tex, const void *data, int w, int h);
+// Palette indices (one byte per pixel) in the texture's tiled order, for palette textures.
+void texture_tile_indices(const C3D_Tex *tex, const u8 *src, int w, int h, u8 *dest);
 void texture_tile_hw(C3D_Tex *tex, const void *data, int w, int h);
 
 #endif

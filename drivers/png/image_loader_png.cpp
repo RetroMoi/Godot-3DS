@@ -69,7 +69,7 @@ static void _png_warn_function(png_structp, png_const_charp text) {
 
 typedef void(PNGAPI *png_error_ptr) PNGARG((png_structp, png_const_charp));
 
-Error ImageLoaderPNG::_load_image(void *rf_up, png_rw_ptr p_func, Image *p_image) {
+Error ImageLoaderPNG::_load_image(void *rf_up, png_rw_ptr p_func, Image *p_image, bool p_keep_palette) {
 
 	png_structp png;
 	png_infop info;
@@ -122,7 +122,7 @@ Error ImageLoaderPNG::_load_image(void *rf_up, png_rw_ptr p_func, Image *p_image
 		png_read_update_info(png, info);
 	}
 
-	if (png_get_valid(png, info, PNG_INFO_tRNS)) {
+	if (png_get_valid(png, info, PNG_INFO_tRNS) && !(p_keep_palette && color == PNG_COLOR_TYPE_PALETTE)) {
 		//		png_set_expand_gray_1_2_4_to_8(png);
 		png_set_tRNS_to_alpha(png);
 		png_read_update_info(png, info);
@@ -422,7 +422,19 @@ static DVector<uint8_t> _lossless_pack_png(const Image &p_image) {
 	return ret;
 }
 
+Error ImageLoaderPNG::load_indexed(const String &p_path, Image *r_image) {
+
+	FileAccess *f = FileAccess::open(p_path, FileAccess::READ);
+	if (!f)
+		return ERR_CANT_OPEN;
+	Error err = _load_image(f, _read_png_data, r_image, true);
+	memdelete(f);
+	return err;
+}
+
 ImageLoaderPNG::ImageLoaderPNG() {
+
+	Image::_png_load_indexed_func = load_indexed;
 
 	Image::_png_mem_loader_func = _load_mem_png;
 	Image::lossless_unpacker = _lossless_unpack_png;

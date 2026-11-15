@@ -64,6 +64,18 @@ void VisualServerRaster::texture_set_data(RID p_texture, const Image &p_image, C
 	rasterizer->texture_set_data(p_texture, p_image, p_cube_side);
 }
 
+void VisualServerRaster::texture_set_palette_indices(RID p_texture, const DVector<uint8_t> &p_indices) {
+
+	VS_CHANGED;
+	rasterizer->texture_set_palette_indices(p_texture, p_indices);
+}
+
+void VisualServerRaster::texture_set_palette(RID p_texture, const DVector<uint8_t> &p_palette) {
+
+	VS_CHANGED;
+	rasterizer->texture_set_palette(p_texture, p_palette);
+}
+
 Image VisualServerRaster::texture_get_data(RID p_texture, CubeMapSide p_cube_side) const {
 
 	return rasterizer->texture_get_data(p_texture, p_cube_side);

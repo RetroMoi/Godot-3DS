@@ -99,6 +99,8 @@ public:
 	};
 
 	static Image (*_png_mem_loader_func)(const uint8_t *p_png, int p_size);
+	// Loads a palette PNG keeping its indices (FORMAT_INDEXED / FORMAT_INDEXED_ALPHA); set by the PNG driver.
+	static Error (*_png_load_indexed_func)(const String &p_path, Image *r_image);
 	static Image (*_jpg_mem_loader_func)(const uint8_t *p_png, int p_size);
 	static void (*_image_compress_bc_func)(Image *);
 	static void (*_image_compress_pvrtc2_func)(Image *);

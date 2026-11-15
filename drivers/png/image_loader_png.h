@@ -43,8 +43,11 @@ class ImageLoaderPNG : public ImageFormatLoader {
 	static void _read_png_data(png_structp png_ptr, png_bytep data, png_size_t p_length);
 
 public:
-	static Error _load_image(void *rf_up, png_rw_ptr p_func, Image *p_image);
+	// p_keep_palette: a palette PNG stays indexed (FORMAT_INDEXED[_ALPHA], transparency from tRNS
+	// in the palette) instead of being expanded to RGBA. Used by PaletteTexture.
+	static Error _load_image(void *rf_up, png_rw_ptr p_func, Image *p_image, bool p_keep_palette = false);
 	virtual Error load_image(Image *p_image, FileAccess *f);
+	static Error load_indexed(const String &p_path, Image *r_image); // keeps the palette (Image::_png_load_indexed_func)
 	virtual void get_recognized_extensions(List<String> *p_extensions) const;
 	ImageLoaderPNG();
 };

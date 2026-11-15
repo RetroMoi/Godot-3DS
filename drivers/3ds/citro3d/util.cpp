@@ -64,18 +64,48 @@ static inline u32 get_morton_offset(u32 x, u32 y, u32 bytes_per_pixel)
 static u8 morton_table[64];
 static bool morton_table_ready = false;
 
-void texture_tile_sw(C3D_Tex *tex, const void *data, int w, int h)
+static void ensure_morton_table()
 {
-	const u32* src = reinterpret_cast<const u32*>(data);
-	u32* dest = reinterpret_cast<u32*>(tex->data);
-	if (w <= 0 || h <= 0)
-		return;
 	if (!morton_table_ready) {
 		for (u32 y = 0; y < 8; y++)
 			for (u32 x = 0; x < 8; x++)
 				morton_table[y * 8 + x] = morton_interleave(x, y);
 		morton_table_ready = true;
 	}
+}
+
+void texture_tile_indices(const C3D_Tex *tex, const u8 *src, int w, int h, u8 *dest)
+{
+	// Same layout as texture_tile_sw, one byte (a palette index) per texel, padding repeating
+	// the last column/row.
+	if (w <= 0 || h <= 0)
+		return;
+	ensure_morton_table();
+	const int tw = tex->width;
+	for (int y = 0; y < tex->height; y++)
+	{
+		const u8 *src_row = src + (y < h ? y : h - 1) * w;
+		int dest_y = tex->height - 1 - y;
+		u8 *row_base = dest + (dest_y & ~7) * tw;
+		const u8 *m = morton_table + (dest_y & 7) * 8;
+		for (int bx = 0; bx < tw; bx += 8)
+		{
+			u8 *tile = row_base + bx * 8;
+			for (int k = 0; k < 8; k++) {
+				int sx = bx + k < w ? bx + k : w - 1;
+				tile[m[k]] = src_row[sx];
+			}
+		}
+	}
+}
+
+void texture_tile_sw(C3D_Tex *tex, const void *data, int w, int h)
+{
+	const u32* src = reinterpret_cast<const u32*>(data);
+	u32* dest = reinterpret_cast<u32*>(tex->data);
+	if (w <= 0 || h <= 0)
+		return;
+	ensure_morton_table();
 	// The image goes in the top-left corner of the (power-of-two) texture. The padding repeats
 	// the last column/row instead of keeping whatever was in memory: linear filtering and
 	// clamping at the image's edges then look as they do on the PC.

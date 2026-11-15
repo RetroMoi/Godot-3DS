@@ -674,6 +674,8 @@ public:
 	virtual RID texture_create();
 	virtual void texture_allocate(RID p_texture, int p_width, int p_height, Image::Format p_format, uint32_t p_flags = TEXTURE_FLAGS_DEFAULT);
 	virtual void texture_set_data(RID p_texture, const Image &p_image, CubeMapSide p_cube_side = CUBEMAP_LEFT);
+	virtual void texture_set_palette_indices(RID p_texture, const DVector<uint8_t> &p_indices);
+	virtual void texture_set_palette(RID p_texture, const DVector<uint8_t> &p_palette);
 	virtual Image texture_get_data(RID p_texture, CubeMapSide p_cube_side = CUBEMAP_LEFT) const;
 	virtual void texture_set_flags(RID p_texture, uint32_t p_flags);
 	virtual uint32_t texture_get_flags(RID p_texture) const;

@@ -102,6 +102,67 @@ void RasterizerCitro3d::texture_set_data(RID p_texture,const Image& p_image,VS::
 	_texture_upload(texture);
 }
 
+void RasterizerCitro3d::texture_set_palette_indices(RID p_texture, const DVector<uint8_t> &p_indices)
+{
+	Texture *texture = texture_owner.get(p_texture);
+	ERR_FAIL_COND(!texture || !texture->tex.data);
+	ERR_FAIL_COND(p_indices.size() != texture->width * texture->height);
+	C3D_Tex &tex = texture->tex;
+	texture->palette_tiled.resize(tex.width * tex.height);
+	DVector<uint8_t>::Read r = p_indices.read();
+	texture_tile_indices(&tex, r.ptr(), texture->width, texture->height, texture->palette_tiled.ptr());
+	texture->palette_full_written = false;
+	texture->scaled = false;
+	texture->image[0] = Image(); // the pixels come from the palette now (no RAM copy)
+}
+
+void RasterizerCitro3d::texture_set_palette(RID p_texture, const DVector<uint8_t> &p_palette)
+{
+	Texture *texture = texture_owner.get(p_texture);
+	ERR_FAIL_COND(!texture || !texture->tex.data);
+	ERR_FAIL_COND(texture->palette_tiled.empty());
+	ERR_FAIL_COND(p_palette.size() < 256 * 4);
+
+	// RGBA bytes -> the GPU's byte order (as texture_tile_sw).
+	u32 pal[256];
+	{
+		DVector<uint8_t>::Read r = p_palette.read();
+		const uint8_t *p = r.ptr();
+		for (int i = 0; i < 256; i++, p += 4)
+			pal[i] = (u32(p[0]) << 24) | (u32(p[1]) << 16) | (u32(p[2]) << 8) | u32(p[3]);
+	}
+
+	C3D_Tex &tex = texture->tex;
+	u32 *dest = (u32 *)tex.data;
+	const uint8_t *idx = texture->palette_tiled.ptr();
+	// Nearest and clamped, the padding around the image is never sampled: after one full pass,
+	// only the image's tiles are rewritten (they are the last tile rows, first tile columns).
+	bool sampled_padding = (texture->flags & (VS::TEXTURE_FLAG_FILTER | VS::TEXTURE_FLAG_REPEAT | VS::TEXTURE_FLAG_MIRRORED_REPEAT));
+	if (!texture->palette_full_written || sampled_padding) {
+		int n = tex.width * tex.height;
+		for (int i = 0; i < n; i += 4) {
+			dest[i] = pal[idx[i]];
+			dest[i + 1] = pal[idx[i + 1]];
+			dest[i + 2] = pal[idx[i + 2]];
+			dest[i + 3] = pal[idx[i + 3]];
+		}
+		texture->palette_full_written = true;
+	} else {
+		int first_tile_row = (tex.height - texture->height) / 8;
+		int span = ((texture->width + 7) / 8) * 64; // the image's tiles in one tile row
+		for (int ty = first_tile_row; ty < tex.height / 8; ty++) {
+			int base = ty * 8 * tex.width;
+			for (int i = base; i < base + span; i += 4) {
+				dest[i] = pal[idx[i]];
+				dest[i + 1] = pal[idx[i + 1]];
+				dest[i + 2] = pal[idx[i + 2]];
+				dest[i + 3] = pal[idx[i + 3]];
+			}
+		}
+	}
+	C3D_TexFlush(&tex);
+}
+
 void RasterizerCitro3d::_texture_upload(Texture *p_texture)
 {
 	const Image &image = p_texture->image[0];
@@ -5601,6 +5662,7 @@ bool RasterizerCitro3d::has_feature(VS::Features p_feature) const
 		case VS::FEATURE_MULTITHREADED:     return false;
 		case VS::FEATURE_SHADERS:           return true;
 		case VS::FEATURE_NEEDS_RELOAD_HOOK: return false;
+		case VS::FEATURE_PALETTE_TEXTURE:   return true;
 	}
 }
 

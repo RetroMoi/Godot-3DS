@@ -166,6 +166,7 @@
 #include "scene/resources/room.h"
 #include "scene/resources/sample.h"
 #include "scene/resources/texture.h"
+#include "scene/resources/palette_texture.h"
 
 #include "scene/resources/shader_graph.h"
 
@@ -568,6 +569,7 @@ void register_scene_types() {
 	ObjectTypeDB::register_type<World2D>();
 	ObjectTypeDB::register_virtual_type<Texture>();
 	ObjectTypeDB::register_type<ImageTexture>();
+	ObjectTypeDB::register_type<PaletteTexture>();
 	ObjectTypeDB::register_type<AtlasTexture>();
 	ObjectTypeDB::register_type<LargeTexture>();
 	ObjectTypeDB::register_type<CubeMap>();

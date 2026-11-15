@@ -2412,6 +2412,7 @@ void Image::fill(const Color &p_color) {
 }
 
 Image (*Image::_png_mem_loader_func)(const uint8_t *, int) = NULL;
+Error (*Image::_png_load_indexed_func)(const String &, Image *) = NULL;
 Image (*Image::_jpg_mem_loader_func)(const uint8_t *, int) = NULL;
 
 void (*Image::_image_compress_bc_func)(Image *) = NULL;

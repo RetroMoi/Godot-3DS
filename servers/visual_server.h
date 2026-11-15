@@ -121,6 +121,11 @@ public:
 	RID texture_create_from_image(const Image &p_image, uint32_t p_flags = TEXTURE_FLAGS_DEFAULT); // helper
 	virtual void texture_allocate(RID p_texture, int p_width, int p_height, Image::Format p_format, uint32_t p_flags = TEXTURE_FLAGS_DEFAULT) = 0;
 	virtual void texture_set_data(RID p_texture, const Image &p_image, CubeMapSide p_cube_side = CUBEMAP_LEFT) = 0;
+	// Palette textures (FEATURE_PALETTE_TEXTURE): an RGBA texture whose pixels are palette[index].
+	// The indices (width * height bytes) are given once; each texture_set_palette (256 RGBA
+	// entries, 1024 bytes) rewrites the pixels. Without the feature, upload RGBA images instead.
+	virtual void texture_set_palette_indices(RID p_texture, const DVector<uint8_t> &p_indices) = 0;
+	virtual void texture_set_palette(RID p_texture, const DVector<uint8_t> &p_palette) = 0;
 	virtual Image texture_get_data(RID p_texture, CubeMapSide p_cube_side = CUBEMAP_LEFT) const = 0;
 	virtual void texture_set_flags(RID p_texture, uint32_t p_flags) = 0;
 	virtual uint32_t texture_get_flags(RID p_texture) const = 0;
@@ -1140,6 +1145,7 @@ public:
 		FEATURE_SHADERS,
 		FEATURE_MULTITHREADED,
 		FEATURE_NEEDS_RELOAD_HOOK,
+		FEATURE_PALETTE_TEXTURE, // texture_set_palette_indices / texture_set_palette (3DS)
 	};
 
 	virtual bool has_feature(Features p_feature) const = 0;

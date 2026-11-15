@@ -73,11 +73,16 @@ class RasterizerCitro3d : public Rasterizer {
 		// (padding to the right and below); a repeating (TEXTURE_FLAG_REPEAT) non-power-of-two
 		// image is scaled to fill it instead, so the hardware can repeat it.
 		bool scaled;
+		// Palette texture (texture_set_palette_indices): the palette index of every GPU texel, in
+		// the GPU's tiled order, so a new palette is one pass over the texture memory.
+		Vector<uint8_t> palette_tiled;
+		bool palette_full_written; // padding written once; later passes may skip it
 		Texture() {
 			tex.data = NULL;
 			flags=width=height=0;
 			format=Image::FORMAT_GRAYSCALE;
 			scaled=false;
+			palette_full_written=false;
 		}
 
 		// Size in image pixels that corresponds to UV 1.0.
@@ -1005,6 +1010,8 @@ public:
 	virtual RID texture_create();
 	virtual void texture_allocate(RID p_texture,int p_width, int p_height,Image::Format p_format,uint32_t p_flags=VS::TEXTURE_FLAGS_DEFAULT);
 	virtual void texture_set_data(RID p_texture,const Image& p_image,VS::CubeMapSide p_cube_side=VS::CUBEMAP_LEFT);
+	virtual void texture_set_palette_indices(RID p_texture, const DVector<uint8_t> &p_indices);
+	virtual void texture_set_palette(RID p_texture, const DVector<uint8_t> &p_palette);
 	virtual Image texture_get_data(RID p_texture,VS::CubeMapSide p_cube_side=VS::CUBEMAP_LEFT) const;
 	virtual void texture_set_flags(RID p_texture,uint32_t p_flags);
 	virtual uint32_t texture_get_flags(RID p_texture) const;
