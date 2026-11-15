@@ -457,7 +457,7 @@ Error StreamPeerBuffer::get_partial_data(uint8_t *p_buffer, int p_bytes, int &r_
 	copymem(p_buffer, r.ptr() + pointer, r_received);
 
 	pointer += r_received;
-	// FIXME: return what? OK or ERR_*
+	return OK; // (was missing: undefined behavior, crashed optimized builds on every read)
 }
 
 int StreamPeerBuffer::get_available_bytes() const {
