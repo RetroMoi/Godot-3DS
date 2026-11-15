@@ -407,6 +407,41 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - **Regra:** não usar construtor com literal (`IntArray([...])`, `Vector2Array([...])` etc.) como default de `export`; definir o valor na cena ou preencher no `init()`/`_ready()`.
   - **Possível melhoria na engine (não pedida):** calcular só o default do editor reduzindo uma cópia da expressão a constante, sem mudar o inicializador (arrays não podem ser constantes compartilhadas entre instâncias).
 
+### 5.7 Editor de TileSet no estilo do Godot 4 (em andamento)
+**Diagnóstico do 2.1:**
+- O TileSet é uma lista de tiles soltos (textura + região), sem atlas, grade ou grupos.
+- A edição era no Inspetor (`0/name`, `0/region`... digitados), por "Converter para TileSet" a partir de uma cena de Sprites, ou pelo menu "Tile Set" (só adicionar/remover).
+- O TileMap pinta um tile por vez, com a paleta em lista.
+- Não existiam blocos, aleatório/probabilidade, z por tile, terrenos/autotile, padrões nem dados customizados.
+
+**Decisões do usuário:**
+- "Prioridade" = **z de desenho por tile**.
+- Autotile entra no plano, se o custo se justificar.
+
+**Premissa:** tudo é do editor. O mapa salvo continua sendo uma grade de ids, e o jogo, o TileMap e o renderizador do 3DS não mudam. A exceção é o z por tile (fase 3), que mexe no TileMap e precisa de medição.
+
+**Fases:**
+1. **Feita (`35fa8fd`):**
+   - Painel inferior **TileSet**, que aparece também para o TileSet do TileMap selecionado.
+     - Atlas à esquerda ("Adicionar atlas…", ou texturas já usadas com grade estimada, marcadas com "*"), com tamanho do tile, margem e separação.
+     - Grade no centro: tiles contornados, células sem tile escurecidas, zoom com Ctrl+roda, rolagem com a roda, arrasto com o botão do meio ou Espaço.
+     - Modos **Selecionar** e **Criar/Apagar**: clique cria; arrastar sobre células vazias cria tile de várias células; botão direito remove; "Criar tiles nas células não vazias".
+     - Propriedades do tile num editor de propriedades (proxy `TileSetEditorTileProxy`).
+     - Tudo com desfazer.
+   - Painel inferior **TileMap**: os atlas em grade; clicar escolhe o tile, sincronizado com a lista lateral.
+   - O TileSet ganhou `atlas/<n>/texture|tile_size|margin|separation` (só do editor) e os métodos `atlas_*`.
+2. Blocos (seleção múltipla como carimbo) e aleatório com probabilidade (dado e espalhamento), mais grupos aleatórios.
+3. Colisão visual por tile, dados customizados e **z por tile** (itens extras só nos quadrantes que precisam; medir no 3DS).
+4. Padrões.
+5. Terrenos/autotile (só no editor).
+
+**Testes de editor sem tela:**
+- Xvfb + `python-xlib` (XTest) para clicar e teclar, com capturas de tela via `import`.
+- Os plugins de editor via `addons/` não carregaram nesse ambiente.
+- O editor abre uma cena com `godot -e cena.tscn`, com o caminho relativo dentro do projeto.
+
+**Repositório:** o `.gitignore` tem `editor/*`, então arquivos **novos** em `editor/` precisam de `git add -f`.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -484,6 +519,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `35fa8fd` | editor: TileSet com atlas (painel inferior) e paleta em grade no TileMap |
 | `9535e74` | release: método inexistente e argumentos de menos viram erro de script em vez de crash |
 | `179fd19` | `CONTEXTO.md`: repositório do jogo é somente leitura para o lado da engine |
 | `448d9c7` | editor: layout padrão (Cena/Arquivos à esquerda, Inspetor/Node à direita) |
