@@ -65,7 +65,8 @@ São dois projetos ligados:
 - **`platform/3ds/`:**
   - `os_3ds.*`: OS, laço principal, entrada, heaps, gancho do APT.
   - `platform_3ds.*`: singleton `Platform3DS`.
-  - `local_wireless_3ds.*`: singleton `LocalWireless`, sobre UDS.
+  - `local_wireless_3ds.*`: transporte UDS (`LocalWirelessUDS`) do singleton `LocalWireless`.
+- **`core/io/local_wireless*`:** o `LocalWireless` genérico (canal confiável, sinais, simulação de perda/latência) e o transporte UDP do PC (5.12).
   - `network_3ds.*`: Wi-Fi e sockets.
   - `detect.py`: flags de build; define `_3DS` e `ARM11`; desliga módulos.
   - `export/`: exportador do editor.
@@ -544,11 +545,9 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 ### 5.11 Recursos do 3DS para o jogo: levantamento e decisões (debate, sem código ainda)
 **O que existe hoje na engine/libctru:**
-- **Co-op local:** o `LocalWireless` (UDS) está pronto e validado em 2 consoles.
-  - Sala com até 16 jogadores; pacotes de até 1.478 bytes para todos ou para um; `send_var`.
+- **Co-op local:** o `LocalWireless` (UDS) está pronto e validado em 2 consoles. Era só 3DS e sem garantia de entrega; isso mudou em `ca45bd0` (ver 5.12).
+  - Sala com até 16 jogadores; pacotes para todos ou para um; `send_var`.
   - O anúncio da sala leva até 200 bytes de `info`, que já aparecem em `get_rooms()`.
-  - Só existe no 3DS (o singleton é registrado no `os_3ds`).
-  - Pacotes sem garantia de chegada nem de ordem.
 - **Giroscópio/acelerômetro:** o libctru tem `hidAccelRead`/`hidGyroRead` (é preciso ligar os sensores, e eles gastam um pouco). O `Input` do 2.1 já tem `get_accelerometer()`/`get_gyroscope()`. Falta o `os_3ds` ligar e alimentar a cada quadro, convertendo para g e rad/s.
 - **Play Coins:** nada na engine. Ficam no `gamecoin.dat` (dados extras compartilhados `0xF000000B`, até 300). Falta confirmar a permissão no RSF do CIA.
 - **Pedômetro:** `PTMU_GetTotalStepCount` existe no libctru.
@@ -564,6 +563,47 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - **Play Coins:** desbloqueio de itens ou redução de espera (em horas); o design fica para depois. Só gastar moedas, com confirmação, nunca criar. Atenção: o relógio do console pode ser adiantado pelo jogador.
 - **Sensores:** talvez um minigame de levar uma bola de A a B desviando de obstáculos (acelerômetro como gravidade, calibrar a posição neutra, 3D desligado); fica para depois.
 - **Ordem:** co-op, depois sensores, depois Play Coins (quando o design fechar), por último StreetPass (com o CIA estável).
+
+### 5.12 Co-op local: regras e framework (engine `ca45bd0`, `f2337f2`; o jogo é com o Open)
+**Regras do usuário:**
+- O host define as regras.
+- Sem fogo amigo. Cada jogador tem a própria vida.
+- Sem coleira: o mapa é pequeno, para não forçar todos os inimigos a ficarem ativos.
+- Drops individuais.
+- Quem morre renasce no ponto de origem do mapa.
+- Qualquer um pode sair. Antes aparece uma confirmação dizendo que sair encerra a sessão multiplayer.
+
+**Quem decide o quê:**
+- Cada console decide o movimento e a vida do próprio player, sem atraso nos controles. O dano por contato com inimigo é detectado no próprio console.
+- O host decide o mundo: IA e vida dos inimigos, acertos, renascimento dos inimigos e drops.
+  - O convidado manda "acertei o inimigo N"; o host aplica e responde com a vida nova.
+  - No convidado os inimigos são marionetes.
+- Estado rápido 20x/s pelo canal sem garantia: posição, vida e flags do player; no host, também a lista de inimigos. Cada pacote leva um número de sequência, e os velhos são descartados.
+- Eventos pelo canal confiável: hello/welcome com a versão do protocolo (versão diferente é recusada), acerto, vida do inimigo, drop.
+- As marionetes são desenhadas cerca de 100 ms no passado, interpolando entre dois estados.
+
+**Engine (`ca45bd0`):**
+- O `LocalWireless` virou genérico (`core/io/local_wireless.*`), com transportes trocáveis: UDS no 3DS, UDP no PC (`core/io/local_wireless_udp.*`).
+  - No PC, a porta é a 27850. O scan procura em 127.0.0.1 e nos endereços dados com `add_scan_address(ip)`. O host repassa os pacotes entre convidados.
+  - Assim, duas janelas do mesmo projeto no PC jogam juntas.
+- Canal confiável: `send_reliable` e `send_var_reliable`.
+  - Entrega garantida e em ordem por remetente, com reenvio a cada 150 ms (até 60 tentativas).
+  - `was_packet_reliable()` e `get_pending_reliable_count()`.
+- Sinais: `player_joined(id)`, `player_left(id)` e `disconnected()`.
+- Testes: `set_simulated_loss(0..1)` e `set_simulated_latency(ms)`.
+- O `poll` roda sozinho no início de cada quadro.
+- Medido no PC com 3 janelas, 30% de perda e 50 ms de latência: confiável 50/50, em ordem; convidado→convidado 30/30; `disconnected` quando o host sai.
+
+**Correção (`f2337f2`):** `StreamPeerBuffer::get_partial_data` (do 2.1) não tinha o `return` final. Em build otimizado, toda leitura (`get_u8`, `get_16`...) derrubava o jogo. Afeta qualquer uso de `StreamPeerBuffer`, não só o co-op.
+
+**Referência (`misc/3ds-build/coop_test`, ver o README):**
+- O que tem: caverna com 2 jogadores, sala, inimigos do host, ataque, dano, renascimento e prompt de saída.
+- Ações `coop_*` no padrão Nintendo (A confirma, B volta). Atenção: os `ui_*` padrão do 2.1 seguem o layout do Xbox, então no 3DS `ui_accept` é o B e `ui_cancel` é o A. O jogo do Open já mapeia as próprias ações.
+- Teste no PC: `COOP_AUTO=host|join`, `COOP_BOT=1`, `COOP_LOSS`, `COOP_LATENCY` e `COOP_WINPOS`.
+- Validado:
+  - no PC, duas janelas com 20% de perda e 60 ms de latência: os dois players e os inimigos sincronizados, renascimento e saída com aviso ao outro;
+  - no emulador do Old 3DS, como host: 60 FPS, A cria a sala, direcional move, B abre a confirmação.
+- Falta: teste com 2 consoles.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
@@ -615,6 +655,9 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Open: migrar o dia/noite para o `PaletteTexture` (5.10). Importar > Palette Texture com `outside_atlas.png` e os 5 `.hex`, gerando `res://tileset/outside_palettes.res`; no painel TileSet, "Use Palette Texture..."; salvar o TileSet. No `day_night.gd`: tirar os `preload` dos PNGs, o pré-cálculo e o `set_data`; a transição chama `blend_palettes(de, para, t)` a cada quadro e termina com `set_palette(destino)`. Os nomes das paletas: `base` (dia), `mrng`, `dusk`, `night`, `latenight`. O `create_from_blend` (5.9) fica como alternativa para arte sem paleta.
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
+- Open: co-op no jogo, seguindo 5.12 e o `coop_test` (mensagem entregue ao usuário). Testar no PC com duas janelas antes do console.
+- Usuário: testar o `coop_test` em 2 consoles (`.3dsx` ou `.cia`).
+
 **Engine, próximo passo (combinado com o usuário):**
 - Editor de TileSet, fase 4 (padrões) e depois fase 5 (terrenos/autotile, só no editor) (5.7). A fase 3 está feita.
 - Investigar: no 3DS, o que passa de y=240 na tela de cima reaparece como 1 linha no topo (visto num teste com uma faixa de tiles cruzando a borda; anterior às mudanças de hoje). Ver se acontece no jogo.
@@ -649,6 +692,8 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `f2337f2` | `coop_test` (referência de co-op) e correção de leitura do `StreamPeerBuffer` (faltava `return`) |
+| `ca45bd0` | `LocalWireless` genérico: canal confiável, sinais de entrada/saída, simulação, transporte UDP no PC |
 | `fbe1b9e` | editor: Importar > Palette Texture; "Use Palette Texture..." no painel TileSet |
 | `ed89634` | `PaletteTexture`: índices + paletas nomeadas; troca/mistura de paleta sem reenviar imagem (3DS: escrita direta na textura) |
 | `19ad51e` | CI: actions em Node 24 (`checkout@v5`, `upload-artifact@v7`, `download-artifact@v8`); some o aviso de Node 20 |
