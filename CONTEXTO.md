@@ -252,6 +252,13 @@ scons -j4 platform=x11 tools=yes target=release_debug
 - O renderizador por software do Azahar **não aplica filtro bilinear**: diferenças de filtro só aparecem no PC (GLES2) ou no console.
 - Para ver erros de script do jogo: `LR_VERBOSE=1` mostra o `OutputDebugString` (ex.: "Identifier not found").
 - Rodar um `.3dsx` pronto: `lr_harness azahar_libretro.so jogo.3dsx <quadros> <saída> [roteiro]`.
+- **Binários:** `lr_harness` e `azahar_libretro.so` ficam em `/home/user/tools3ds/` (fonte do core em `/home/user/azahar-emu/azahar`). Para usar o `run3ds.sh`, copiá-los para a pasta dele. Os dois são ignorados pelo git (`*.so` e `misc/3ds-build/emu_test/lr_harness`, commit `9d85be4`).
+- **Exportação de ponta a ponta (como no editor):**
+  1. Gerar o template do build atual: `3dsxtool bin/godot.3ds.elf bin/tmpl_test.3dsx` (no Docker). O template instalado em `~/.godot/templates` é antigo e é recusado pela checagem de build.
+  2. No `export.cfg` do projeto, em `[platform:Nintendo 3DS]`, apontar `custom_template/release` para ele (e ligar opções como `debug/visible_collision_shapes=true`).
+  3. `godot -path <proj> -export "Nintendo 3DS" saida.3dsx` (com Xvfb).
+  4. Rodar com `lr_harness` (criar antes `<saída>/system/Azahar/sdmc/3ds/dspfirm.cdc`, 4 KB de zeros).
+  5. Apagar `bin/tmpl_test.3dsx` depois.
 
 ---
 
@@ -450,6 +457,8 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Xvfb + `python-xlib` (XTest) para clicar e teclar, com capturas de tela via `import`.
 - Os plugins de editor via `addons/` não carregaram nesse ambiente.
 - O editor abre uma cena com `godot -e cena.tscn`, com o caminho relativo dentro do projeto.
+- O script `edrun.sh` (scratchpad) aceita `EDARGS="-r 1440x860"` para abrir o editor numa janela maior (o padrão de 1024x600 aperta o painel inferior).
+- Cuidado: o script mata o editor com `pkill -f godot.x11.opt.tools`. Se o mesmo comando do shell tiver esse texto, o próprio shell é morto (saída 144).
 
 **Repositório:** o `.gitignore` tem `editor/*`, então arquivos **novos** em `editor/` precisam de `git add -f`.
 
@@ -516,11 +525,15 @@ Address: 0x0010366c   Error code: 0xd8606408
 ## 7. Pendências e próximos passos
 
 **Do usuário / do Open:**
-- Atualizar a engine (`sync-engine.ps1`) para o run com `9535e74` e conferir que a exportação usa o template certo (o console mostra "3DS export template: ... (build X, editor build X)").
+- Atualizar a engine (`sync-engine.ps1`) para o run mais recente (com `9d85be4`, que inclui `195cad5` e `7f9d563`) e conferir que a exportação usa o template certo (o console mostra "3DS export template: ... (build X, editor build X)").
 - Ver o novo layout padrão dos docks (Cena/Arquivos à esquerda, Inspetor/Node à direita) após atualizar.
 - Ver o splash nearest no console ou no Azahar com renderizador de hardware.
 - No PC, validar o `clip_uv`.
+- Testar no console a exportação com "Visible Collision Shapes" (só testado no emulador) e, no editor, os ajustes do painel TileSet (prévia, Shape Settings, setas).
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
+
+**Engine, próximo passo (combinado com o usuário):**
+- Editor de TileSet, fase 3: **z de desenho por tile** (prioridade), colisão visual por tile e dados customizados (5.7). Depois, fases 4 (padrões) e 5 (terrenos/autotile).
 
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
@@ -552,6 +565,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `9d85be4` | `.gitignore`: binário do harness do emulador |
 | `7f9d563` | editor de TileSet: prévia do tile (célula, origem, tex offset, shape), shape editada no próprio painel, setas nos campos |
 | `195cad5` | 3DS: colisões visíveis sem encher o command buffer; opção movida para a exportação |
 | `88e9e69` | colisões visíveis: formas escondidas pela engine, desenho da `CollisionGrid2D`, opção `debug/visible_collision_shapes` (3DS) |
