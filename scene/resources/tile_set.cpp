@@ -71,11 +71,66 @@ bool TileSet::_get_atlas(const String &p_name, Variant &r_ret) const {
 	return true;
 }
 
+static const Variant::Type custom_data_types[] = { Variant::BOOL, Variant::INT, Variant::REAL, Variant::STRING, Variant::VECTOR2, Variant::COLOR };
+#define CUSTOM_DATA_TYPE_COUNT 6
+#define CUSTOM_DATA_TYPE_HINT "Bool,Int,Real,String,Vector2,Color"
+
+Variant::Type TileSet::_custom_data_type(int p_index) {
+
+	return custom_data_types[CLAMP(p_index, 0, CUSTOM_DATA_TYPE_COUNT - 1)];
+}
+
+Variant TileSet::_custom_data_default(int p_layer) const {
+
+	Variant::CallError ce;
+	return Variant::construct(_custom_data_type(custom_data_layers[p_layer].type), NULL, 0, ce);
+}
+
+bool TileSet::_set_custom_data_layer(const String &p_name, const Variant &p_value) {
+
+	// custom_data_layer/<index>/<what>
+	int idx = p_name.get_slice("/", 1).to_int();
+	String what = p_name.get_slice("/", 2);
+	ERR_FAIL_COND_V(idx < 0 || idx > 1024, false);
+	if (idx >= custom_data_layers.size())
+		set_custom_data_layer_count(idx + 1);
+	if (what == "name")
+		set_custom_data_layer_name(idx, p_value);
+	else if (what == "type") {
+		custom_data_layers[idx].type = CLAMP(int(p_value), 0, CUSTOM_DATA_TYPE_COUNT - 1);
+		emit_changed();
+		_change_notify(); // the tiles' fields change type
+	} else
+		return false;
+	return true;
+}
+
+bool TileSet::_get_custom_data_layer(const String &p_name, Variant &r_ret) const {
+
+	int idx = p_name.get_slice("/", 1).to_int();
+	String what = p_name.get_slice("/", 2);
+	if (idx < 0 || idx >= custom_data_layers.size())
+		return false;
+	if (what == "name")
+		r_ret = custom_data_layers[idx].name;
+	else if (what == "type")
+		r_ret = custom_data_layers[idx].type;
+	else
+		return false;
+	return true;
+}
+
 bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 
 	String n = p_name;
 	if (n.begins_with("atlas/"))
 		return _set_atlas(n, p_value);
+	if (n == "custom_data_layer_count") {
+		set_custom_data_layer_count(p_value);
+		return true;
+	}
+	if (n.begins_with("custom_data_layer/"))
+		return _set_custom_data_layer(n, p_value);
 	if (n.begins_with("random_group/")) {
 		int idx = n.get_slice("/", 1).to_int();
 		String what = n.get_slice("/", 2);
@@ -133,6 +188,11 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 		tile_set_probability(id, p_value);
 	else if (what == "z_index")
 		tile_set_z_index(id, p_value);
+	else if (what == "custom_data") {
+		tile_map[id].custom_data = p_value;
+		emit_changed();
+	} else if (what.begins_with("custom_data/"))
+		tile_set_custom_data(id, what.substr(12, what.length()), p_value);
 	else
 		return false;
 
@@ -144,6 +204,12 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 	String n = p_name;
 	if (n.begins_with("atlas/"))
 		return _get_atlas(n, r_ret);
+	if (n == "custom_data_layer_count") {
+		r_ret = custom_data_layers.size();
+		return true;
+	}
+	if (n.begins_with("custom_data_layer/"))
+		return _get_custom_data_layer(n, r_ret);
 	if (n.begins_with("random_group/")) {
 		int idx = n.get_slice("/", 1).to_int();
 		String what = n.get_slice("/", 2);
@@ -200,6 +266,13 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 		r_ret = tile_get_probability(id);
 	else if (what == "z_index")
 		r_ret = tile_get_z_index(id);
+	else if (what == "custom_data")
+		r_ret = tile_map[id].custom_data;
+	else if (what.begins_with("custom_data/")) {
+		if (find_custom_data_layer(what.substr(12, what.length())) < 0)
+			return false;
+		r_ret = tile_get_custom_data(id, what.substr(12, what.length()));
+	}
 	else
 		return false;
 
@@ -207,6 +280,14 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 }
 
 void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
+
+	// Custom data layers first: they are loaded before the tiles' values refer to them.
+	p_list->push_back(PropertyInfo(Variant::INT, "custom_data_layer_count", PROPERTY_HINT_RANGE, "0,64,1", PROPERTY_USAGE_EDITOR | (custom_data_layers.size() ? PROPERTY_USAGE_STORAGE : 0)));
+	for (int i = 0; i < custom_data_layers.size(); i++) {
+		String pre = "custom_data_layer/" + itos(i) + "/";
+		p_list->push_back(PropertyInfo(Variant::STRING, pre + "name"));
+		p_list->push_back(PropertyInfo(Variant::INT, pre + "type", PROPERTY_HINT_ENUM, CUSTOM_DATA_TYPE_HINT));
+	}
 
 	for (int i = 0; i < random_groups.size(); i++) {
 		String pre = "random_group/" + itos(i) + "/";
@@ -244,6 +325,13 @@ void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
 		// Saved only when not the default, so existing TileSets stay as they are.
 		p_list->push_back(PropertyInfo(Variant::REAL, pre + "probability", PROPERTY_HINT_RANGE, "0,100,0.01", PROPERTY_USAGE_EDITOR | (E->get().probability != 1.0f ? PROPERTY_USAGE_STORAGE : 0)));
 		p_list->push_back(PropertyInfo(Variant::INT, pre + "z_index", PROPERTY_HINT_RANGE, itos(VS::CANVAS_ITEM_Z_MIN) + "," + itos(VS::CANVAS_ITEM_Z_MAX) + ",1", PROPERTY_USAGE_EDITOR | (E->get().z_index != 0 ? PROPERTY_USAGE_STORAGE : 0)));
+		// One typed field per custom data layer (edited here; stored in the dictionary below).
+		for (int i = 0; i < custom_data_layers.size(); i++) {
+			if (custom_data_layers[i].name != "")
+				p_list->push_back(PropertyInfo(_custom_data_type(custom_data_layers[i].type), pre + "custom_data/" + custom_data_layers[i].name, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR));
+		}
+		if (!E->get().custom_data.empty())
+			p_list->push_back(PropertyInfo(Variant::DICTIONARY, pre + "custom_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
 	}
 }
 
@@ -509,6 +597,113 @@ float TileSet::tile_get_probability(int p_id) const {
 	return tile_map[p_id].probability;
 }
 
+void TileSet::set_custom_data_layer_count(int p_count) {
+
+	ERR_FAIL_COND(p_count < 0 || p_count > 1024);
+	int old = custom_data_layers.size();
+	custom_data_layers.resize(p_count);
+	for (int i = old; i < p_count; i++) {
+		custom_data_layers[i].name = "layer_" + itos(i);
+		custom_data_layers[i].type = 1; // Int
+	}
+	emit_changed();
+	_change_notify();
+}
+
+int TileSet::get_custom_data_layer_count() const {
+
+	return custom_data_layers.size();
+}
+
+void TileSet::set_custom_data_layer_name(int p_layer, const String &p_name) {
+
+	ERR_FAIL_INDEX(p_layer, custom_data_layers.size());
+	String old = custom_data_layers[p_layer].name;
+	if (old == p_name)
+		return;
+	custom_data_layers[p_layer].name = p_name;
+	// The tiles keep their values under the new name.
+	for (Map<int, Data>::Element *E = tile_map.front(); E; E = E->next()) {
+		Dictionary &d = E->get().custom_data;
+		if (old != "" && d.has(old)) {
+			Variant v = d[old];
+			d.erase(old);
+			if (p_name != "")
+				d[p_name] = v;
+		}
+	}
+	emit_changed();
+	_change_notify();
+}
+
+String TileSet::get_custom_data_layer_name(int p_layer) const {
+
+	ERR_FAIL_INDEX_V(p_layer, custom_data_layers.size(), String());
+	return custom_data_layers[p_layer].name;
+}
+
+void TileSet::set_custom_data_layer_type(int p_layer, int p_type) {
+
+	ERR_FAIL_INDEX(p_layer, custom_data_layers.size());
+	for (int i = 0; i < CUSTOM_DATA_TYPE_COUNT; i++) {
+		if (custom_data_types[i] == p_type) {
+			custom_data_layers[p_layer].type = i;
+			emit_changed();
+			_change_notify();
+			return;
+		}
+	}
+	ERR_EXPLAIN("Custom data layers can be of type bool, int, float, String, Vector2 or Color.");
+	ERR_FAIL();
+}
+
+int TileSet::get_custom_data_layer_type(int p_layer) const {
+
+	ERR_FAIL_INDEX_V(p_layer, custom_data_layers.size(), Variant::NIL);
+	return _custom_data_type(custom_data_layers[p_layer].type);
+}
+
+int TileSet::find_custom_data_layer(const String &p_name) const {
+
+	for (int i = 0; i < custom_data_layers.size(); i++) {
+		if (custom_data_layers[i].name == p_name)
+			return i;
+	}
+	return -1;
+}
+
+void TileSet::tile_set_custom_data(int p_id, const String &p_layer, const Variant &p_value) {
+
+	ERR_FAIL_COND(!tile_map.has(p_id));
+	int layer = find_custom_data_layer(p_layer);
+	ERR_FAIL_COND(layer < 0);
+	Dictionary &d = tile_map[p_id].custom_data;
+	Variant::Type t = _custom_data_type(custom_data_layers[layer].type);
+	Variant v = p_value;
+	if (v.get_type() != t) {
+		const Variant *args[1] = { &p_value };
+		Variant::CallError ce;
+		v = Variant::construct(t, args, 1, ce);
+	}
+	if (v == _custom_data_default(layer))
+		d.erase(p_layer); // the default is not stored
+	else
+		d[p_layer] = v;
+	emit_changed();
+}
+
+Variant TileSet::tile_get_custom_data(int p_id, const String &p_layer) const {
+
+	ERR_FAIL_COND_V(!tile_map.has(p_id), Variant());
+	int layer = find_custom_data_layer(p_layer);
+	if (layer < 0)
+		return Variant();
+	const Dictionary &d = tile_map[p_id].custom_data;
+	if (d.has(p_layer) && d[p_layer].get_type() == _custom_data_type(custom_data_layers[layer].type))
+		return d[p_layer];
+	return _custom_data_default(layer);
+}
+
 void TileSet::tile_set_z_index(int p_id, int p_z_index) {
 
 	ERR_FAIL_COND(!tile_map.has(p_id));
@@ -701,6 +896,15 @@ void TileSet::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("tile_set_probability", "id", "probability"), &TileSet::tile_set_probability);
 	ObjectTypeDB::bind_method(_MD("tile_get_probability", "id"), &TileSet::tile_get_probability);
 	ObjectTypeDB::bind_method(_MD("tile_set_z_index", "id", "z_index"), &TileSet::tile_set_z_index);
+	ObjectTypeDB::bind_method(_MD("set_custom_data_layer_count", "count"), &TileSet::set_custom_data_layer_count);
+	ObjectTypeDB::bind_method(_MD("get_custom_data_layer_count"), &TileSet::get_custom_data_layer_count);
+	ObjectTypeDB::bind_method(_MD("set_custom_data_layer_name", "layer", "name"), &TileSet::set_custom_data_layer_name);
+	ObjectTypeDB::bind_method(_MD("get_custom_data_layer_name", "layer"), &TileSet::get_custom_data_layer_name);
+	ObjectTypeDB::bind_method(_MD("set_custom_data_layer_type", "layer", "type"), &TileSet::set_custom_data_layer_type);
+	ObjectTypeDB::bind_method(_MD("get_custom_data_layer_type", "layer"), &TileSet::get_custom_data_layer_type);
+	ObjectTypeDB::bind_method(_MD("find_custom_data_layer", "name"), &TileSet::find_custom_data_layer);
+	ObjectTypeDB::bind_method(_MD("tile_set_custom_data", "id", "layer", "value"), &TileSet::tile_set_custom_data);
+	ObjectTypeDB::bind_method(_MD("tile_get_custom_data", "id", "layer"), &TileSet::tile_get_custom_data);
 	ObjectTypeDB::bind_method(_MD("tile_get_z_index", "id"), &TileSet::tile_get_z_index);
 	ObjectTypeDB::bind_method(_MD("remove_tile", "id"), &TileSet::remove_tile);
 	ObjectTypeDB::bind_method(_MD("clear"), &TileSet::clear);

@@ -59,6 +59,7 @@ class TileSet : public Resource {
 		Color modulate;
 		float probability; // weight when painting at random among several tiles (editor only)
 		int z_index; // draw order relative to the TileMap (like CanvasItem z); 0 = with the other tiles
+		Dictionary custom_data; // values of the TileSet's custom data layers, by layer name (unset = the type's default)
 
 		explicit Data() :
 				one_way_collision_max_depth(0.0f),
@@ -88,6 +89,18 @@ class TileSet : public Resource {
 		DVector<int> tiles;
 	};
 	Vector<RandomGroup> random_groups;
+
+	// Custom data layers (like Godot 4's): a name and a type each; every tile gets a typed value
+	// per layer ("<id>/custom_data/<name>"), for the game to read (damage, footstep sound, ...).
+	struct CustomDataLayer {
+		String name;
+		int type; // index into the supported types (see _custom_data_type)
+	};
+	Vector<CustomDataLayer> custom_data_layers;
+	static Variant::Type _custom_data_type(int p_index);
+	Variant _custom_data_default(int p_layer) const;
+	bool _set_custom_data_layer(const String &p_name, const Variant &p_value);
+	bool _get_custom_data_layer(const String &p_name, Variant &r_ret) const;
 
 	bool _set_atlas(const String &p_name, const Variant &p_value);
 	bool _get_atlas(const String &p_name, Variant &r_ret) const;
@@ -172,6 +185,16 @@ public:
 	int random_group_get_count() const;
 	String random_group_get_name(int p_group) const;
 	DVector<int> random_group_get_tiles(int p_group) const;
+
+	void set_custom_data_layer_count(int p_count);
+	int get_custom_data_layer_count() const;
+	void set_custom_data_layer_name(int p_layer, const String &p_name); // renames it in every tile too
+	String get_custom_data_layer_name(int p_layer) const;
+	void set_custom_data_layer_type(int p_layer, int p_type); // a Variant type: TYPE_BOOL, TYPE_INT, TYPE_REAL, TYPE_STRING, TYPE_VECTOR2 or TYPE_COLOR
+	int get_custom_data_layer_type(int p_layer) const; // a Variant type
+	int find_custom_data_layer(const String &p_name) const; // -1 if none
+	void tile_set_custom_data(int p_id, const String &p_layer, const Variant &p_value);
+	Variant tile_get_custom_data(int p_id, const String &p_layer) const; // the layer type's default when unset
 
 	int atlas_add(const Ref<Texture> &p_texture);
 	void atlas_remove(int p_atlas);

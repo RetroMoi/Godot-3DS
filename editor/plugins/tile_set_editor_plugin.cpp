@@ -814,6 +814,13 @@ void TileSetEditor::_menu_cbk(int p_option) {
 
 			_create_tiles_in_atlas();
 		} break;
+		case MENU_OPTION_CUSTOM_DATA_LAYERS: {
+
+			// The layers (name + type) are TileSet properties: edit them in the Inspector. Each
+			// tile then shows one field per layer under "Custom Data" in its properties here.
+			if (tileset.is_valid())
+				editor->push_item(tileset.ptr());
+		} break;
 		case MENU_OPTION_REMOVE_ATLAS: {
 
 			// Forgets the atlas grid; its tiles stay (the texture is still listed while used).
@@ -950,6 +957,8 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	PopupMenu *p = menu->get_popup();
 	p->add_item(TTR("Create Tiles in Non-Empty Cells"), MENU_OPTION_CREATE_TILES_IN_ATLAS);
 	p->add_item(TTR("Forget Atlas Grid"), MENU_OPTION_REMOVE_ATLAS);
+	p->add_separator();
+	p->add_item(TTR("Custom Data Layers (Inspector)..."), MENU_OPTION_CUSTOM_DATA_LAYERS);
 	p->add_separator();
 	p->add_item(TTR("Add Empty Tile"), MENU_OPTION_ADD_ITEM);
 	p->add_item(TTR("Remove Tile by Name or ID..."), MENU_OPTION_REMOVE_ITEM);
