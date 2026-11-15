@@ -542,6 +542,29 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 **Defeito do 2.1 visto nos testes:** `Image.convert(...)` chamado pelo GDScript numa imagem que já está no formato pedido trava. Evitar no jogo e nos testes.
 
+### 5.11 Recursos do 3DS para o jogo: levantamento e decisões (debate, sem código ainda)
+**O que existe hoje na engine/libctru:**
+- **Co-op local:** o `LocalWireless` (UDS) está pronto e validado em 2 consoles.
+  - Sala com até 16 jogadores; pacotes de até 1.478 bytes para todos ou para um; `send_var`.
+  - O anúncio da sala leva até 200 bytes de `info`, que já aparecem em `get_rooms()`.
+  - Só existe no 3DS (o singleton é registrado no `os_3ds`).
+  - Pacotes sem garantia de chegada nem de ordem.
+- **Giroscópio/acelerômetro:** o libctru tem `hidAccelRead`/`hidGyroRead` (é preciso ligar os sensores, e eles gastam um pouco). O `Input` do 2.1 já tem `get_accelerometer()`/`get_gyroscope()`. Falta o `os_3ds` ligar e alimentar a cada quadro, convertendo para g e rad/s.
+- **Play Coins:** nada na engine. Ficam no `gamecoin.dat` (dados extras compartilhados `0xF000000B`, até 300). Falta confirmar a permissão no RSF do CIA.
+- **Pedômetro:** `PTMU_GetTotalStepCount` existe no libctru.
+- **StreetPass:** o libctru não tem o serviço CECD; seria implementar as chamadas na mão (3dbrew). Exige CIA instalado com Title ID próprio. Sem emulação; teste só com 2 consoles.
+- **Infravermelho:** só o canal antigo (`iru`, bytes crus). O `ir:USER`, que os jogos usam, não existe no libctru. Alcance de centímetros e sem emulação. O C-stick e o ZL/ZR do New 3DS já funcionam.
+- O libctru também tem `nfc` (amiibo), `boss` (SpotPass) e `news`: ideias para o futuro.
+
+**Decisões do usuário:**
+- **Co-op:** um console é o **host** e define as regras. É o primeiro a ser feito.
+- **O jogo sai em `.cia`.**
+  - O ID único do CIA precisa ser definido de vez, na faixa de homebrew `0xF0000`–`0xFFFFF`. Hoje o export usa `arpg-3ds`. Save, StreetPass e instalação ficam presos a ele.
+  - Ver onde o save fica no CIA.
+- **Play Coins:** desbloqueio de itens ou redução de espera (em horas); o design fica para depois. Só gastar moedas, com confirmação, nunca criar. Atenção: o relógio do console pode ser adiantado pelo jogador.
+- **Sensores:** talvez um minigame de levar uma bola de A a B desviando de obstáculos (acelerômetro como gravidade, calibrar a posição neutra, 3D desligado); fica para depois.
+- **Ordem:** co-op, depois sensores, depois Play Coins (quando o design fechar), por último StreetPass (com o CIA estável).
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
