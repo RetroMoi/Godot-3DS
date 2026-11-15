@@ -29,6 +29,7 @@
 /*************************************************************************/
 
 #include "tile_set.h"
+#include "servers/visual_server.h"
 
 bool TileSet::_set_atlas(const String &p_name, const Variant &p_value) {
 
@@ -130,6 +131,8 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 		tile_set_navigation_polygon_offset(id, p_value);
 	else if (what == "probability")
 		tile_set_probability(id, p_value);
+	else if (what == "z_index")
+		tile_set_z_index(id, p_value);
 	else
 		return false;
 
@@ -195,6 +198,8 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 		r_ret = tile_get_navigation_polygon_offset(id);
 	else if (what == "probability")
 		r_ret = tile_get_probability(id);
+	else if (what == "z_index")
+		r_ret = tile_get_z_index(id);
 	else
 		return false;
 
@@ -238,6 +243,7 @@ void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
 		p_list->push_back(PropertyInfo(Variant::REAL, pre + "one_way_collision_max_depth"));
 		// Saved only when not the default, so existing TileSets stay as they are.
 		p_list->push_back(PropertyInfo(Variant::REAL, pre + "probability", PROPERTY_HINT_RANGE, "0,100,0.01", PROPERTY_USAGE_EDITOR | (E->get().probability != 1.0f ? PROPERTY_USAGE_STORAGE : 0)));
+		p_list->push_back(PropertyInfo(Variant::INT, pre + "z_index", PROPERTY_HINT_RANGE, itos(VS::CANVAS_ITEM_Z_MIN) + "," + itos(VS::CANVAS_ITEM_Z_MAX) + ",1", PROPERTY_USAGE_EDITOR | (E->get().z_index != 0 ? PROPERTY_USAGE_STORAGE : 0)));
 	}
 }
 
@@ -503,6 +509,19 @@ float TileSet::tile_get_probability(int p_id) const {
 	return tile_map[p_id].probability;
 }
 
+void TileSet::tile_set_z_index(int p_id, int p_z_index) {
+
+	ERR_FAIL_COND(!tile_map.has(p_id));
+	tile_map[p_id].z_index = CLAMP(p_z_index, VS::CANVAS_ITEM_Z_MIN, VS::CANVAS_ITEM_Z_MAX);
+	emit_changed();
+}
+
+int TileSet::tile_get_z_index(int p_id) const {
+
+	ERR_FAIL_COND_V(!tile_map.has(p_id), 0);
+	return tile_map[p_id].z_index;
+}
+
 void TileSet::remove_tile(int p_id) {
 
 	ERR_FAIL_COND(!tile_map.has(p_id));
@@ -681,6 +700,8 @@ void TileSet::_bind_methods() {
 
 	ObjectTypeDB::bind_method(_MD("tile_set_probability", "id", "probability"), &TileSet::tile_set_probability);
 	ObjectTypeDB::bind_method(_MD("tile_get_probability", "id"), &TileSet::tile_get_probability);
+	ObjectTypeDB::bind_method(_MD("tile_set_z_index", "id", "z_index"), &TileSet::tile_set_z_index);
+	ObjectTypeDB::bind_method(_MD("tile_get_z_index", "id"), &TileSet::tile_get_z_index);
 	ObjectTypeDB::bind_method(_MD("remove_tile", "id"), &TileSet::remove_tile);
 	ObjectTypeDB::bind_method(_MD("clear"), &TileSet::clear);
 	ObjectTypeDB::bind_method(_MD("get_last_unused_tile_id"), &TileSet::get_last_unused_tile_id);

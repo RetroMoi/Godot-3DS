@@ -339,6 +339,7 @@ void TileMap::_update_dirty_quadrants() {
 		}
 		q.occluder_instances.clear();
 		Ref<CanvasItemMaterial> prev_material;
+		int prev_z = 0;
 		RID prev_canvas_item;
 		RID prev_debug_canvas_item;
 
@@ -359,15 +360,20 @@ void TileMap::_update_dirty_quadrants() {
 				continue;
 
 			Ref<CanvasItemMaterial> mat = tile_set->tile_get_material(c.id);
+			// Tiles with a z of their own go in a canvas item of their own (relative to the TileMap's
+			// z): only quadrants that have such tiles get more than one item.
+			int z = tile_set->tile_get_z_index(c.id);
 
 			RID canvas_item;
 			RID debug_canvas_item;
 
-			if (prev_canvas_item == RID() || prev_material != mat) {
+			if (prev_canvas_item == RID() || prev_material != mat || prev_z != z) {
 
 				canvas_item = vs->canvas_item_create();
 				if (mat.is_valid())
 					vs->canvas_item_set_material(canvas_item, mat->get_rid());
+				if (z != 0)
+					vs->canvas_item_set_z(canvas_item, z);
 				vs->canvas_item_set_parent(canvas_item, get_canvas_item());
 				_update_item_material_state(canvas_item);
 				Matrix32 xform;
@@ -390,6 +396,7 @@ void TileMap::_update_dirty_quadrants() {
 
 				prev_canvas_item = canvas_item;
 				prev_material = mat;
+				prev_z = z;
 
 			} else {
 				canvas_item = prev_canvas_item;

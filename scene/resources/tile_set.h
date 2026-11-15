@@ -58,11 +58,13 @@ class TileSet : public Resource {
 		Ref<CanvasItemMaterial> material;
 		Color modulate;
 		float probability; // weight when painting at random among several tiles (editor only)
+		int z_index; // draw order relative to the TileMap (like CanvasItem z); 0 = with the other tiles
 
 		explicit Data() :
 				one_way_collision_max_depth(0.0f),
 				modulate(1, 1, 1),
-				probability(1.0f) {}
+				probability(1.0f),
+				z_index(0) {}
 	};
 
 	Map<int, Data> tile_map;
@@ -129,6 +131,9 @@ public:
 
 	void tile_set_probability(int p_id, float p_probability);
 	float tile_get_probability(int p_id) const;
+
+	void tile_set_z_index(int p_id, int p_z_index);
+	int tile_get_z_index(int p_id) const;
 
 	void tile_set_occluder_offset(int p_id, const Vector2 &p_offset);
 	Vector2 tile_get_occluder_offset(int p_id) const;
