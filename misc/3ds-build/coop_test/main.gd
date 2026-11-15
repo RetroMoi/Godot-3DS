@@ -58,6 +58,10 @@ var bot_t = 0.0
 var prompt_open = false
 var prev_keys = {}
 var pressed_now = {}   # ações apertadas neste quadro (coop_a, coop_b, coop_x, coop_y)
+var hud_timer = 0.0
+var hud_prompt = false
+var perf = null        # Label de desempenho (canto da tela de cima)
+var plat = null        # Platform3DS (só no 3DS)
 
 func _ready():
 	net = get_node("net")
@@ -70,6 +74,11 @@ func _ready():
 	for i in range(3):
 		get_node("sala%d" % i).connect("pressed", self, "_join", [i])
 	_show_lobby(LOBBY_HELP)
+	perf = Label.new()
+	perf.set_pos(Vector2(4, 2))
+	add_child(perf)
+	if Globals.has_singleton("Platform3DS"):
+		plat = Globals.get_singleton("Platform3DS")
 	set_process(true)
 	# Testes automáticos no PC (duas janelas sem cliques):
 	#   COOP_AUTO=host | join   cria a sala / entra na primeira encontrada
@@ -217,7 +226,14 @@ func _process(delta):
 					list.append([id, enemies[id]["pos"], enemies[id]["hp"]])
 				net.send_enemies(list)
 
-	_update_hud()
+	# Textos 4x por segundo (ou na hora, ao abrir/fechar o prompt): trocar o texto de um
+	# Label a cada quadro custa no Old 3DS e atrapalharia a medição.
+	hud_timer += delta
+	if hud_timer >= 0.25 or prompt_open != hud_prompt:
+		hud_timer = 0.0
+		hud_prompt = prompt_open
+		_update_hud()
+		_update_perf()
 	update()
 
 func _handle_network():
@@ -415,6 +431,20 @@ func _update_hud():
 func _net_stats():
 	var st = lw.get_stats()
 	return "rede id%d: env %d falha %d rec %d conf %d ack %d reenv %d pend %d" % [lw.get_my_id(), st["sent"], st["send_failed"], st["received"], st["received_reliable"], st["acks_received"], st["resent"], st["pending"]]
+
+# Desempenho, no canto da tela de cima (também no lobby, para comparar sem rede):
+#   quadro = tempo do quadro sem a espera do VBlank; lógica (scripts, física, rede), desenho
+#   (montar os comandos da GPU), GPU = espera pela GPU; pior = pior quadro do último segundo.
+#   rede = tempo gasto dentro do LocalWireless por quadro (chamadas ao sistema incluídas),
+#   média do último segundo; chamadas = pedidos ao serviço UDS por quadro.
+func _update_perf():
+	var st = lw.get_stats()
+	var text = "FPS %d" % OS.get_frames_per_second()
+	if plat != null:
+		var f = plat.get_frame_stats()
+		text += " | quadro %.1f ms (lóg %.1f des %.1f GPU %.1f) pior %.1f" % [f["frame_ms"] - f["vblank_ms"], f["logic_ms"], f["draw_ms"], f["gpu_wait_ms"], f["frame_max_ms"]]
+	text += "\nrede %.2f ms/quadro (pior %.2f) | %.1f chamadas/quadro" % [st["net_ms"], st["net_max_ms"], st["calls_per_frame"]]
+	perf.set_text(text)
 
 func _draw():
 	if not in_world:

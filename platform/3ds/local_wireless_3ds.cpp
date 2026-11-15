@@ -295,6 +295,7 @@ void LocalWirelessUDS::_refresh_status() {
 		return;
 
 	udsConnectionStatus constatus;
+	service_calls++;
 	if (R_FAILED(udsGetConnectionStatus(&constatus)))
 		return;
 	net_status = constatus.status;
@@ -347,6 +348,7 @@ String LocalWirelessUDS::get_player_name(int p_id) {
 	}
 	if (!(names_bitmask & (1 << i)) && (node_bitmask & (1 << i))) {
 		udsNodeInfo node;
+		service_calls++;
 		node_names[i] = R_SUCCEEDED(udsGetNodeInformation(p_id, &node)) ? _node_username(&node) : String();
 		names_bitmask |= (1 << i);
 	}
@@ -361,6 +363,7 @@ Error LocalWirelessUDS::send_raw(const uint8_t *p_data, int p_size, int p_to) {
 	// Always a broadcast; the destination goes in the first byte (see the header).
 	send_buffer[0] = (p_to <= 0 || p_to > MAX_PLAYERS) ? 0 : (uint8_t)p_to;
 	memcpy(send_buffer + 1, p_data, p_size);
+	service_calls++;
 	Result res = udsSendTo(UDS_BROADCAST_NETWORKNODEID, DATA_CHANNEL, UDS_SENDFLAG_Default, send_buffer, p_size + 1);
 	if (R_FAILED(res)) {
 		if (UDS_CHECK_SENDTO_FATALERROR(res)) {
@@ -397,6 +400,7 @@ void LocalWirelessUDS::_pull_packets() {
 	while (true) {
 		size_t size = 0;
 		u16 sender = 0;
+		service_calls++;
 		Result res = udsPullPacket(ctx, recv_buffer, MAX_UDS_PACKET, &size, &sender);
 		if (R_FAILED(res) || size == 0)
 			break;
@@ -444,6 +448,7 @@ LocalWirelessUDS::LocalWirelessUDS() {
 	node_bitmask = 0;
 	names_bitmask = 0;
 	pull_frame = (uint64_t)-1;
+	service_calls = 0;
 	mutex = Mutex::create();
 	bind_context = memalloc(sizeof(udsBindContext));
 	memset(bind_context, 0, sizeof(udsBindContext));

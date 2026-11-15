@@ -65,6 +65,7 @@ class LocalWirelessUDS : public LocalWirelessTransport {
 	List<RawPacket> raw_packets;
 	uint8_t *recv_buffer;
 	uint8_t *send_buffer; // destination byte + data
+	uint32_t service_calls; // IPC requests to the UDS service (get_stats)
 
 	// Scan, done in a thread (it takes a moment and would stall the game).
 	Mutex *mutex;
@@ -108,6 +109,7 @@ public:
 	virtual int get_max_packet_size() const { return MAX_UDS_PACKET - 1; } // 1 byte: destination
 	virtual Error send_raw(const uint8_t *p_data, int p_size, int p_to);
 	virtual bool pull_raw(Vector<uint8_t> *r_data, int *r_sender);
+	virtual uint32_t get_service_calls() const { return service_calls; }
 
 	LocalWirelessUDS();
 	~LocalWirelessUDS();

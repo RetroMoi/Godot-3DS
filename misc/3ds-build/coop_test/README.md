@@ -46,6 +46,25 @@ rede id2: env 102 falha 0 rec 289 conf 2 ack 1 reenv 0 pend 0
 
 Se um teste entre consoles falhar, anote essa linha nos dois aparelhos.
 
+No canto da tela de cima aparecem duas linhas de desempenho, atualizadas 4 vezes por segundo:
+
+```
+FPS 60 | quadro 2.1 ms (lóg 1.2 des 0.9 GPU 0.0) pior 6.9
+rede 0.16 ms/quadro (pior 0.32) | 0.8 chamadas/quadro
+```
+
+| Campo | O que mede |
+|---|---|
+| `quadro` | tempo de trabalho do quadro, sem a espera do VBlank (60 FPS = até 16,7 ms) |
+| `lóg` | scripts, física e rede |
+| `des` | montar os comandos da GPU |
+| `GPU` | espera pela GPU |
+| `pior` | o pior quadro do último segundo |
+| `rede` | tempo gasto dentro do `LocalWireless` por quadro, chamadas ao sistema incluídas (`get_stats`: `net_ms`, `net_max_ms`) |
+| `chamadas` | pedidos ao serviço UDS por quadro (`calls_per_frame`) |
+
+Para investigar FPS baixo, anote as duas linhas em três situações: no lobby (sem rede), como host sozinho e com os dois na sala (nos dois papéis).
+
 ## Testar no PC com duas janelas
 
 ```sh

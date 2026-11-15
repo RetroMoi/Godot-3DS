@@ -52,6 +52,19 @@ static inline int16_t _seq_diff(uint16_t a, uint16_t b) {
 	return (int16_t)(uint16_t)(a - b);
 }
 
+struct LocalWireless::TimeScope {
+	const LocalWireless *lw;
+	TimeScope(const LocalWireless *p_lw) {
+		lw = p_lw;
+		if (lw->timing_depth++ == 0)
+			lw->timing_start_usec = OS::get_singleton()->get_ticks_usec();
+	}
+	~TimeScope() {
+		if (--lw->timing_depth == 0)
+			lw->frame_usec += OS::get_singleton()->get_ticks_usec() - lw->timing_start_usec;
+	}
+};
+
 LocalWireless::LocalWireless(LocalWirelessTransport *p_transport) {
 
 	singleton = this;
@@ -63,6 +76,11 @@ LocalWireless::LocalWireless(LocalWirelessTransport *p_transport) {
 	sim_loss = 0;
 	sim_latency = 0;
 	stats.clear();
+	timing_depth = 0;
+	timing_start_usec = frame_usec = 0;
+	win_start_msec = win_sum_usec = win_max_usec = 0;
+	win_frames = win_calls_start = 0;
+	net_ms = net_max_ms = calls_per_frame = 0;
 	_reset_peers();
 }
 
@@ -158,6 +176,7 @@ void LocalWireless::_set_disconnected(bool p_signal) {
 
 LocalWireless::Status LocalWireless::get_status() {
 
+	TimeScope ts(this);
 	if (status != STATUS_DISCONNECTED && !transport->is_in_room())
 		_set_disconnected(true);
 	return status;
@@ -165,11 +184,13 @@ LocalWireless::Status LocalWireless::get_status() {
 
 int LocalWireless::get_my_id() const {
 
+	TimeScope ts(this);
 	return status == STATUS_DISCONNECTED ? 0 : transport->get_my_id();
 }
 
 Array LocalWireless::get_players() const {
 
+	TimeScope ts(this);
 	Array result;
 	if (status == STATUS_DISCONNECTED)
 		return result;
@@ -220,6 +241,7 @@ Error LocalWireless::_send_raw(const Vector<uint8_t> &p_raw, int p_to) {
 
 Error LocalWireless::send(const DVector<uint8_t> &p_data, int p_to) {
 
+	TimeScope ts(this);
 	ERR_FAIL_COND_V(status == STATUS_DISCONNECTED, ERR_UNCONFIGURED);
 	ERR_FAIL_COND_V(p_data.size() == 0 || p_data.size() > get_max_packet_size(), ERR_INVALID_PARAMETER);
 	Vector<uint8_t> raw;
@@ -250,6 +272,7 @@ Error LocalWireless::_send_reliable_to(const DVector<uint8_t> &p_data, int p_to)
 
 Error LocalWireless::send_reliable(const DVector<uint8_t> &p_data, int p_to) {
 
+	TimeScope ts(this);
 	ERR_FAIL_COND_V(status == STATUS_DISCONNECTED, ERR_UNCONFIGURED);
 	ERR_FAIL_COND_V(p_data.size() == 0 || p_data.size() > get_max_packet_size(), ERR_INVALID_PARAMETER);
 	ERR_FAIL_COND_V(p_to < 0 || p_to > MAX_PLAYERS, ERR_INVALID_PARAMETER);
@@ -319,6 +342,9 @@ Dictionary LocalWireless::get_stats() const {
 	d["resent"] = (int)stats.resent;
 	d["gave_up"] = (int)stats.gave_up;
 	d["pending"] = get_pending_reliable_count();
+	d["net_ms"] = net_ms;
+	d["net_max_ms"] = net_max_ms;
+	d["calls_per_frame"] = calls_per_frame;
 	return d;
 }
 
@@ -404,12 +430,14 @@ void LocalWireless::_receive() {
 
 int LocalWireless::get_packet_count() {
 
+	TimeScope ts(this);
 	_receive();
 	return packets.size();
 }
 
 DVector<uint8_t> LocalWireless::get_packet() {
 
+	TimeScope ts(this);
 	if (packets.empty())
 		_receive();
 	if (packets.empty())
@@ -436,8 +464,29 @@ Variant LocalWireless::get_var() {
 /////////////////////////////////////////////////////////////////////////////
 // Every frame
 
+void LocalWireless::_close_frame_timing() {
+
+	win_sum_usec += frame_usec;
+	win_max_usec = MAX(win_max_usec, frame_usec);
+	win_frames++;
+	frame_usec = 0;
+	uint64_t now = OS::get_singleton()->get_ticks_msec();
+	if (now - win_start_msec >= 1000) {
+		uint32_t calls = transport->get_service_calls();
+		net_ms = win_frames ? win_sum_usec / 1000.0f / win_frames : 0;
+		net_max_ms = win_max_usec / 1000.0f;
+		calls_per_frame = win_frames ? (float)(calls - win_calls_start) / win_frames : 0;
+		win_start_msec = now;
+		win_sum_usec = win_max_usec = 0;
+		win_frames = 0;
+		win_calls_start = calls;
+	}
+}
+
 void LocalWireless::poll() {
 
+	_close_frame_timing(); // poll() starts each frame
+	TimeScope ts(this);
 	transport->poll();
 	if (status == STATUS_DISCONNECTED)
 		return;

@@ -64,6 +64,7 @@ public:
 	virtual bool pull_raw(Vector<uint8_t> *r_data, int *r_sender) = 0; // false when there is none
 	virtual void poll() {} // once per frame
 	virtual void add_scan_address(const String &p_ip) {} // UDP: another computer to ask for rooms
+	virtual uint32_t get_service_calls() const { return 0; } // calls to the system (3DS: UDS service), for get_stats()
 
 	virtual ~LocalWirelessTransport() {}
 };
@@ -151,6 +152,16 @@ private:
 		void clear() { sent = send_failed = received = received_reliable = acks_received = resent = gave_up = 0; }
 	} stats;
 
+	// Time spent here per frame (transport and system calls included), for get_stats(): every
+	// public entry point is timed once (nested calls are not counted twice).
+	struct TimeScope;
+	mutable int timing_depth;
+	mutable uint64_t timing_start_usec, frame_usec;
+	uint64_t win_start_msec, win_sum_usec, win_max_usec;
+	uint32_t win_frames, win_calls_start;
+	float net_ms, net_max_ms, calls_per_frame;
+	void _close_frame_timing();
+
 	Error _transmit(const Vector<uint8_t> &p_raw, int p_to); // to the transport, counted
 	Error _send_raw(const Vector<uint8_t> &p_raw, int p_to);
 	Error _send_reliable_to(const DVector<uint8_t> &p_data, int p_to);
@@ -196,7 +207,9 @@ public:
 	bool was_packet_reliable() const { return last_reliable; }
 	int get_pending_reliable_count() const; // sent but not confirmed yet
 	// Counters since host()/join(), to find out where packets get lost: { "sent", "send_failed",
-	// "received", "received_reliable", "acks_received", "resent", "gave_up", "pending" }.
+	// "received", "received_reliable", "acks_received", "resent", "gave_up", "pending" }; and the
+	// cost per frame, averaged over the last second: "net_ms" (time spent in LocalWireless, system
+	// calls included), "net_max_ms" (worst frame) and "calls_per_frame" (calls to the system).
 	Dictionary get_stats() const;
 
 	void set_simulated_loss(float p_ratio); // 0..1 of outgoing packets dropped (testing)

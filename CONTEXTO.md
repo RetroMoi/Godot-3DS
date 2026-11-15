@@ -683,6 +683,49 @@ Também gasta memória e tempo de carga, com centenas de itens.
    - medir no console o tempo gasto na rede por quadro (chamadas ao serviço UDS) e o detalhamento do quadro (`Platform3DS.get_frame_stats`);
    - comparar lobby (sem rede) x sala, host x convidado.
 
+**Tamanho do binário: medido.**
+- O `.3dsx` tem ~12 MB: 11,4 MB de código (`.text`), 0,77 MB de dados constantes e o resto desprezível.
+- Por pasta:
+
+| Parte | Tamanho |
+|---|---|
+| `servers/physics_2d` | 1,5 MB |
+| `scene/resources` | 1,1 MB |
+| `scene/gui` | 1,0 MB |
+| `core/method_bind.gen.inc` (ligações de métodos para scripts) | 0,85 MB |
+| `core/map.h` (templates) | 0,66 MB |
+| `scene/2d` | 0,65 MB |
+| `core/io` | 0,4 MB |
+| `servers/physics` (física 3D, compilada mesmo com `disable_3d`) | 0,34 MB |
+| GDScript | 0,26 MB |
+| libvorbis | 0,13 MB |
+| `drivers/3ds` | 0,13 MB |
+
+- Não há um vilão. É o runtime do Godot: o `ObjectTypeDB` registra todas as classes e métodos para os scripts, então quase tudo é "alcançável".
+- Testado ligar com `-Wl,--gc-sections` (o código já usa `-ffunction-sections`): economizou 668 bytes. Revertido.
+- Apps de poucos KB são programas em C feitos à mão, sem motor nem linguagem de script.
+- Cortes possíveis, pequenos e com custo de manutenção:
+  - tirar a física 3D (~0,34 MB);
+  - tirar Controls não usados;
+  - compilar com `-Os`: economiza 5,2 MB, mas fica 8–12% mais lento (medido antes; `detect.py`).
+- **O tamanho não explica o FPS.**
+  - O código não executado nunca entra no cache de instruções (16 KB por núcleo no Old 3DS): o que pesa é o caminho quente de cada quadro.
+  - O tamanho afeta a RAM (~12 MB dos ~64 MB do app no Old 3DS) e o tempo de carga na abertura, não os quadros.
+
+**Medição da rede por quadro: instrumentada.**
+- `get_stats()` ganhou:
+  - `net_ms`: tempo dentro do `LocalWireless` por quadro, chamadas ao sistema incluídas, média do último segundo;
+  - `net_max_ms`;
+  - `calls_per_frame`: pedidos ao serviço UDS por quadro.
+- O `coop_test` mostra isso e o `Platform3DS.get_frame_stats()` no canto da tela de cima, atualizando os textos 4x/s.
+- No emulador do Old 3DS:
+  - lobby: quadro de 1,1 ms;
+  - host sozinho: 2,1 ms, sendo 0,16 ms de rede e 0,8 chamadas por quadro.
+  - O emulador não cobra o custo real das chamadas ao serviço (são simuladas), então só o console responde.
+- Hipótese principal: cada `udsSendTo`/`udsPullPacket` é um pedido síncrono ao serviço do sistema (que roda no núcleo 1, dividido com o mixer de áudio do app, que tem 30% dele). Se ele demora a responder, o quadro do jogo fica esperando.
+- Se a medição confirmar, a correção é tirar essas chamadas da thread principal: uma thread de rede com filas.
+- Próximo passo: o usuário roda o `coop_test` no Old 3DS e anota as duas linhas de desempenho em três situações (lobby; host sozinho; os dois na sala, nos dois papéis).
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
