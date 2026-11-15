@@ -46,7 +46,7 @@ class CollisionGrid2D : public Reference {
 
 	// "Visible Collision Shapes" (debug run): the obstacles drawn on the first TileMap's canvas.
 	RID debug_canvas;
-	RID debug_item;
+	Vector<RID> debug_items; // one per 256x256 px block, so the renderer culls the off-screen ones
 	Color debug_color;
 	void _update_debug_draw();
 

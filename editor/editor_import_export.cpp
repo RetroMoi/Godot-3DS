@@ -972,6 +972,7 @@ Error EditorExportPlatform::export_project_files(EditorExportSaveFunction p_func
 
 		//make binary engine.cfg config
 		Map<String, Variant> custom;
+		get_custom_settings(custom); // the platform's own overrides (e.g. debug options)
 
 		if (remap_files.size()) {
 			Vector<String> remapsprop;

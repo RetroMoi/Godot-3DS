@@ -609,6 +609,7 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 	String banner_image;
 	String banner_audio;
 	String custom_rsf;
+	bool visible_collision_shapes;
 	String title;
 	String description;
 	String author;
@@ -833,7 +834,9 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value) {
 		String n = p_name;
-		if (n == "binary/format")
+		if (n == "debug/visible_collision_shapes")
+			visible_collision_shapes = p_value;
+		else if (n == "binary/format")
 			format = p_value;
 		else if (n == "custom_template/release")
 			custom_template = p_value;
@@ -864,7 +867,9 @@ protected:
 
 	bool _get(const StringName &p_name, Variant &r_ret) const {
 		String n = p_name;
-		if (n == "binary/format")
+		if (n == "debug/visible_collision_shapes")
+			r_ret = visible_collision_shapes;
+		else if (n == "binary/format")
 			r_ret = format;
 		else if (n == "custom_template/release")
 			r_ret = custom_template;
@@ -894,6 +899,8 @@ protected:
 	}
 
 	void _get_property_list(List<PropertyInfo> *p_list) const {
+		// The game shows its collision shapes (and the CollisionGrid2D obstacles): for testing only.
+		p_list->push_back(PropertyInfo(Variant::BOOL, "debug/visible_collision_shapes"));
 		// Enum hint items are comma-separated: no commas inside the labels.
 		p_list->push_back(PropertyInfo(Variant::INT, "binary/format", PROPERTY_HINT_ENUM, "3dsx (Homebrew Launcher),cia (installable - needs makerom + bannertool)"));
 		p_list->push_back(PropertyInfo(Variant::STRING, "custom_template/release", PROPERTY_HINT_GLOBAL_FILE, "3dsx"));
@@ -910,6 +917,11 @@ protected:
 	}
 
 public:
+	virtual void get_custom_settings(Map<String, Variant> &r_custom) const {
+		if (visible_collision_shapes)
+			r_custom["debug/visible_collision_shapes"] = true;
+	}
+
 	virtual String get_name() const { return "Nintendo 3DS"; }
 	virtual ImageCompression get_image_compression() const { return IMAGE_COMPRESSION_NONE; }
 	virtual Ref<Texture> get_logo() const { return logo; }
@@ -1009,6 +1021,7 @@ public:
 
 	EditorExportPlatform3DS() {
 		format = FORMAT_3DSX;
+		visible_collision_shapes = false;
 		Image img(_3ds_logo);
 		logo = Ref<ImageTexture>(memnew(ImageTexture));
 		logo->create_from_image(img);

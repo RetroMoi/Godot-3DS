@@ -1224,10 +1224,10 @@ bool Main::start() {
 
 		SceneTree *sml = main_loop->cast_to<SceneTree>();
 
-		// Also from the project settings, for builds without a command line (3DS). Defined in the
-		// editor too, so it shows in Project Settings.
-		bool visible_collisions_setting = GLOBAL_DEF("debug/visible_collision_shapes", false);
-		if (debug_collisions || (!editor && visible_collisions_setting)) {
+		// Builds without a command line (3DS) get it from the exporter's Debug options, written into
+		// the exported engine.cfb (not a Project Settings entry).
+		bool visible_collisions_export = !editor && Globals::get_singleton()->has("debug/visible_collision_shapes") && bool(Globals::get_singleton()->get("debug/visible_collision_shapes"));
+		if (debug_collisions || visible_collisions_export) {
 			sml->set_debug_collisions_hint(true);
 		}
 #ifdef DEBUG_ENABLED

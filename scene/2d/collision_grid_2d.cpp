@@ -119,23 +119,37 @@ void CollisionGrid2D::_update_debug_draw() {
 	if (!debug_canvas.is_valid())
 		return;
 	VisualServer *vs = VisualServer::get_singleton();
-	if (!debug_item.is_valid()) {
-		debug_item = vs->canvas_item_create();
-		vs->canvas_item_set_parent(debug_item, debug_canvas);
-		// Above everything, like CollisionShape2D in a debug run.
-		vs->canvas_item_set_z_as_relative_to_parent(debug_item, false);
-		vs->canvas_item_set_z(debug_item, VS::CANVAS_ITEM_Z_MAX - 1);
+	for (int i = 0; i < debug_items.size(); i++)
+		vs->free(debug_items[i]);
+	debug_items.clear();
+
+	// Obstacles grouped in blocks: one canvas item each, culled when off screen. In each, all fills
+	// and then all outlines (thin rects), so they batch into two draws (lines would be one each).
+	const float BLOCK = 256;
+	Map<Point2i, Vector<int> > blocks;
+	for (int i = 0; i < rects.size(); i++) {
+		Point2 p = rects[i].pos / BLOCK;
+		blocks[Point2i(Math::floor(p.x), Math::floor(p.y))].push_back(i);
 	}
-	vs->canvas_item_clear(debug_item);
 	Color edge = debug_color;
 	edge.a = MIN(1.0, edge.a * 2);
-	for (int i = 0; i < rects.size(); i++) {
-		const Rect2 &r = rects[i];
-		vs->canvas_item_add_rect(debug_item, r, debug_color);
-		vs->canvas_item_add_line(debug_item, r.pos, r.pos + Vector2(r.size.x, 0), edge);
-		vs->canvas_item_add_line(debug_item, r.pos + Vector2(r.size.x, 0), r.pos + r.size, edge);
-		vs->canvas_item_add_line(debug_item, r.pos + r.size, r.pos + Vector2(0, r.size.y), edge);
-		vs->canvas_item_add_line(debug_item, r.pos + Vector2(0, r.size.y), r.pos, edge);
+	for (Map<Point2i, Vector<int> >::Element *E = blocks.front(); E; E = E->next()) {
+		RID ci = vs->canvas_item_create();
+		vs->canvas_item_set_parent(ci, debug_canvas);
+		// Above everything, like CollisionShape2D in a debug run.
+		vs->canvas_item_set_z_as_relative_to_parent(ci, false);
+		vs->canvas_item_set_z(ci, VS::CANVAS_ITEM_Z_MAX - 1);
+		const Vector<int> &ids = E->get();
+		for (int i = 0; i < ids.size(); i++)
+			vs->canvas_item_add_rect(ci, rects[ids[i]], debug_color);
+		for (int i = 0; i < ids.size(); i++) {
+			const Rect2 &r = rects[ids[i]];
+			vs->canvas_item_add_rect(ci, Rect2(r.pos, Size2(r.size.x, 1)), edge);
+			vs->canvas_item_add_rect(ci, Rect2(r.pos.x, r.pos.y + r.size.y - 1, r.size.x, 1), edge);
+			vs->canvas_item_add_rect(ci, Rect2(r.pos.x, r.pos.y + 1, 1, r.size.y - 2), edge);
+			vs->canvas_item_add_rect(ci, Rect2(r.pos.x + r.size.x - 1, r.pos.y + 1, 1, r.size.y - 2), edge);
+		}
+		debug_items.push_back(ci);
 	}
 }
 
@@ -413,6 +427,8 @@ CollisionGrid2D::CollisionGrid2D() {
 
 CollisionGrid2D::~CollisionGrid2D() {
 
-	if (debug_item.is_valid() && VisualServer::get_singleton())
-		VisualServer::get_singleton()->free(debug_item);
+	if (VisualServer::get_singleton()) {
+		for (int i = 0; i < debug_items.size(); i++)
+			VisualServer::get_singleton()->free(debug_items[i]);
+	}
 }

@@ -2259,6 +2259,8 @@ bool RasterizerCitro3d::_canvas_draw_cached(CanvasItem *p_item)
 		}
 		const Color &c = run.modulate;
 		C3D_FixedAttribSet(2, c.r * m.r, c.g * m.g, c.b * m.b, c.a * m.a * canvas_opacity);
+		if (!_cmdbuf_has_room()) // each run is a draw: check every one, not once per item
+			break;
 		C3D_DrawElements(GPU_TRIANGLES, run.quad_count * 6, C3D_UNSIGNED_SHORT, quad_indices + run.first_quad * 6);
 		_count_draw(run.quad_count * 4);
 	}

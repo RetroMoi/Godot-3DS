@@ -168,6 +168,8 @@ public:
 	virtual String get_device_name(int p_device) const { return ""; }
 	virtual String get_device_info(int p_device) const { return ""; }
 	virtual Error run(int p_device, int p_flags) { return OK; }
+	// Project settings the exported game gets on top of engine.cfg (written into its engine.cfb).
+	virtual void get_custom_settings(Map<String, Variant> &r_custom) const {}
 
 	virtual bool can_export(String *r_error = NULL) const = 0;
 
