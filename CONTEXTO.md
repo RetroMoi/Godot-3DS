@@ -564,7 +564,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - **Sensores:** talvez um minigame de levar uma bola de A a B desviando de obstáculos (acelerômetro como gravidade, calibrar a posição neutra, 3D desligado); fica para depois.
 - **Ordem:** co-op, depois sensores, depois Play Coins (quando o design fechar), por último StreetPass (com o CIA estável).
 
-### 5.12 Co-op local: regras e framework (engine `ca45bd0`, `f2337f2`; o jogo é com o Open)
+### 5.12 Co-op local: regras e framework (engine `ca45bd0` → `fd2e3d7`, validado em 2 consoles; o jogo é com o Open)
 **Regras do usuário:**
 - O host define as regras.
 - Sem fogo amigo. Cada jogador tem a própria vida.
@@ -624,7 +624,29 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Validado:
   - no PC, duas janelas com 20% de perda e 60 ms de latência: os dois players e os inimigos sincronizados, renascimento e saída com aviso ao outro;
   - no emulador do Old 3DS, como host: 60 FPS, A cria a sala, direcional move, B abre a confirmação.
-- Falta: teste com 2 consoles com o envio só em broadcast. Os dois primeiros testes falharam: o 1º travou em "Entrando..."; o 2º deu "O host não respondeu.". Se falhar, anotar a linha "rede ..." dos dois consoles.
+- **Terceiro teste em 2 consoles (com `fd2e3d7`): tudo funcionou, zero erros.** Isso confirma o diagnóstico: no UDS, só o broadcast chega. Os dois primeiros testes tinham falhado (o 1º travou em "Entrando..."; o 2º deu "O host não respondeu.").
+- **Ponto aberto: o Old 3DS roda o `coop_test` a 45 FPS.**
+  - O mesmo número apareceu no teste antigo (`local_wireless_test`, Old 3DS como cliente) e não mudou com o `8048240`.
+  - O papel do Old 3DS neste teste (host ou convidado) não foi anotado.
+  - A cena é mínima (uns retângulos e um Label), e no emulador o host roda a 60. Por isso a suspeita é o custo da rede por quadro no console (chamadas ao serviço UDS: puxar e enviar pacotes, status), não uma limitação do aparelho.
+  - Não foi medido. Próximo passo da engine: medir o tempo gasto no `LocalWireless` por quadro (contador em `get_stats`) e mostrar o `Platform3DS.get_frame_stats()` no `coop_test`; o usuário roda de novo no Old 3DS.
+
+**Preparação do jogo (`2ede41b`, do usuário) e pontos para o Open:**
+- O que o commit traz:
+  - cena `scene/multiplayer-cave.tscn` (22x15 tiles, cabe na tela de cima sem câmera), com `host-pos` e `guest-pos` e 4 morcegos (`Bat`, `Bat1`, `Bat2`, `Bat4`);
+  - botões novos: ataque no X, `talk` no A, pulo no B, corrida no Y/R;
+  - janela de teste no PC de 800x960;
+  - `debug/visible_collision_shapes` no `export.cfg` (lugar certo).
+- **Morte quebra o co-op como está:**
+  - `state_death.gd` usa `OS.set_time_scale` (0,5 e 0,2), que deixa lento o jogo inteiro daquele console: no host, os morcegos e o envio de estado também.
+  - Depois chama `ScreenFade.reload_scene` → `reload_current_scene()`, que recarrega o mapa: no host, apagaria inimigos e estado do mundo.
+  - No co-op, a morte tem de ser local: animação, fade só na tela de quem morreu e respawn no `host-pos`/`guest-pos`, sem recarregar a cena e sem time scale global.
+- **Menus:** o `engine.cfg` do jogo não redefine `ui_accept`/`ui_cancel`, então botões com foco (lobby, lista de salas, prompt de saída) confirmam com o B no 3DS. Sugerir `ui_accept` com `jbutton(0, 1)` e `ui_cancel` com `jbutton(0, 0)`.
+- **Dia/noite:** segue o relógio de cada console (`OS.get_time()`), e os relógios podem diferir. No co-op, o host manda a hora dele no welcome (e periodicamente, ou na troca de fase), e o convidado usa a hora do host.
+- **Grupo `player`:** com o player remoto (marionete) no grupo, código como `get_nodes_in_group("player")[0]` (ex.: `test_player.gd`) pode pegar a marionete. Guardar a referência do player local.
+- **IDs dos morcegos:** os nomes dos nós são iguais nos dois consoles. Converter para índices pequenos (ordem dos filhos) para os pacotes, em vez de mandar strings.
+- **Pausa (START):** no co-op não pode pausar a árvore. Abrir um menu local sem parar o mundo, ou não ter pausa.
+- **HOME, fechar a tampa, sair do alcance:** tratar o sinal `disconnected` (aviso e volta ao título ou ao modo solo). No host, `player_left` remove a marionete e o jogo segue.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
@@ -676,8 +698,8 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Open: migrar o dia/noite para o `PaletteTexture` (5.10). Importar > Palette Texture com `outside_atlas.png` e os 5 `.hex`, gerando `res://tileset/outside_palettes.res`; no painel TileSet, "Use Palette Texture..."; salvar o TileSet. No `day_night.gd`: tirar os `preload` dos PNGs, o pré-cálculo e o `set_data`; a transição chama `blend_palettes(de, para, t)` a cada quadro e termina com `set_palette(destino)`. Os nomes das paletas: `base` (dia), `mrng`, `dusk`, `night`, `latenight`. O `create_from_blend` (5.9) fica como alternativa para arte sem paleta.
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
-- Open: co-op no jogo, seguindo 5.12 e o `coop_test` (mensagem entregue ao usuário). Testar no PC com duas janelas antes do console.
-- Usuário: testar o `coop_test` em 2 consoles (`.3dsx` ou `.cia`).
+- Open: co-op no jogo com os gráficos reais, seguindo 5.12 (mensagem + complemento entregues ao usuário). Testar no PC com duas janelas antes do console.
+- Engine: medir por que o Old 3DS fica a 45 FPS no `coop_test` (custo da rede por quadro?) (5.12).
 
 **Engine, próximo passo (combinado com o usuário):**
 - Editor de TileSet, fase 4 (padrões) e depois fase 5 (terrenos/autotile, só no editor) (5.7). A fase 3 está feita.
