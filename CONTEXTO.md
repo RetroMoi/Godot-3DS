@@ -580,10 +580,16 @@ Também gasta memória e tempo de carga, com centenas de itens.
     - Depois renasce no ponto de origem (`host-pos`/`guest-pos`), com a vida cheia e piscando invencível (`start_invulnerability()`).
     - Sem câmera lenta e sem recarregar a cena.
   - **Sprites:** o host é o player 1 e o convidado usa o `player2.png`, nas duas telas.
+  - **Players entre si:** um não pode bater no outro, mas eles colidem e um pode pular por cima do outro.
+    - Tiles e morcegos não mudam: o pulo não atravessa parede, e com morcego continua o que já existe (esquiva por altura e stomp).
+    - A colisão é feita no script, porque a `CollisionGrid2D` só conhece os tiles.
+    - Cada console empurra só o próprio player para fora da marionete.
+    - A colisão é ignorada quando um dos dois está alto o bastante (altura no pacote rápido).
   - **Morcegos por spawn (substitui as instâncias fixas do teste):**
     - Cada mapa mantém X morcegos vivos; quando um morre, nasce outro.
     - Só o host (ou o jogo solo) faz o spawn. Os IDs são dados pelo host e avisados por evento confiável; o welcome leva a lista atual.
-    - Animação nova `spawn` (sugestão): `Sprite` de 10% a 100% de escala (com um leve exagero antes de assentar), com HitBox, HurtBox e DetectRadius desligados e a IA parada; ao terminar, começa a patrulha.
+    - Aprovados: `respawn_delay` de 3 s; nascer a pelo menos 64 px dos players.
+    - Animação nova `spawn` (aprovada): `Sprite` 0,1 → 1,15 (0,35 s) → 1,0 (0,5 s), opacidade 0 → 1 nos primeiros 0,1 s; HitBox, HurtBox e DetectRadius desligados e a IA parada; ao terminar, começa a patrulha.
   - **Alvo do morcego:** segue o primeiro jogador detectado e ignora o outro que entrar no raio nesse meio tempo.
     - Ao sair do modo agressivo (desistência, alvo sumiu), volta a considerar os dois e varre o raio (`get_overlapping_bodies`).
     - Leitura da engine, a confirmar com o usuário: apanhar do outro jogador também não troca o alvo; sem alvo, quem bateu vira o alvo.
