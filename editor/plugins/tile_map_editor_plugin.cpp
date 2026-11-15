@@ -33,6 +33,8 @@
 
 #include "os/input.h"
 #include "os/keyboard.h"
+#include "hashfuncs.h"
+#include "os/os.h"
 
 #include "canvas_item_editor_plugin.h"
 #include "editor/editor_scale.h"
@@ -154,7 +156,229 @@ void TileMapEditor::set_selected_tile(int p_tile) {
 		palette->select(idx, true);
 		palette->ensure_current_is_visible();
 	}
+	if (!updating_brush) {
+		Vector<int> ids;
+		ids.push_back(p_tile);
+		_set_brush(ids);
+	}
 	_sync_atlas_selection();
+}
+
+static inline uint32_t _mix32(uint32_t h) {
+
+	h ^= h >> 16;
+	h *= 0x85ebca6bu;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35u;
+	h ^= h >> 16;
+	return h;
+}
+
+int TileMapEditor::_brush_id_at(const Point2i &p_cell, const Point2i &p_anchor) const {
+
+	if (brush.empty())
+		return TileMap::INVALID_CELL;
+	if (!brush_random) {
+		if (brush.size() == 1)
+			return brush[0].id;
+		// Block: the pattern repeats from the anchor; cells under a multi-cell tile stay as they are.
+		Point2i rel = p_cell - p_anchor;
+		Point2i o(((rel.x % brush_size.x) + brush_size.x) % brush_size.x, ((rel.y % brush_size.y) + brush_size.y) % brush_size.y);
+		for (int i = 0; i < brush.size(); i++) {
+			if (brush[i].offset == o)
+				return brush[i].id;
+		}
+		return BRUSH_SKIP;
+	}
+
+	Ref<TileSet> ts = get_tileset();
+	// Neighbouring cells must give unrelated picks: mix the bits well (murmur3's finalizer).
+	uint32_t h = _mix32((uint32_t)p_cell.x * 73856093u ^ (uint32_t)p_cell.y * 19349663u ^ stroke_seed);
+	if (brush_scattering > 0 && (h >> 8) / 16777216.0 < brush_scattering)
+		return BRUSH_SKIP;
+	float total = 0;
+	for (int i = 0; i < brush.size(); i++)
+		total += ts.is_valid() && ts->has_tile(brush[i].id) ? ts->tile_get_probability(brush[i].id) : 0;
+	if (total <= 0)
+		return BRUSH_SKIP;
+	uint32_t h2 = _mix32(h ^ 0x9e3779b9u);
+	float t = (h2 >> 8) / 16777216.0 * total;
+	for (int i = 0; i < brush.size(); i++) {
+		float p = ts.is_valid() && ts->has_tile(brush[i].id) ? ts->tile_get_probability(brush[i].id) : 0;
+		if (p <= 0)
+			continue;
+		if (t < p)
+			return brush[i].id;
+		t -= p;
+	}
+	return brush[brush.size() - 1].id;
+}
+
+void TileMapEditor::_set_brush(const Vector<int> &p_ids) {
+
+	brush.clear();
+	Ref<TileSet> ts = get_tileset();
+	Point2i min(1 << 30, 1 << 30), max(-(1 << 30), -(1 << 30));
+	Vector<Rect2> cells;
+	for (int i = 0; i < p_ids.size(); i++) {
+		if (p_ids[i] == TileMap::INVALID_CELL)
+			continue;
+		// Offsets come from where the tiles sit in the atlas (when they are in the palette's atlas).
+		Rect2 c = Rect2(i, 0, 1, 1);
+		if (ts.is_valid() && atlas_palette_view->get_has_source() && ts->has_tile(p_ids[i]) && ts->tile_get_texture(p_ids[i]) == atlas_palette_view->get_source().texture)
+			c = atlas_palette_view->tile_cells(p_ids[i]);
+		cells.push_back(c);
+		BrushCell bc;
+		bc.id = p_ids[i];
+		bc.offset = Point2i(c.pos.x, c.pos.y);
+		brush.push_back(bc);
+		min = Point2i(MIN(min.x, c.pos.x), MIN(min.y, c.pos.y));
+		max = Point2i(MAX(max.x, c.pos.x + c.size.x - 1), MAX(max.y, c.pos.y + c.size.y - 1));
+	}
+	for (int i = 0; i < brush.size(); i++)
+		brush[i].offset -= min;
+	brush_size = brush.size() ? max - min + Point2i(1, 1) : Point2i(1, 1);
+	_update_brush_label();
+}
+
+void TileMapEditor::_paint_at(const Point2i &p_cell) {
+
+	if (!_brush_active()) {
+		int id = get_selected_tile();
+		if (id == TileMap::INVALID_CELL)
+			return;
+		if (!paint_undo.has(p_cell))
+			paint_undo[p_cell] = _get_op_from_cell(p_cell);
+		_set_cell(p_cell, id, flip_h, flip_v, transpose);
+		return;
+	}
+	if (brush_random) {
+		// One pick per cell and stroke (moving over a cell again does not re-roll it).
+		if (paint_undo.has(p_cell))
+			return;
+		paint_undo[p_cell] = _get_op_from_cell(p_cell);
+		int id = _brush_id_at(p_cell, p_cell);
+		if (id != BRUSH_SKIP)
+			_set_cell(p_cell, id, flip_h, flip_v, transpose);
+		return;
+	}
+	// Block stamped with its top-left corner at the cell.
+	for (int i = 0; i < brush.size(); i++) {
+		Point2i c = p_cell + brush[i].offset;
+		if (!paint_undo.has(c))
+			paint_undo[c] = _get_op_from_cell(c);
+		_set_cell(c, brush[i].id, flip_h, flip_v, transpose);
+	}
+}
+
+void TileMapEditor::_update_groups() {
+
+	Ref<TileSet> ts = get_tileset();
+	int prev = group_select->get_item_count() ? group_select->get_selected() : 0;
+	group_select->clear();
+	group_select->add_item(TTR("Random groups..."));
+	int n = ts.is_valid() ? ts->random_group_get_count() : 0;
+	for (int i = 0; i < n; i++)
+		group_select->add_item(ts->random_group_get_name(i) + " (" + itos(ts->random_group_get_tiles(i).size()) + ")");
+	if (prev < 0 || prev > n)
+		prev = 0;
+	group_select->select(prev);
+	group_delete->set_disabled(prev <= 0);
+}
+
+void TileMapEditor::_group_selected(int p_index) {
+
+	Ref<TileSet> ts = get_tileset();
+	group_delete->set_disabled(p_index <= 0);
+	if (p_index <= 0 || ts.is_null())
+		return;
+	DVector<int> tiles = ts->random_group_get_tiles(p_index - 1);
+	Vector<int> ids;
+	for (int i = 0; i < tiles.size(); i++) {
+		if (ts->has_tile(tiles[i]))
+			ids.push_back(tiles[i]);
+	}
+	if (!ids.size())
+		return;
+	_set_brush(ids);
+	updating_brush = true;
+	set_selected_tile(ids[0]);
+	updating_brush = false;
+	random_button->set_pressed(true);
+	_random_toggled(true);
+}
+
+void TileMapEditor::_group_save_pressed() {
+
+	if (brush.size() < 2 || get_tileset().is_null())
+		return;
+	group_name_dialog->set_title(TTR("Save Random Group"));
+	group_name_dialog->set_text(TTR("Name:"));
+	group_name_dialog->popup_centered(Size2(300, 95));
+}
+
+void TileMapEditor::_group_name_confirmed(const String &p_name) {
+
+	Ref<TileSet> ts = get_tileset();
+	if (ts.is_null() || brush.size() < 1)
+		return;
+	DVector<int> tiles;
+	for (int i = 0; i < brush.size(); i++)
+		tiles.push_back(brush[i].id);
+	String name = p_name.strip_edges() != "" ? p_name.strip_edges() : TTR("Group") + " " + itos(ts->random_group_get_count() + 1);
+	undo_redo->create_action(TTR("Save Random Group"));
+	undo_redo->add_do_method(ts.ptr(), "random_group_add", name, tiles);
+	undo_redo->add_undo_method(ts.ptr(), "random_group_remove", ts->random_group_get_count());
+	undo_redo->commit_action();
+	_update_groups();
+	// Paint with the new group right away (select() does not emit item_selected).
+	group_select->select(ts->random_group_get_count());
+	_group_selected(ts->random_group_get_count());
+}
+
+void TileMapEditor::_group_delete_pressed() {
+
+	Ref<TileSet> ts = get_tileset();
+	int g = group_select->get_selected() - 1;
+	if (ts.is_null() || g < 0 || g >= ts->random_group_get_count())
+		return;
+	// Undo puts it back at the end of the list.
+	undo_redo->create_action(TTR("Delete Random Group"));
+	undo_redo->add_do_method(ts.ptr(), "random_group_remove", g);
+	undo_redo->add_undo_method(ts.ptr(), "random_group_add", ts->random_group_get_name(g), ts->random_group_get_tiles(g));
+	undo_redo->commit_action();
+	_update_groups();
+	group_select->select(0);
+	group_delete->set_disabled(true);
+}
+
+void TileMapEditor::_random_toggled(bool p_on) {
+
+	brush_random = p_on;
+	scatter_spin->set_editable(p_on);
+	_update_brush_label();
+	if (canvas_item_editor)
+		canvas_item_editor->update();
+}
+
+void TileMapEditor::_scattering_changed(double p_value) {
+
+	brush_scattering = p_value;
+	if (canvas_item_editor)
+		canvas_item_editor->update();
+}
+
+void TileMapEditor::_update_brush_label() {
+
+	if (!brush_label)
+		return;
+	group_save->set_disabled(brush.size() < 2);
+	if (brush.size() <= 1 && !brush_random)
+		brush_label->set_text(TTR("Drag over tiles for a block; Ctrl + click to add or remove tiles."));
+	else if (brush_random)
+		brush_label->set_text(itos(brush.size()) + " " + TTR("tiles at random (weights: each tile's Probability in the TileSet)."));
+	else
+		brush_label->set_text(TTR("Block of") + " " + itos(brush.size()) + " " + TTR("tiles") + " (" + itos(brush_size.x) + "x" + itos(brush_size.y) + ").");
 }
 
 Ref<TileSet> TileMapEditor::get_tileset() const {
@@ -200,6 +424,7 @@ void TileMapEditor::_update_atlas_palette() {
 	}
 	if (palette_source < 0 && palette_sources.size())
 		palette_source = 0;
+	_update_groups();
 	if (palette_source >= 0) {
 		atlas_sources->select(palette_source);
 		atlas_palette_view->set_source(palette_sources[palette_source]);
@@ -219,24 +444,48 @@ void TileMapEditor::_atlas_source_selected(int p_index) {
 
 void TileMapEditor::_atlas_cells_selected(const Rect2 &p_cells, bool p_shift, bool p_ctrl) {
 
-	int id = atlas_palette_view->tile_at_cell(p_cells.pos);
-	if (id < 0) {
-		Vector<int> inside;
-		atlas_palette_view->get_tiles_in(p_cells, &inside);
-		if (!inside.size())
-			return;
-		id = inside[0];
+	Vector<int> ids;
+	if (p_cells.size == Vector2(1, 1)) {
+		int id = atlas_palette_view->tile_at_cell(p_cells.pos);
+		if (id >= 0)
+			ids.push_back(id);
+	} else {
+		atlas_palette_view->get_tiles_in(p_cells, &ids);
 	}
-	if (palette->find_metadata(id) < 0 && search_box->get_text().strip_edges() != "") {
+
+	if (p_ctrl) {
+		// Ctrl + click: add or remove tiles from the current brush.
+		Vector<int> cur;
+		for (int i = 0; i < brush.size(); i++)
+			cur.push_back(brush[i].id);
+		for (int i = 0; i < ids.size(); i++) {
+			int at = cur.find(ids[i]);
+			if (at >= 0)
+				cur.remove(at);
+			else
+				cur.push_back(ids[i]);
+		}
+		ids = cur;
+	}
+	if (!ids.size())
+		return;
+
+	if (palette->find_metadata(ids[0]) < 0 && search_box->get_text().strip_edges() != "") {
 		// The list is filtered and hides it.
 		search_box->set_text("");
 		_update_palette();
 	}
-	set_selected_tile(id);
+	_set_brush(ids);
+	updating_brush = true;
+	set_selected_tile(ids[0]);
+	updating_brush = false;
 }
 
 void TileMapEditor::_palette_selected(int p_index) {
 
+	Vector<int> ids;
+	ids.push_back(get_selected_tile());
+	_set_brush(ids);
 	_sync_atlas_selection();
 }
 
@@ -245,8 +494,11 @@ void TileMapEditor::_sync_atlas_selection() {
 	Ref<TileSet> ts = get_tileset();
 	int id = get_selected_tile();
 	Vector<int> sel;
+	for (int i = 0; i < brush.size(); i++)
+		sel.push_back(brush[i].id);
 	if (ts.is_valid() && id != TileMap::INVALID_CELL && ts->has_tile(id)) {
-		sel.push_back(id);
+		if (sel.find(id) < 0)
+			sel.push_back(id);
 		Ref<Texture> tex = ts->tile_get_texture(id);
 		if (palette_source < 0 || palette_sources[palette_source].texture != tex) {
 			for (int i = 0; i < palette_sources.size(); i++) {
@@ -412,12 +664,26 @@ void TileMapEditor::_update_palette() {
 
 	palette->set_same_column_width(true);
 
+	// Keep the brush (a block, a random set or a group) across TileSet changes; only tiles
+	// that no longer exist leave it.
+	Vector<int> keep;
+	for (int i = 0; i < brush.size(); i++) {
+		if (tileset->has_tile(brush[i].id))
+			keep.push_back(brush[i].id);
+	}
+	updating_brush = true;
 	if (selected != -1)
 		set_selected_tile(selected);
 	else
 		palette->select(0);
+	updating_brush = false;
 
 	_update_atlas_palette();
+
+	if (!keep.size())
+		keep.push_back(get_selected_tile());
+	_set_brush(keep); // after the atlas view has its source (offsets come from it)
+	_sync_atlas_selection();
 }
 
 void TileMapEditor::_pick_tile(const Point2 &p_pos) {
@@ -537,10 +803,13 @@ void TileMapEditor::_fill_points(const DVector<Vector2> p_points, const Dictiona
 	bool xf = p_op["flip_h"];
 	bool yf = p_op["flip_v"];
 	bool tr = p_op["transpose"];
+	// Brush fills carry one tile per point.
+	DVector<int> ids = p_op.has("ids") ? DVector<int>(p_op["ids"]) : DVector<int>();
+	DVector<int>::Read idr = ids.read();
 
 	for (int i = 0; i < len; i++) {
 
-		_set_cell(pr[i], id, xf, yf, tr);
+		_set_cell(pr[i], ids.size() == len ? idr[i] : id, xf, yf, tr);
 	}
 }
 
@@ -808,9 +1077,7 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 							tool = TOOL_PAINTING;
 
 							paint_undo.clear();
-							paint_undo[over_tile] = _get_op_from_cell(over_tile);
-
-							_set_cell(over_tile, id, flip_h, flip_v, transpose);
+							_paint_at(over_tile);
 						}
 					} else if (tool == TOOL_PICKING) {
 
@@ -836,8 +1103,10 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 								undo_redo->create_action(TTR("Paint TileMap"));
 								for (Map<Point2i, CellOp>::Element *E = paint_undo.front(); E; E = E->next()) {
 
+									// What the stroke left there (a brush paints different tiles).
 									Point2 p = E->key();
-									undo_redo->add_do_method(node, "set_cellv", p, id, flip_h, flip_v, transpose);
+									CellOp now = _get_op_from_cell(E->key());
+									undo_redo->add_do_method(node, "set_cellv", p, now.idx, now.xf, now.yf, now.tr);
 									undo_redo->add_undo_method(node, "set_cellv", p, E->get().idx, E->get().xf, E->get().yf, E->get().tr);
 								}
 								undo_redo->commit_action();
@@ -853,7 +1122,9 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 								undo_redo->create_action("Line Draw");
 								for (Map<Point2i, CellOp>::Element *E = paint_undo.front(); E; E = E->next()) {
 
-									_set_cell(E->key(), id, flip_h, flip_v, transpose, true);
+									int bid = _brush_active() ? _brush_id_at(E->key(), rectangle_begin) : id;
+									if (bid != BRUSH_SKIP)
+										_set_cell(E->key(), bid, flip_h, flip_v, transpose, true);
 								}
 								undo_redo->commit_action();
 
@@ -871,7 +1142,9 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 								for (int i = rectangle.pos.y; i <= rectangle.pos.y + rectangle.size.y; i++) {
 									for (int j = rectangle.pos.x; j <= rectangle.pos.x + rectangle.size.x; j++) {
 
-										_set_cell(Point2i(j, i), id, flip_h, flip_v, transpose, true);
+										int bid = _brush_active() ? _brush_id_at(Point2i(j, i), rectangle.pos) : id;
+										if (bid != BRUSH_SKIP)
+											_set_cell(Point2i(j, i), bid, flip_h, flip_v, transpose, true);
 									}
 								}
 								undo_redo->commit_action();
@@ -915,6 +1188,24 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 							op["flip_h"] = flip_h;
 							op["flip_v"] = flip_v;
 							op["transpose"] = transpose;
+							if (_brush_active()) {
+								// One tile per point, decided now so redo paints the same.
+								DVector<Vector2> kept;
+								DVector<int> ids;
+								DVector<Vector2>::Read pr = points.read();
+								for (int i = 0; i < points.size(); i++) {
+									int bid = _brush_id_at(pr[i], over_tile);
+									if (bid == BRUSH_SKIP)
+										continue;
+									kept.push_back(pr[i]);
+									ids.push_back(bid);
+								}
+								pr = DVector<Vector2>::Read();
+								points = kept;
+								op["ids"] = ids;
+								if (points.size() == 0)
+									return false;
+							}
 
 							undo_redo->create_action("Bucket Fill");
 
@@ -925,6 +1216,8 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 						}
 
 						tool = TOOL_NONE;
+						// Next stroke, next random picks (the preview already shows them).
+						stroke_seed = _mix32(stroke_seed + 1 + (uint32_t)OS::get_singleton()->get_ticks_usec());
 
 						return true;
 					}
@@ -1053,11 +1346,7 @@ bool TileMapEditor::forward_input_event(const InputEvent &p_event) {
 				int id = get_selected_tile();
 				if (id != TileMap::INVALID_CELL) {
 
-					if (!paint_undo.has(over_tile)) {
-						paint_undo[over_tile] = _get_op_from_cell(over_tile);
-					}
-
-					_set_cell(over_tile, id, flip_h, flip_v, transpose);
+					_paint_at(over_tile);
 
 					return true;
 				}
@@ -1374,7 +1663,9 @@ void TileMapEditor::_canvas_draw() {
 
 			for (Map<Point2i, CellOp>::Element *E = paint_undo.front(); E; E = E->next()) {
 
-				_draw_cell(id, E->key(), flip_h, flip_v, transpose, xform);
+				int bid = _brush_active() ? _brush_id_at(E->key(), rectangle_begin) : id;
+				if (bid != BRUSH_SKIP)
+					_draw_cell(bid, E->key(), flip_h, flip_v, transpose, xform);
 			}
 
 		} else if (tool == TOOL_RECTANGLE_PAINT) {
@@ -1387,7 +1678,9 @@ void TileMapEditor::_canvas_draw() {
 			for (int i = rectangle.pos.y; i <= rectangle.pos.y + rectangle.size.y; i++) {
 				for (int j = rectangle.pos.x; j <= rectangle.pos.x + rectangle.size.x; j++) {
 
-					_draw_cell(id, Point2i(j, i), flip_h, flip_v, transpose, xform);
+					int bid = _brush_active() ? _brush_id_at(Point2i(j, i), rectangle.pos) : id;
+					if (bid != BRUSH_SKIP)
+						_draw_cell(bid, Point2i(j, i), flip_h, flip_v, transpose, xform);
 				}
 			}
 		} else if (tool == TOOL_DUPLICATING) {
@@ -1435,7 +1728,16 @@ void TileMapEditor::_canvas_draw() {
 			if (st == TileMap::INVALID_CELL)
 				return;
 
-			_draw_cell(st, over_tile, flip_h, flip_v, transpose, xform);
+			if (_brush_active() && !brush_random) {
+				for (int i = 0; i < brush.size(); i++)
+					_draw_cell(brush[i].id, over_tile + brush[i].offset, flip_h, flip_v, transpose, xform);
+			} else if (_brush_active()) {
+				int bid = _brush_id_at(over_tile, over_tile);
+				if (bid != BRUSH_SKIP)
+					_draw_cell(bid, over_tile, flip_h, flip_v, transpose, xform);
+			} else {
+				_draw_cell(st, over_tile, flip_h, flip_v, transpose, xform);
+			}
 		}
 	}
 }
@@ -1452,7 +1754,12 @@ void TileMapEditor::edit(Node *p_tile_map) {
 		node->disconnect("settings_changed", this, "_tileset_settings_changed");
 	if (p_tile_map) {
 
+		TileMap *prev_node = node;
 		node = p_tile_map->cast_to<TileMap>();
+		if (!prev_node || prev_node->get_tileset() != node->get_tileset()) {
+			// Another TileSet: the brush's ids mean other tiles there.
+			brush.clear();
+		}
 		if (!canvas_item_editor->is_connected("draw", this, "_canvas_draw"))
 			canvas_item_editor->connect("draw", this, "_canvas_draw");
 		if (!canvas_item_editor->is_connected("mouse_enter", this, "_canvas_mouse_enter"))
@@ -1520,6 +1827,12 @@ void TileMapEditor::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("_atlas_source_selected"), &TileMapEditor::_atlas_source_selected);
 	ObjectTypeDB::bind_method(_MD("_atlas_cells_selected"), &TileMapEditor::_atlas_cells_selected);
 	ObjectTypeDB::bind_method(_MD("_palette_selected"), &TileMapEditor::_palette_selected);
+	ObjectTypeDB::bind_method(_MD("_random_toggled"), &TileMapEditor::_random_toggled);
+	ObjectTypeDB::bind_method(_MD("_group_selected"), &TileMapEditor::_group_selected);
+	ObjectTypeDB::bind_method(_MD("_group_save_pressed"), &TileMapEditor::_group_save_pressed);
+	ObjectTypeDB::bind_method(_MD("_group_name_confirmed"), &TileMapEditor::_group_name_confirmed);
+	ObjectTypeDB::bind_method(_MD("_group_delete_pressed"), &TileMapEditor::_group_delete_pressed);
+	ObjectTypeDB::bind_method(_MD("_scattering_changed"), &TileMapEditor::_scattering_changed);
 }
 
 TileMapEditor::CellOp TileMapEditor::_get_op_from_cell(const Point2i &p_pos) {
@@ -1628,17 +1941,74 @@ TileMapEditor::TileMapEditor(EditorNode *p_editor) {
 	add_child(palette);
 
 	palette_source = -1;
+	brush_random = false;
+	brush_scattering = 0;
+	stroke_seed = 12345;
+	updating_brush = false;
+	brush_label = NULL;
+	brush_size = Point2i(1, 1);
 	atlas_palette = memnew(HSplitContainer);
 	atlas_palette->set_custom_minimum_size(Size2(0, 220 * EDSCALE));
 	atlas_sources = memnew(ItemList);
-	atlas_sources->set_custom_minimum_size(Size2(150 * EDSCALE, 0));
+	atlas_sources->set_custom_minimum_size(Size2(120 * EDSCALE, 0));
 	atlas_sources->set_fixed_icon_size(Size2(32, 32) * EDSCALE);
 	atlas_sources->connect("item_selected", this, "_atlas_source_selected");
 	atlas_palette->add_child(atlas_sources);
+	VBoxContainer *palette_right = memnew(VBoxContainer);
+	palette_right->set_h_size_flags(SIZE_EXPAND_FILL);
+	atlas_palette->add_child(palette_right);
+
+	HBoxContainer *brush_hb = memnew(HBoxContainer);
+	palette_right->add_child(brush_hb);
+	random_button = memnew(Button);
+	random_button->set_text(TTR("Random"));
+	random_button->set_toggle_mode(true);
+	random_button->set_tooltip(TTR("Paint the selected tiles at random, weighted by each tile's Probability (TileSet), instead of as a block."));
+	random_button->connect("toggled", this, "_random_toggled");
+	brush_hb->add_child(random_button);
+	Label *scatter_label = memnew(Label);
+	scatter_label->set_text(TTR("Scattering"));
+	brush_hb->add_child(scatter_label);
+	scatter_spin = memnew(SpinBox);
+	scatter_spin->set_min(0);
+	scatter_spin->set_max(0.95);
+	scatter_spin->set_step(0.05);
+	scatter_spin->set_tooltip(TTR("With Random on: chance of leaving a cell untouched."));
+	scatter_spin->set_editable(false);
+	scatter_spin->connect("value_changed", this, "_scattering_changed");
+	brush_hb->add_child(scatter_spin);
+	HBoxContainer *groups_hb = memnew(HBoxContainer);
+	palette_right->add_child(groups_hb);
+	group_select = memnew(OptionButton);
+	group_select->set_h_size_flags(SIZE_EXPAND_FILL);
+	group_select->set_tooltip(TTR("Saved sets of tiles to paint at random."));
+	group_select->connect("item_selected", this, "_group_selected");
+	groups_hb->add_child(group_select);
+	group_save = memnew(Button);
+	group_save->set_text(TTR("Save..."));
+	group_save->set_tooltip(TTR("Save the selected tiles as a random group (in the TileSet)."));
+	group_save->connect("pressed", this, "_group_save_pressed");
+	groups_hb->add_child(group_save);
+	group_delete = memnew(Button);
+	group_delete->set_text(TTR("Delete"));
+	group_delete->set_tooltip(TTR("Delete the selected random group."));
+	group_delete->connect("pressed", this, "_group_delete_pressed");
+	groups_hb->add_child(group_delete);
+	group_name_dialog = memnew(EditorNameDialog);
+	group_name_dialog->set_hide_on_ok(true);
+	group_name_dialog->get_line_edit()->set_margin(MARGIN_TOP, 28);
+	group_name_dialog->connect("name_confirmed", this, "_group_name_confirmed");
+	groups_hb->add_child(group_name_dialog);
+
+	brush_label = memnew(Label);
+	brush_label->set_h_size_flags(SIZE_EXPAND_FILL);
+	brush_label->set_clip_text(true);
+	palette_right->add_child(brush_label);
+
 	atlas_palette_view = memnew(TileAtlasView);
-	atlas_palette_view->set_h_size_flags(SIZE_EXPAND_FILL);
+	atlas_palette_view->set_v_size_flags(SIZE_EXPAND_FILL);
 	atlas_palette_view->connect("cells_selected", this, "_atlas_cells_selected");
-	atlas_palette->add_child(atlas_palette_view);
+	palette_right->add_child(atlas_palette_view);
 
 	// Add menu items
 	toolbar = memnew(HBoxContainer);
@@ -1715,6 +2085,7 @@ TileMapEditor::TileMapEditor(EditorNode *p_editor) {
 	tool_hb2->add_child(rotate_270);
 
 	rotate_0->set_pressed(true);
+	_update_brush_label();
 }
 
 TileMapEditor::~TileMapEditor() {

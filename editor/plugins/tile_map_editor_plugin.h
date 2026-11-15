@@ -42,6 +42,9 @@
 #include "editor/plugins/tile_atlas_view.h"
 #include "scene/gui/item_list.h"
 #include "scene/gui/split_container.h"
+#include "scene/gui/spin_box.h"
+#include "scene/gui/option_button.h"
+#include "editor/editor_name_dialog.h"
 
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
@@ -100,6 +103,46 @@ class TileMapEditor : public VBoxContainer {
 	void _atlas_cells_selected(const Rect2 &p_cells, bool p_shift, bool p_ctrl);
 	void _palette_selected(int p_index);
 	void _sync_atlas_selection();
+
+	// Brush: the tiles chosen in the atlas palette. Several tiles form a block (stamped as laid out
+	// in the atlas, repeated by line, rectangle and bucket) or, with "Random" on, a set to pick
+	// from per cell, weighted by each tile's probability, leaving cells untouched with the
+	// scattering chance. Picks come from a hash of the cell and a per-stroke seed, so the preview
+	// shows exactly what gets painted.
+	enum {
+		BRUSH_SKIP = -2
+	};
+	struct BrushCell {
+		Point2i offset;
+		int id;
+	};
+	Vector<BrushCell> brush;
+	Point2i brush_size;
+	bool brush_random;
+	float brush_scattering;
+	uint32_t stroke_seed;
+	bool updating_brush;
+	Button *random_button;
+	SpinBox *scatter_spin;
+	Label *brush_label;
+	OptionButton *group_select;
+	Button *group_save;
+	Button *group_delete;
+	EditorNameDialog *group_name_dialog;
+
+	void _update_groups();
+	void _group_selected(int p_index);
+	void _group_save_pressed();
+	void _group_name_confirmed(const String &p_name);
+	void _group_delete_pressed();
+
+	bool _brush_active() const { return brush.size() > 1 || (brush_random && brush.size() > 0); }
+	int _brush_id_at(const Point2i &p_cell, const Point2i &p_anchor) const;
+	void _set_brush(const Vector<int> &p_ids);
+	void _paint_at(const Point2i &p_cell);
+	void _random_toggled(bool p_on);
+	void _scattering_changed(double p_value);
+	void _update_brush_label();
 
 	HBoxContainer *toolbar;
 

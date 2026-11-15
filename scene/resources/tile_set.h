@@ -57,10 +57,12 @@ class TileSet : public Resource {
 		Ref<NavigationPolygon> navigation_polygon;
 		Ref<CanvasItemMaterial> material;
 		Color modulate;
+		float probability; // weight when painting at random among several tiles (editor only)
 
 		explicit Data() :
 				one_way_collision_max_depth(0.0f),
-				modulate(1, 1, 1) {}
+				modulate(1, 1, 1),
+				probability(1.0f) {}
 	};
 
 	Map<int, Data> tile_map;
@@ -76,6 +78,14 @@ class TileSet : public Resource {
 				tile_size(16, 16) {}
 	};
 	Vector<Atlas> atlases;
+
+	// Editor data: named sets of tiles to paint at random ("grass variants"), weighted by each
+	// tile's probability.
+	struct RandomGroup {
+		String name;
+		DVector<int> tiles;
+	};
+	Vector<RandomGroup> random_groups;
 
 	bool _set_atlas(const String &p_name, const Variant &p_value);
 	bool _get_atlas(const String &p_name, Variant &r_ret) const;
@@ -117,6 +127,9 @@ public:
 	void tile_set_modulate(int p_id, const Color &p_color);
 	Color tile_get_modulate(int p_id) const;
 
+	void tile_set_probability(int p_id, float p_probability);
+	float tile_get_probability(int p_id) const;
+
 	void tile_set_occluder_offset(int p_id, const Vector2 &p_offset);
 	Vector2 tile_get_occluder_offset(int p_id) const;
 
@@ -148,6 +161,12 @@ public:
 	void clear();
 
 	int get_last_unused_tile_id() const;
+
+	int random_group_add(const String &p_name, const DVector<int> &p_tiles);
+	void random_group_remove(int p_group);
+	int random_group_get_count() const;
+	String random_group_get_name(int p_group) const;
+	DVector<int> random_group_get_tiles(int p_group) const;
 
 	int atlas_add(const Ref<Texture> &p_texture);
 	void atlas_remove(int p_atlas);

@@ -75,6 +75,20 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 	String n = p_name;
 	if (n.begins_with("atlas/"))
 		return _set_atlas(n, p_value);
+	if (n.begins_with("random_group/")) {
+		int idx = n.get_slice("/", 1).to_int();
+		String what = n.get_slice("/", 2);
+		ERR_FAIL_COND_V(idx < 0 || idx > 1024, false);
+		if (idx >= random_groups.size())
+			random_groups.resize(idx + 1);
+		if (what == "name")
+			random_groups[idx].name = p_value;
+		else if (what == "tiles")
+			random_groups[idx].tiles = p_value;
+		else
+			return false;
+		return true;
+	}
 	int slash = n.find("/");
 	if (slash == -1)
 		return false;
@@ -114,6 +128,8 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 		tile_set_navigation_polygon(id, p_value);
 	else if (what == "navigation_offset")
 		tile_set_navigation_polygon_offset(id, p_value);
+	else if (what == "probability")
+		tile_set_probability(id, p_value);
 	else
 		return false;
 
@@ -125,6 +141,19 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 	String n = p_name;
 	if (n.begins_with("atlas/"))
 		return _get_atlas(n, r_ret);
+	if (n.begins_with("random_group/")) {
+		int idx = n.get_slice("/", 1).to_int();
+		String what = n.get_slice("/", 2);
+		if (idx < 0 || idx >= random_groups.size())
+			return false;
+		if (what == "name")
+			r_ret = random_groups[idx].name;
+		else if (what == "tiles")
+			r_ret = random_groups[idx].tiles;
+		else
+			return false;
+		return true;
+	}
 	int slash = n.find("/");
 	if (slash == -1)
 		return false;
@@ -164,6 +193,8 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 		r_ret = tile_get_navigation_polygon(id);
 	else if (what == "navigation_offset")
 		r_ret = tile_get_navigation_polygon_offset(id);
+	else if (what == "probability")
+		r_ret = tile_get_probability(id);
 	else
 		return false;
 
@@ -171,6 +202,12 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 }
 
 void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
+
+	for (int i = 0; i < random_groups.size(); i++) {
+		String pre = "random_group/" + itos(i) + "/";
+		p_list->push_back(PropertyInfo(Variant::STRING, pre + "name", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+		p_list->push_back(PropertyInfo(Variant::INT_ARRAY, pre + "tiles", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+	}
 
 	for (int i = 0; i < atlases.size(); i++) {
 		String pre = "atlas/" + itos(i) + "/";
@@ -199,6 +236,8 @@ void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
 		p_list->push_back(PropertyInfo(Variant::ARRAY, pre + "shapes", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
 		p_list->push_back(PropertyInfo(Variant::VECTOR2, pre + "one_way_collision_direction"));
 		p_list->push_back(PropertyInfo(Variant::REAL, pre + "one_way_collision_max_depth"));
+		// Saved only when not the default, so existing TileSets stay as they are.
+		p_list->push_back(PropertyInfo(Variant::REAL, pre + "probability", PROPERTY_HINT_RANGE, "0,100,0.01", PROPERTY_USAGE_EDITOR | (E->get().probability != 1.0f ? PROPERTY_USAGE_STORAGE : 0)));
 	}
 }
 
@@ -451,6 +490,19 @@ bool TileSet::has_tile(int p_id) const {
 	return tile_map.has(p_id);
 }
 
+void TileSet::tile_set_probability(int p_id, float p_probability) {
+
+	ERR_FAIL_COND(!tile_map.has(p_id));
+	tile_map[p_id].probability = MAX(0.0f, p_probability);
+	emit_changed();
+}
+
+float TileSet::tile_get_probability(int p_id) const {
+
+	ERR_FAIL_COND_V(!tile_map.has(p_id), 1.0f);
+	return tile_map[p_id].probability;
+}
+
 void TileSet::remove_tile(int p_id) {
 
 	ERR_FAIL_COND(!tile_map.has(p_id));
@@ -475,6 +527,40 @@ int TileSet::find_tile_by_name(const String &p_name) const {
 			return E->key();
 	}
 	return -1;
+}
+
+int TileSet::random_group_add(const String &p_name, const DVector<int> &p_tiles) {
+
+	RandomGroup g;
+	g.name = p_name;
+	g.tiles = p_tiles;
+	random_groups.push_back(g);
+	emit_changed();
+	return random_groups.size() - 1;
+}
+
+void TileSet::random_group_remove(int p_group) {
+
+	ERR_FAIL_INDEX(p_group, random_groups.size());
+	random_groups.remove(p_group);
+	emit_changed();
+}
+
+int TileSet::random_group_get_count() const {
+
+	return random_groups.size();
+}
+
+String TileSet::random_group_get_name(int p_group) const {
+
+	ERR_FAIL_INDEX_V(p_group, random_groups.size(), String());
+	return random_groups[p_group].name;
+}
+
+DVector<int> TileSet::random_group_get_tiles(int p_group) const {
+
+	ERR_FAIL_INDEX_V(p_group, random_groups.size(), DVector<int>());
+	return random_groups[p_group].tiles;
 }
 
 int TileSet::atlas_add(const Ref<Texture> &p_texture) {
@@ -593,12 +679,19 @@ void TileSet::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("tile_set_occluder_offset", "id", "occluder_offset"), &TileSet::tile_set_occluder_offset);
 	ObjectTypeDB::bind_method(_MD("tile_get_occluder_offset", "id"), &TileSet::tile_get_occluder_offset);
 
+	ObjectTypeDB::bind_method(_MD("tile_set_probability", "id", "probability"), &TileSet::tile_set_probability);
+	ObjectTypeDB::bind_method(_MD("tile_get_probability", "id"), &TileSet::tile_get_probability);
 	ObjectTypeDB::bind_method(_MD("remove_tile", "id"), &TileSet::remove_tile);
 	ObjectTypeDB::bind_method(_MD("clear"), &TileSet::clear);
 	ObjectTypeDB::bind_method(_MD("get_last_unused_tile_id"), &TileSet::get_last_unused_tile_id);
 	ObjectTypeDB::bind_method(_MD("find_tile_by_name", "name"), &TileSet::find_tile_by_name);
 	ObjectTypeDB::bind_method(_MD("get_tiles_ids", "name"), &TileSet::_get_tiles_ids);
 
+	ObjectTypeDB::bind_method(_MD("random_group_add", "name", "tiles"), &TileSet::random_group_add);
+	ObjectTypeDB::bind_method(_MD("random_group_remove", "group"), &TileSet::random_group_remove);
+	ObjectTypeDB::bind_method(_MD("random_group_get_count"), &TileSet::random_group_get_count);
+	ObjectTypeDB::bind_method(_MD("random_group_get_name", "group"), &TileSet::random_group_get_name);
+	ObjectTypeDB::bind_method(_MD("random_group_get_tiles", "group"), &TileSet::random_group_get_tiles);
 	ObjectTypeDB::bind_method(_MD("atlas_add", "texture:Texture"), &TileSet::atlas_add);
 	ObjectTypeDB::bind_method(_MD("atlas_remove", "atlas"), &TileSet::atlas_remove);
 	ObjectTypeDB::bind_method(_MD("atlas_get_count"), &TileSet::atlas_get_count);
