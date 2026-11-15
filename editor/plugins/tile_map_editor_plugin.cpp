@@ -398,6 +398,13 @@ void TileMapEditor::_watch_tileset() {
 		watched_tileset->connect("changed", this, "_tileset_resource_changed");
 	if (TileSetEditorPlugin::get_singleton() && is_visible())
 		TileSetEditorPlugin::get_singleton()->show_for_tilemap(watched_tileset);
+	update_cell_context();
+}
+
+void TileMapEditor::update_cell_context() {
+
+	if (node && TileSetEditor::get_singleton())
+		TileSetEditor::get_singleton()->set_cell_context(node->get_cell_size(), node->get_tile_origin());
 }
 
 void TileMapEditor::_tileset_resource_changed() {
@@ -1792,6 +1799,7 @@ void TileMapEditor::edit(Node *p_tile_map) {
 void TileMapEditor::_tileset_settings_changed() {
 
 	_watch_tileset();
+	update_cell_context(); // cell size or Tile Origin may have changed
 
 	_update_palette();
 
@@ -2117,6 +2125,7 @@ void TileMapEditorPlugin::make_visible(bool p_visible) {
 		editor->make_bottom_panel_item_visible(tile_map_editor->get_atlas_palette());
 		if (TileSetEditorPlugin::get_singleton())
 			TileSetEditorPlugin::get_singleton()->show_for_tilemap(tile_map_editor->get_tileset());
+			tile_map_editor->update_cell_context();
 	} else {
 
 		tile_map_editor->hide();

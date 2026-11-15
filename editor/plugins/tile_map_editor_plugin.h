@@ -244,6 +244,7 @@ public:
 	HBoxContainer *get_toolbar() const { return toolbar; }
 	Control *get_atlas_palette() const { return atlas_palette; }
 	Ref<TileSet> get_tileset() const;
+	void update_cell_context(); // the TileSet panel's preview follows this TileMap's cell size and Tile Origin
 
 	bool forward_input_event(const InputEvent &p_event);
 	void edit(Node *p_tile_map);

@@ -29,6 +29,7 @@
 /*************************************************************************/
 
 #include "spin_box.h"
+#include "os/keyboard.h"
 #include "os/input.h"
 
 Size2 SpinBox::get_minimum_size() const {
@@ -65,6 +66,20 @@ LineEdit *SpinBox::get_line_edit() {
 }
 
 void SpinBox::_line_edit_input(const InputEvent &p_event) {
+
+	// Up/Down step the value (Shift: 10 steps), keeping the focus, like newer Godot versions.
+	if (p_event.type != InputEvent::KEY || !p_event.key.pressed || !line_edit->is_editable())
+		return;
+	if (p_event.key.scancode != KEY_UP && p_event.key.scancode != KEY_DOWN)
+		return;
+	_text_entered(line_edit->get_text()); // a typed value counts first
+	double step = get_step() > 0 ? get_step() : 1.0;
+	if (p_event.key.mod.shift)
+		step *= 10;
+	set_val(get_val() + (p_event.key.scancode == KEY_UP ? step : -step));
+	_value_changed(0);
+	line_edit->select_all();
+	line_edit->accept_event();
 }
 
 void SpinBox::_range_click_timeout() {

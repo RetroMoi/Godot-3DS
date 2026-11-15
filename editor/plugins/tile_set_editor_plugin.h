@@ -37,7 +37,9 @@
 #include "editor/plugins/tile_atlas_view.h"
 #include "editor/property_editor.h"
 #include "scene/gui/item_list.h"
+#include "scene/gui/option_button.h"
 #include "scene/gui/spin_box.h"
+#include "scene/resources/shape_2d.h"
 #include "scene/resources/tile_set.h"
 
 // One tile of a TileSet seen as an object of its own ("name", "texture", "region"...), so the
@@ -48,18 +50,54 @@ class TileSetEditorTileProxy : public Object {
 
 	Ref<TileSet> tileset;
 	int id;
+	bool setting;
+
+	Ref<Shape2D> _get_shape() const;
+	void _notify_list_changed() { _change_notify(""); }
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
 	bool _get(const StringName &p_name, Variant &r_ret) const;
 	void _get_property_list(List<PropertyInfo> *p_list) const;
+	static void _bind_methods();
 
 public:
 	void setup(const Ref<TileSet> &p_tileset, int p_id);
 	int get_id() const { return id; }
 	void notify_changed() { _change_notify(""); }
+	bool is_setting() const { return setting; }
 
-	TileSetEditorTileProxy() { id = -1; }
+	TileSetEditorTileProxy() {
+		id = -1;
+		setting = false;
+	}
+};
+
+// The selected tile as the TileMap draws it: its cell (and the neighbours), the cell's origin
+// for the TileMap's Tile Origin, the texture moved by Tex Offset and the collision shape moved by
+// Shape Offset, zoomed to fit.
+class TileSetTilePreview : public Control {
+
+	OBJ_TYPE(TileSetTilePreview, Control);
+
+	Ref<TileSet> tileset;
+	int tile;
+	Size2 cell_size;
+	int origin; // TileMap::TILE_ORIGIN_*
+
+	Vector2 _cell_anchor() const; // in cell coordinates (0,0 = the cell's top-left)
+	Vector2 _texture_pos(const Size2 &p_size, const Vector2 &p_ofs) const;
+
+protected:
+	void _notification(int p_what);
+
+public:
+	void set_tile(const Ref<TileSet> &p_tileset, int p_tile);
+	void set_cell(const Size2 &p_cell_size, int p_origin);
+	Size2 get_cell_size() const { return cell_size; }
+	int get_origin() const { return origin; }
+
+	TileSetTilePreview();
 };
 
 // The TileSet editor (bottom panel "TileSet"), in the spirit of Godot 4's: the atlas textures on
@@ -90,6 +128,9 @@ class TileSetEditor : public VBoxContainer {
 	Label *tile_label;
 	Button *remove_tile_button;
 	PropertyEditor *tile_properties;
+	TileSetTilePreview *tile_preview;
+	OptionButton *preview_origin;
+	Label *preview_info;
 	SpinBox *size_x, *size_y, *margin_x, *margin_y, *sep_x, *sep_y;
 	CheckBox *show_ids;
 	EditorFileDialog *file_dialog;
@@ -126,6 +167,10 @@ class TileSetEditor : public VBoxContainer {
 	void _show_ids_toggled(bool p_on);
 	void _mode_pressed(bool p_create);
 	void _select_tile(int p_id);
+	void _update_preview();
+	void _preview_origin_selected(int p_origin);
+	void _property_edited(const Variant &p_prop); // a String, or an Array when it comes through UndoRedo
+	void _resource_selected(Object *p_res, const String &p_prop);
 	void _create_tile(const Rect2 &p_cells);
 	void _remove_tile(int p_id);
 	void _create_tiles_in_atlas();
@@ -144,6 +189,8 @@ public:
 
 	void edit(const Ref<TileSet> &p_tileset);
 	Ref<TileSet> get_edited() const { return tileset; }
+	// The TileMap being edited (its cell size and Tile Origin, for the preview).
+	void set_cell_context(const Size2 &p_cell_size, int p_origin);
 	static Error update_library_file(Node *p_base_scene, Ref<TileSet> ml, bool p_merge = true);
 
 	TileSetEditor(EditorNode *p_editor);

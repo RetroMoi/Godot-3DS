@@ -38,6 +38,8 @@
 #include "scene/gui/split_container.h"
 #include "scene/2d/physics_body_2d.h"
 #include "scene/2d/sprite.h"
+#include "scene/2d/tile_map.h"
+#include "servers/visual_server.h"
 void TileSetEditor::_import_node(Node *p_node, Ref<TileSet> p_library) {
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
@@ -172,12 +174,43 @@ void TileSetEditorTileProxy::setup(const Ref<TileSet> &p_tileset, int p_id) {
 	id = p_id;
 }
 
+// The tile's (first) collision shape is edited right here: its properties are listed under
+// "shape_settings/" just after "shape", instead of opening the shape in another inspector page.
+#define SHAPE_SETTINGS "shape_settings/"
+
+Ref<Shape2D> TileSetEditorTileProxy::_get_shape() const {
+
+	if (tileset.is_null() || !tileset->has_tile(id))
+		return Ref<Shape2D>();
+	return tileset->tile_get_shape(id);
+}
+
+static bool _shape_setting_listed(const PropertyInfo &p_info) {
+
+	if (!(p_info.usage & PROPERTY_USAGE_EDITOR) || (p_info.usage & PROPERTY_USAGE_CATEGORY))
+		return false;
+	return !p_info.name.begins_with("resource/") && !p_info.name.begins_with("script/");
+}
+
 bool TileSetEditorTileProxy::_set(const StringName &p_name, const Variant &p_value) {
 
 	if (tileset.is_null() || !tileset->has_tile(id))
 		return false;
+	String n = p_name;
+	if (n.begins_with(SHAPE_SETTINGS)) {
+		Ref<Shape2D> shape = _get_shape();
+		if (shape.is_null())
+			return false;
+		bool valid = false;
+		shape->set(n.substr(String(SHAPE_SETTINGS).length(), n.length()), p_value, &valid);
+		return valid;
+	}
 	bool valid = false;
-	tileset->set(itos(id) + "/" + String(p_name), p_value, &valid);
+	setting = true; // the TileSet's "changed" comes back while this runs: see TileSetEditor::_tileset_changed
+	tileset->set(itos(id) + "/" + n, p_value, &valid);
+	setting = false;
+	if (valid && (n == "shape" || n == "shapes"))
+		call_deferred("_notify_list_changed"); // the shape's settings below it change
 	return valid;
 }
 
@@ -185,8 +218,17 @@ bool TileSetEditorTileProxy::_get(const StringName &p_name, Variant &r_ret) cons
 
 	if (tileset.is_null() || !tileset->has_tile(id))
 		return false;
+	String n = p_name;
+	if (n.begins_with(SHAPE_SETTINGS)) {
+		Ref<Shape2D> shape = _get_shape();
+		if (shape.is_null())
+			return false;
+		bool valid = false;
+		r_ret = shape->get(n.substr(String(SHAPE_SETTINGS).length(), n.length()), &valid);
+		return valid;
+	}
 	bool valid = false;
-	r_ret = tileset->get(itos(id) + "/" + String(p_name), &valid);
+	r_ret = tileset->get(itos(id) + "/" + n, &valid);
 	return valid;
 }
 
@@ -203,7 +245,151 @@ void TileSetEditorTileProxy::_get_property_list(List<PropertyInfo> *p_list) cons
 		PropertyInfo pi = E->get();
 		pi.name = pi.name.substr(pre.length(), pi.name.length());
 		p_list->push_back(pi);
+		if (pi.name != "shape")
+			continue;
+		Ref<Shape2D> shape = _get_shape();
+		if (shape.is_null())
+			continue;
+		List<PropertyInfo> shape_props;
+		shape->get_property_list(&shape_props);
+		for (List<PropertyInfo>::Element *F = shape_props.front(); F; F = F->next()) {
+			if (!_shape_setting_listed(F->get()))
+				continue;
+			PropertyInfo spi = F->get();
+			spi.name = SHAPE_SETTINGS + spi.name;
+			spi.usage = PROPERTY_USAGE_EDITOR; // not stored through the proxy (the shape is)
+			p_list->push_back(spi);
+		}
 	}
+}
+
+void TileSetEditorTileProxy::_bind_methods() {
+
+	ObjectTypeDB::bind_method("_notify_list_changed", &TileSetEditorTileProxy::_notify_list_changed);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Tile preview
+
+TileSetTilePreview::TileSetTilePreview() {
+
+	tile = -1;
+	cell_size = Size2(16, 16);
+	origin = TileMap::TILE_ORIGIN_TOP_LEFT;
+}
+
+void TileSetTilePreview::set_tile(const Ref<TileSet> &p_tileset, int p_tile) {
+
+	tileset = p_tileset;
+	tile = p_tile;
+	update();
+}
+
+void TileSetTilePreview::set_cell(const Size2 &p_cell_size, int p_origin) {
+
+	cell_size = Size2(MAX(1, p_cell_size.x), MAX(1, p_cell_size.y));
+	origin = p_origin;
+	update();
+}
+
+Vector2 TileSetTilePreview::_cell_anchor() const {
+
+	if (origin == TileMap::TILE_ORIGIN_CENTER)
+		return cell_size / 2;
+	if (origin == TileMap::TILE_ORIGIN_BOTTOM_LEFT)
+		return Vector2(0, cell_size.y);
+	return Vector2();
+}
+
+// Where the TileMap puts something of size p_size moved by p_ofs (as in TileMap's
+// _update_dirty_quadrants, no flips), relative to the cell's top-left.
+Vector2 TileSetTilePreview::_texture_pos(const Size2 &p_size, const Vector2 &p_ofs) const {
+
+	if (origin == TileMap::TILE_ORIGIN_CENTER)
+		return cell_size / 2 - p_size / 2 + p_ofs;
+	if (origin == TileMap::TILE_ORIGIN_BOTTOM_LEFT)
+		return Vector2(0, cell_size.y) + p_ofs;
+	return p_ofs;
+}
+
+void TileSetTilePreview::_notification(int p_what) {
+
+	if (p_what != NOTIFICATION_DRAW)
+		return;
+
+	VisualServer::get_singleton()->canvas_item_set_clip(get_canvas_item(), true); // the grid goes past the edges
+	Size2 area = get_size();
+	draw_rect(Rect2(Point2(), area), Color(0.12, 0.12, 0.14));
+	if (tileset.is_null() || !tileset->has_tile(tile))
+		return;
+
+	Ref<Texture> tex = tileset->tile_get_texture(tile);
+	Rect2 region = tileset->tile_get_region(tile);
+	Size2 s = region != Rect2() ? region.size : (tex.is_valid() ? tex->get_size() : cell_size);
+	Vector2 tex_pos = _texture_pos(s, tileset->tile_get_texture_offset(tile));
+	Ref<Shape2D> shape = tileset->tile_get_shape(tile);
+	// The TileMap places the shape like the texture, moved by Shape Offset instead of Tex Offset.
+	Vector2 shape_pos = _texture_pos(s, tileset->tile_get_shape_offset(tile));
+
+	// What to fit: the cell, the texture, the shape and a margin.
+	Rect2 bounds(Point2(), cell_size);
+	bounds = bounds.merge(Rect2(tex_pos, s));
+	if (shape.is_valid()) {
+		Rect2 sr = shape->get_rect();
+		sr.pos += shape_pos;
+		bounds = bounds.merge(sr);
+	}
+	bounds = bounds.grow(MAX(cell_size.x, cell_size.y) * 0.5);
+	float zoom = MIN(area.x / bounds.size.x, area.y / bounds.size.y);
+	if (zoom >= 1)
+		zoom = Math::floor(zoom);
+	zoom = MIN(zoom, 8.0f);
+	Vector2 ofs = (area - bounds.size * zoom) / 2 - bounds.pos * zoom; // screen = ofs + world * zoom
+	ofs = ofs.floor();
+
+	// Neighbouring cells, faint; the tile's cell, bright.
+	Color grid_col(1, 1, 1, 0.08);
+	for (int y = -2; y <= 2; y++) {
+		for (int x = -2; x <= 2; x++) {
+			Rect2 c(ofs + Vector2(x, y) * cell_size * zoom, cell_size * zoom);
+			draw_line(c.pos, c.pos + Vector2(c.size.x, 0), grid_col);
+			draw_line(c.pos, c.pos + Vector2(0, c.size.y), grid_col);
+		}
+	}
+	Rect2 cell(ofs, cell_size * zoom);
+	draw_rect(cell, Color(1, 1, 1, 0.06));
+
+	if (tex.is_valid()) {
+		Rect2 dst(ofs + tex_pos * zoom, s * zoom);
+		if (region != Rect2())
+			draw_texture_rect_region(tex, dst, region, tileset->tile_get_modulate(tile));
+		else
+			draw_texture_rect(tex, dst, false, tileset->tile_get_modulate(tile));
+		Color tc(1, 0.8, 0.2, 0.7);
+		draw_line(dst.pos, dst.pos + Vector2(dst.size.x, 0), tc);
+		draw_line(dst.pos, dst.pos + Vector2(0, dst.size.y), tc);
+		draw_line(dst.pos + dst.size, dst.pos + Vector2(dst.size.x, 0), tc);
+		draw_line(dst.pos + dst.size, dst.pos + Vector2(0, dst.size.y), tc);
+		draw_circle(dst.pos, 2, tc); // the texture's top-left (Tex Offset moves it)
+	}
+
+	Color cc(1, 1, 1, 0.6);
+	draw_line(cell.pos, cell.pos + Vector2(cell.size.x, 0), cc);
+	draw_line(cell.pos, cell.pos + Vector2(0, cell.size.y), cc);
+	draw_line(cell.pos + cell.size, cell.pos + Vector2(cell.size.x, 0), cc);
+	draw_line(cell.pos + cell.size, cell.pos + Vector2(0, cell.size.y), cc);
+
+	if (shape.is_valid()) {
+		draw_set_transform(ofs + shape_pos * zoom, 0, Size2(zoom, zoom));
+		shape->draw(get_canvas_item(), Color(0.0, 0.6, 0.7, 0.5));
+		draw_set_transform(Point2(), 0, Size2(1, 1));
+	}
+
+	// The cell's origin for the TileMap's Tile Origin.
+	Vector2 a = (ofs + _cell_anchor() * zoom).floor();
+	Color oc(1, 0.3, 0.3);
+	draw_line(a - Vector2(6, 0), a + Vector2(7, 0), oc, 2);
+	draw_line(a - Vector2(0, 6), a + Vector2(0, 7), oc, 2);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -254,10 +440,15 @@ void TileSetEditor::_tileset_changed() {
 	if (selected_tile >= 0 && !tileset->has_tile(selected_tile))
 		_select_tile(-1);
 	else if (selected_tile >= 0) {
-		_get_proxy(selected_tile)->notify_changed();
+		// A change made in the properties panel itself needs no rebuild of it: rebuilding would
+		// drop the focus of the field being edited (Up/Down would step only once).
+		TileSetEditorTileProxy *proxy = _get_proxy(selected_tile);
+		if (!proxy->is_setting())
+			proxy->notify_changed();
 		tile_label->set_text(TTR("Tile") + " " + itos(selected_tile) + ": " + tileset->tile_get_name(selected_tile));
 	}
 	atlas_view->update();
+	_update_preview();
 }
 
 void TileSetEditor::_update_sources() {
@@ -404,10 +595,12 @@ void TileSetEditor::_select_tile(int p_id) {
 	if (p_id < 0 || tileset.is_null() || !tileset->has_tile(p_id)) {
 		tile_label->set_text(TTR("No tile selected."));
 		tile_properties->edit(NULL);
+		_update_preview();
 		return;
 	}
 	tile_label->set_text(TTR("Tile") + " " + itos(p_id) + ": " + tileset->tile_get_name(p_id));
 	tile_properties->edit(_get_proxy(p_id));
+	_update_preview();
 }
 
 void TileSetEditor::_create_tile(const Rect2 &p_cells) {
@@ -668,6 +861,46 @@ void TileSetEditor::_bind_methods() {
 	ObjectTypeDB::bind_method("_remove_tile_pressed", &TileSetEditor::_remove_tile_pressed);
 	ObjectTypeDB::bind_method("_show_ids_toggled", &TileSetEditor::_show_ids_toggled);
 	ObjectTypeDB::bind_method("_mode_pressed", &TileSetEditor::_mode_pressed);
+	ObjectTypeDB::bind_method("_preview_origin_selected", &TileSetEditor::_preview_origin_selected);
+	ObjectTypeDB::bind_method("_property_edited", &TileSetEditor::_property_edited);
+	ObjectTypeDB::bind_method("_resource_selected", &TileSetEditor::_resource_selected);
+}
+
+void TileSetEditor::_update_preview() {
+
+	bool has = tileset.is_valid() && selected_tile >= 0 && tileset->has_tile(selected_tile);
+	tile_preview->set_tile(tileset, has ? selected_tile : -1);
+	if (!has) {
+		preview_info->set_text("");
+		return;
+	}
+	Vector2 o = tileset->tile_get_texture_offset(selected_tile);
+	preview_info->set_text(TTR("Offset") + " " + String::num(o.x) + ", " + String::num(o.y));
+}
+
+void TileSetEditor::set_cell_context(const Size2 &p_cell_size, int p_origin) {
+
+	tile_preview->set_cell(p_cell_size, p_origin);
+	preview_origin->select(CLAMP(p_origin, 0, preview_origin->get_item_count() - 1)); // items in TILE_ORIGIN_* order
+}
+
+void TileSetEditor::_preview_origin_selected(int p_index) {
+
+	tile_preview->set_cell(tile_preview->get_cell_size(), preview_origin->get_item_ID(p_index));
+}
+
+void TileSetEditor::_property_edited(const Variant &p_prop) {
+
+	_update_preview(); // shape settings change the shape, not the TileSet: no "changed" from it
+}
+
+void TileSetEditor::_resource_selected(Object *p_res, const String &p_prop) {
+
+	// The shape's settings are already listed below it; other resources (material, navigation,
+	// occluder) open in the Inspector.
+	if (p_prop == "shape" || !p_res)
+		return;
+	editor->push_item(p_res);
 }
 
 static SpinBox *_grid_spin(Control *p_parent, float p_min, Object *p_target) {
@@ -790,7 +1023,7 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	middle->add_child(atlas_view);
 
 	VBoxContainer *props = memnew(VBoxContainer);
-	props->set_custom_minimum_size(Size2(190 * EDSCALE, 0));
+	props->set_custom_minimum_size(Size2(330 * EDSCALE, 0));
 	split2->add_child(props);
 
 	HBoxContainer *props_hb = memnew(HBoxContainer);
@@ -804,12 +1037,38 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	remove_tile_button->connect("pressed", this, "_remove_tile_pressed");
 	props_hb->add_child(remove_tile_button);
 
+	HBoxContainer *props_body = memnew(HBoxContainer);
+	props_body->set_v_size_flags(SIZE_EXPAND_FILL);
+	props->add_child(props_body);
+
+	// The tile as the TileMap draws it: Tex Offset and Shape Offset at a glance.
+	VBoxContainer *preview_vb = memnew(VBoxContainer);
+	preview_vb->set_custom_minimum_size(Size2(130 * EDSCALE, 0));
+	props_body->add_child(preview_vb);
+	tile_preview = memnew(TileSetTilePreview);
+	tile_preview->set_v_size_flags(SIZE_EXPAND_FILL);
+	tile_preview->set_tooltip(TTR("The tile as the TileMap draws it.\nWhite: its cell. Red cross: the cell's origin (Tile Origin).\nYellow: the texture, moved by Tex Offset. Blue: the collision shape, moved by Shape Offset."));
+	preview_vb->add_child(tile_preview);
+	preview_origin = memnew(OptionButton);
+	preview_origin->add_item(TTR("Top Left"), TileMap::TILE_ORIGIN_TOP_LEFT);
+	preview_origin->add_item(TTR("Center"), TileMap::TILE_ORIGIN_CENTER);
+	preview_origin->add_item(TTR("Bottom Left"), TileMap::TILE_ORIGIN_BOTTOM_LEFT);
+	preview_origin->set_tooltip(TTR("Tile Origin used by the preview (the edited TileMap's, when there is one)."));
+	preview_origin->connect("item_selected", this, "_preview_origin_selected");
+	preview_vb->add_child(preview_origin);
+	preview_info = memnew(Label);
+	preview_info->set_clip_text(true);
+	preview_vb->add_child(preview_info);
+
 	tile_properties = memnew(PropertyEditor);
+	tile_properties->set_h_size_flags(SIZE_EXPAND_FILL);
 	tile_properties->set_v_size_flags(SIZE_EXPAND_FILL);
 	tile_properties->hide_top_label();
 	tile_properties->set_show_categories(false);
 	tile_properties->set_undo_redo(editor->get_undo_redo());
-	props->add_child(tile_properties);
+	tile_properties->connect("property_edited", this, "_property_edited");
+	tile_properties->connect("resource_selected", this, "_resource_selected");
+	props_body->add_child(tile_properties);
 
 	file_dialog = memnew(EditorFileDialog);
 	file_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
