@@ -29,6 +29,7 @@
 /*************************************************************************/
 
 #include "tile_map_editor_plugin.h"
+#include "tile_set_editor_plugin.h"
 
 #include "os/input.h"
 #include "os/keyboard.h"
@@ -153,6 +154,112 @@ void TileMapEditor::set_selected_tile(int p_tile) {
 		palette->select(idx, true);
 		palette->ensure_current_is_visible();
 	}
+	_sync_atlas_selection();
+}
+
+Ref<TileSet> TileMapEditor::get_tileset() const {
+
+	return node ? node->get_tileset() : Ref<TileSet>();
+}
+
+void TileMapEditor::_watch_tileset() {
+
+	Ref<TileSet> ts = get_tileset();
+	if (ts == watched_tileset)
+		return;
+	if (watched_tileset.is_valid())
+		watched_tileset->disconnect("changed", this, "_tileset_resource_changed");
+	watched_tileset = ts;
+	if (watched_tileset.is_valid())
+		watched_tileset->connect("changed", this, "_tileset_resource_changed");
+	if (TileSetEditorPlugin::get_singleton() && is_visible())
+		TileSetEditorPlugin::get_singleton()->show_for_tilemap(watched_tileset);
+}
+
+void TileMapEditor::_tileset_resource_changed() {
+
+	// Tiles added, removed or renamed in the TileSet editor.
+	_update_palette();
+}
+
+void TileMapEditor::_update_atlas_palette() {
+
+	Ref<TileSet> ts = get_tileset();
+	Ref<Texture> current;
+	if (palette_source >= 0 && palette_source < palette_sources.size())
+		current = palette_sources[palette_source].texture;
+
+	TileAtlasView::get_sources(ts, &palette_sources);
+	atlas_palette_view->set_tileset(ts);
+	atlas_sources->clear();
+	palette_source = -1;
+	for (int i = 0; i < palette_sources.size(); i++) {
+		atlas_sources->add_item(palette_sources[i].texture->get_path().get_file(), palette_sources[i].texture);
+		if (palette_sources[i].texture == current)
+			palette_source = i;
+	}
+	if (palette_source < 0 && palette_sources.size())
+		palette_source = 0;
+	if (palette_source >= 0) {
+		atlas_sources->select(palette_source);
+		atlas_palette_view->set_source(palette_sources[palette_source]);
+	} else {
+		atlas_palette_view->clear_source();
+	}
+	_sync_atlas_selection();
+}
+
+void TileMapEditor::_atlas_source_selected(int p_index) {
+
+	if (p_index < 0 || p_index >= palette_sources.size())
+		return;
+	palette_source = p_index;
+	atlas_palette_view->set_source(palette_sources[p_index]);
+}
+
+void TileMapEditor::_atlas_cells_selected(const Rect2 &p_cells, bool p_shift, bool p_ctrl) {
+
+	int id = atlas_palette_view->tile_at_cell(p_cells.pos);
+	if (id < 0) {
+		Vector<int> inside;
+		atlas_palette_view->get_tiles_in(p_cells, &inside);
+		if (!inside.size())
+			return;
+		id = inside[0];
+	}
+	if (palette->find_metadata(id) < 0 && search_box->get_text().strip_edges() != "") {
+		// The list is filtered and hides it.
+		search_box->set_text("");
+		_update_palette();
+	}
+	set_selected_tile(id);
+}
+
+void TileMapEditor::_palette_selected(int p_index) {
+
+	_sync_atlas_selection();
+}
+
+void TileMapEditor::_sync_atlas_selection() {
+
+	Ref<TileSet> ts = get_tileset();
+	int id = get_selected_tile();
+	Vector<int> sel;
+	if (ts.is_valid() && id != TileMap::INVALID_CELL && ts->has_tile(id)) {
+		sel.push_back(id);
+		Ref<Texture> tex = ts->tile_get_texture(id);
+		if (palette_source < 0 || palette_sources[palette_source].texture != tex) {
+			for (int i = 0; i < palette_sources.size(); i++) {
+				if (palette_sources[i].texture == tex) {
+					palette_source = i;
+					atlas_sources->select(i);
+					atlas_palette_view->set_source(palette_sources[i]);
+					break;
+				}
+			}
+		}
+	}
+	atlas_palette_view->set_selected(sel);
 }
 
 void TileMapEditor::_set_cell(const Point2i &p_pos, int p_value, bool p_flip_h, bool p_flip_v, bool p_transpose, bool p_with_undo) {
@@ -215,21 +322,27 @@ struct _PaletteEntry {
 
 void TileMapEditor::_update_palette() {
 
-	if (!node)
+	if (!node) {
+		_update_atlas_palette();
 		return;
+	}
 
 	int selected = get_selected_tile();
 	palette->clear();
 
 	Ref<TileSet> tileset = node->get_tileset();
-	if (tileset.is_null())
+	if (tileset.is_null()) {
+		_update_atlas_palette();
 		return;
+	}
 
 	List<int> tiles;
 	tileset->get_tile_list(&tiles);
 
-	if (tiles.empty())
+	if (tiles.empty()) {
+		_update_atlas_palette();
 		return;
+	}
 
 	float min_size = EDITOR_DEF("tile_map/preview_size", 64);
 	min_size *= EDSCALE;
@@ -303,6 +416,8 @@ void TileMapEditor::_update_palette() {
 		set_selected_tile(selected);
 	else
 		palette->select(0);
+
+	_update_atlas_palette();
 }
 
 void TileMapEditor::_pick_tile(const Point2 &p_pos) {
@@ -1363,10 +1478,13 @@ void TileMapEditor::edit(Node *p_tile_map) {
 	if (node)
 		node->connect("settings_changed", this, "_tileset_settings_changed");
 
+	_watch_tileset();
 	_clear_bucket_cache();
 }
 
 void TileMapEditor::_tileset_settings_changed() {
+
+	_watch_tileset();
 
 	_update_palette();
 
@@ -1397,6 +1515,11 @@ void TileMapEditor::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("_erase_points"), &TileMapEditor::_erase_points);
 
 	ObjectTypeDB::bind_method(_MD("_icon_size_changed"), &TileMapEditor::_icon_size_changed);
+
+	ObjectTypeDB::bind_method(_MD("_tileset_resource_changed"), &TileMapEditor::_tileset_resource_changed);
+	ObjectTypeDB::bind_method(_MD("_atlas_source_selected"), &TileMapEditor::_atlas_source_selected);
+	ObjectTypeDB::bind_method(_MD("_atlas_cells_selected"), &TileMapEditor::_atlas_cells_selected);
+	ObjectTypeDB::bind_method(_MD("_palette_selected"), &TileMapEditor::_palette_selected);
 }
 
 TileMapEditor::CellOp TileMapEditor::_get_op_from_cell(const Point2i &p_pos) {
@@ -1501,7 +1624,21 @@ TileMapEditor::TileMapEditor(EditorNode *p_editor) {
 	palette->set_max_columns(0);
 	palette->set_icon_mode(ItemList::ICON_MODE_TOP);
 	palette->set_max_text_lines(2);
+	palette->connect("item_selected", this, "_palette_selected");
 	add_child(palette);
+
+	palette_source = -1;
+	atlas_palette = memnew(HSplitContainer);
+	atlas_palette->set_custom_minimum_size(Size2(0, 220 * EDSCALE));
+	atlas_sources = memnew(ItemList);
+	atlas_sources->set_custom_minimum_size(Size2(150 * EDSCALE, 0));
+	atlas_sources->set_fixed_icon_size(Size2(32, 32) * EDSCALE);
+	atlas_sources->connect("item_selected", this, "_atlas_source_selected");
+	atlas_palette->add_child(atlas_sources);
+	atlas_palette_view = memnew(TileAtlasView);
+	atlas_palette_view->set_h_size_flags(SIZE_EXPAND_FILL);
+	atlas_palette_view->connect("cells_selected", this, "_atlas_cells_selected");
+	atlas_palette->add_child(atlas_palette_view);
 
 	// Add menu items
 	toolbar = memnew(HBoxContainer);
@@ -1604,11 +1741,21 @@ void TileMapEditorPlugin::make_visible(bool p_visible) {
 
 		tile_map_editor->show();
 		tile_map_editor->get_toolbar()->show();
+		// As in Godot 4: the TileMap palette and the TileSet open at the bottom.
+		palette_button->show();
+		editor->make_bottom_panel_item_visible(tile_map_editor->get_atlas_palette());
+		if (TileSetEditorPlugin::get_singleton())
+			TileSetEditorPlugin::get_singleton()->show_for_tilemap(tile_map_editor->get_tileset());
 	} else {
 
 		tile_map_editor->hide();
 		tile_map_editor->get_toolbar()->hide();
 		tile_map_editor->edit(NULL);
+		if (tile_map_editor->get_atlas_palette()->is_visible())
+			editor->hide_bottom_panel();
+		palette_button->hide();
+		if (TileSetEditorPlugin::get_singleton())
+			TileSetEditorPlugin::get_singleton()->hide_for_tilemap();
 	}
 }
 
@@ -1622,9 +1769,12 @@ TileMapEditorPlugin::TileMapEditorPlugin(EditorNode *p_node) {
 	EDITOR_DEF("tile_map/bucket_fill_preview", true);
 	EDITOR_DEF("tile_map/show_tile_info_on_hover", true);
 
+	editor = p_node;
 	tile_map_editor = memnew(TileMapEditor(p_node));
 	add_control_to_container(CONTAINER_CANVAS_EDITOR_SIDE, tile_map_editor);
 	tile_map_editor->hide();
+	palette_button = p_node->add_bottom_panel_item(TTR("TileMap"), tile_map_editor->get_atlas_palette());
+	palette_button->hide();
 }
 
 TileMapEditorPlugin::~TileMapEditorPlugin() {

@@ -65,6 +65,21 @@ class TileSet : public Resource {
 
 	Map<int, Data> tile_map;
 
+	// Editor data: the atlas textures the TileSet editor shows as grids, with their cell layout.
+	// The tiles themselves stay independent (texture + region); the game ignores this.
+	struct Atlas {
+		Ref<Texture> texture;
+		Vector2 tile_size;
+		Vector2 margin;
+		Vector2 separation;
+		Atlas() :
+				tile_size(16, 16) {}
+	};
+	Vector<Atlas> atlases;
+
+	bool _set_atlas(const String &p_name, const Variant &p_value);
+	bool _get_atlas(const String &p_name, Variant &r_ret) const;
+
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
 	bool _get(const StringName &p_name, Variant &r_ret) const;
@@ -133,6 +148,18 @@ public:
 	void clear();
 
 	int get_last_unused_tile_id() const;
+
+	int atlas_add(const Ref<Texture> &p_texture);
+	void atlas_remove(int p_atlas);
+	int atlas_get_count() const;
+	int atlas_find(const Ref<Texture> &p_texture) const;
+	Ref<Texture> atlas_get_texture(int p_atlas) const;
+	void atlas_set_tile_size(int p_atlas, const Vector2 &p_size);
+	Vector2 atlas_get_tile_size(int p_atlas) const;
+	void atlas_set_margin(int p_atlas, const Vector2 &p_margin);
+	Vector2 atlas_get_margin(int p_atlas) const;
+	void atlas_set_separation(int p_atlas, const Vector2 &p_separation);
+	Vector2 atlas_get_separation(int p_atlas) const;
 
 	TileSet();
 };

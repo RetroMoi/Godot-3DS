@@ -30,9 +30,51 @@
 
 #include "tile_set.h"
 
+bool TileSet::_set_atlas(const String &p_name, const Variant &p_value) {
+
+	// atlas/<index>/<what>
+	int idx = p_name.get_slice("/", 1).to_int();
+	String what = p_name.get_slice("/", 2);
+	ERR_FAIL_COND_V(idx < 0 || idx > 1024, false);
+	if (idx >= atlases.size())
+		atlases.resize(idx + 1);
+	if (what == "texture")
+		atlases[idx].texture = p_value;
+	else if (what == "tile_size")
+		atlases[idx].tile_size = p_value;
+	else if (what == "margin")
+		atlases[idx].margin = p_value;
+	else if (what == "separation")
+		atlases[idx].separation = p_value;
+	else
+		return false;
+	return true;
+}
+
+bool TileSet::_get_atlas(const String &p_name, Variant &r_ret) const {
+
+	int idx = p_name.get_slice("/", 1).to_int();
+	String what = p_name.get_slice("/", 2);
+	if (idx < 0 || idx >= atlases.size())
+		return false;
+	if (what == "texture")
+		r_ret = atlases[idx].texture;
+	else if (what == "tile_size")
+		r_ret = atlases[idx].tile_size;
+	else if (what == "margin")
+		r_ret = atlases[idx].margin;
+	else if (what == "separation")
+		r_ret = atlases[idx].separation;
+	else
+		return false;
+	return true;
+}
+
 bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 
 	String n = p_name;
+	if (n.begins_with("atlas/"))
+		return _set_atlas(n, p_value);
 	int slash = n.find("/");
 	if (slash == -1)
 		return false;
@@ -81,6 +123,8 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 
 	String n = p_name;
+	if (n.begins_with("atlas/"))
+		return _get_atlas(n, r_ret);
 	int slash = n.find("/");
 	if (slash == -1)
 		return false;
@@ -127,6 +171,14 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 }
 
 void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
+
+	for (int i = 0; i < atlases.size(); i++) {
+		String pre = "atlas/" + itos(i) + "/";
+		p_list->push_back(PropertyInfo(Variant::OBJECT, pre + "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture", PROPERTY_USAGE_NOEDITOR));
+		p_list->push_back(PropertyInfo(Variant::VECTOR2, pre + "tile_size", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+		p_list->push_back(PropertyInfo(Variant::VECTOR2, pre + "margin", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+		p_list->push_back(PropertyInfo(Variant::VECTOR2, pre + "separation", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR));
+	}
 
 	for (Map<int, Data>::Element *E = tile_map.front(); E; E = E->next()) {
 
@@ -425,6 +477,87 @@ int TileSet::find_tile_by_name(const String &p_name) const {
 	return -1;
 }
 
+int TileSet::atlas_add(const Ref<Texture> &p_texture) {
+
+	ERR_FAIL_COND_V(p_texture.is_null(), -1);
+	int idx = atlas_find(p_texture);
+	if (idx >= 0)
+		return idx;
+	Atlas a;
+	a.texture = p_texture;
+	atlases.push_back(a);
+	_change_notify("");
+	emit_changed();
+	return atlases.size() - 1;
+}
+
+void TileSet::atlas_remove(int p_atlas) {
+
+	ERR_FAIL_INDEX(p_atlas, atlases.size());
+	atlases.remove(p_atlas);
+	_change_notify("");
+	emit_changed();
+}
+
+int TileSet::atlas_get_count() const {
+
+	return atlases.size();
+}
+
+int TileSet::atlas_find(const Ref<Texture> &p_texture) const {
+
+	for (int i = 0; i < atlases.size(); i++) {
+		if (atlases[i].texture == p_texture)
+			return i;
+	}
+	return -1;
+}
+
+Ref<Texture> TileSet::atlas_get_texture(int p_atlas) const {
+
+	ERR_FAIL_INDEX_V(p_atlas, atlases.size(), Ref<Texture>());
+	return atlases[p_atlas].texture;
+}
+
+void TileSet::atlas_set_tile_size(int p_atlas, const Vector2 &p_size) {
+
+	ERR_FAIL_INDEX(p_atlas, atlases.size());
+	atlases[p_atlas].tile_size = Vector2(MAX(1, p_size.x), MAX(1, p_size.y));
+	emit_changed();
+}
+
+Vector2 TileSet::atlas_get_tile_size(int p_atlas) const {
+
+	ERR_FAIL_INDEX_V(p_atlas, atlases.size(), Vector2());
+	return atlases[p_atlas].tile_size;
+}
+
+void TileSet::atlas_set_margin(int p_atlas, const Vector2 &p_margin) {
+
+	ERR_FAIL_INDEX(p_atlas, atlases.size());
+	atlases[p_atlas].margin = p_margin;
+	emit_changed();
+}
+
+Vector2 TileSet::atlas_get_margin(int p_atlas) const {
+
+	ERR_FAIL_INDEX_V(p_atlas, atlases.size(), Vector2());
+	return atlases[p_atlas].margin;
+}
+
+void TileSet::atlas_set_separation(int p_atlas, const Vector2 &p_separation) {
+
+	ERR_FAIL_INDEX(p_atlas, atlases.size());
+	atlases[p_atlas].separation = p_separation;
+	emit_changed();
+}
+
+Vector2 TileSet::atlas_get_separation(int p_atlas) const {
+
+	ERR_FAIL_INDEX_V(p_atlas, atlases.size(), Vector2());
+	return atlases[p_atlas].separation;
+}
+
 void TileSet::clear() {
 
 	tile_map.clear();
@@ -465,6 +598,18 @@ void TileSet::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_last_unused_tile_id"), &TileSet::get_last_unused_tile_id);
 	ObjectTypeDB::bind_method(_MD("find_tile_by_name", "name"), &TileSet::find_tile_by_name);
 	ObjectTypeDB::bind_method(_MD("get_tiles_ids", "name"), &TileSet::_get_tiles_ids);
+
+	ObjectTypeDB::bind_method(_MD("atlas_add", "texture:Texture"), &TileSet::atlas_add);
+	ObjectTypeDB::bind_method(_MD("atlas_remove", "atlas"), &TileSet::atlas_remove);
+	ObjectTypeDB::bind_method(_MD("atlas_get_count"), &TileSet::atlas_get_count);
+	ObjectTypeDB::bind_method(_MD("atlas_find", "texture:Texture"), &TileSet::atlas_find);
+	ObjectTypeDB::bind_method(_MD("atlas_get_texture:Texture", "atlas"), &TileSet::atlas_get_texture);
+	ObjectTypeDB::bind_method(_MD("atlas_set_tile_size", "atlas", "size"), &TileSet::atlas_set_tile_size);
+	ObjectTypeDB::bind_method(_MD("atlas_get_tile_size", "atlas"), &TileSet::atlas_get_tile_size);
+	ObjectTypeDB::bind_method(_MD("atlas_set_margin", "atlas", "margin"), &TileSet::atlas_set_margin);
+	ObjectTypeDB::bind_method(_MD("atlas_get_margin", "atlas"), &TileSet::atlas_get_margin);
+	ObjectTypeDB::bind_method(_MD("atlas_set_separation", "atlas", "separation"), &TileSet::atlas_set_separation);
+	ObjectTypeDB::bind_method(_MD("atlas_get_separation", "atlas"), &TileSet::atlas_get_separation);
 }
 
 TileSet::TileSet() {

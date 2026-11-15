@@ -39,6 +39,9 @@
 #include "scene/gui/line_edit.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/tool_button.h"
+#include "editor/plugins/tile_atlas_view.h"
+#include "scene/gui/item_list.h"
+#include "scene/gui/split_container.h"
 
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
@@ -81,6 +84,22 @@ class TileMapEditor : public VBoxContainer {
 	LineEdit *search_box;
 	HSlider *size_slider;
 	ItemList *palette;
+
+	// Bottom panel "TileMap": the TileSet's atlases as grids, to pick tiles as laid out.
+	HSplitContainer *atlas_palette;
+	ItemList *atlas_sources;
+	TileAtlasView *atlas_palette_view;
+	Vector<TileAtlasView::Source> palette_sources;
+	int palette_source;
+	Ref<TileSet> watched_tileset;
+
+	void _watch_tileset();
+	void _tileset_resource_changed();
+	void _update_atlas_palette();
+	void _atlas_source_selected(int p_index);
+	void _atlas_cells_selected(const Rect2 &p_cells, bool p_shift, bool p_ctrl);
+	void _palette_selected(int p_index);
+	void _sync_atlas_selection();
 
 	HBoxContainer *toolbar;
 
@@ -180,6 +199,8 @@ protected:
 
 public:
 	HBoxContainer *get_toolbar() const { return toolbar; }
+	Control *get_atlas_palette() const { return atlas_palette; }
+	Ref<TileSet> get_tileset() const;
 
 	bool forward_input_event(const InputEvent &p_event);
 	void edit(Node *p_tile_map);
@@ -193,6 +214,8 @@ class TileMapEditorPlugin : public EditorPlugin {
 	OBJ_TYPE(TileMapEditorPlugin, EditorPlugin);
 
 	TileMapEditor *tile_map_editor;
+	ToolButton *palette_button;
+	EditorNode *editor;
 
 public:
 	virtual bool forward_input_event(const InputEvent &p_event) { return tile_map_editor->forward_input_event(p_event); }
