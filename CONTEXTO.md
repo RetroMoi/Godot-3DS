@@ -238,6 +238,8 @@ scons -j4 platform=x11 tools=yes target=release_debug
 - Perfil: `valgrind --tool=callgrind --toggle-collect='GDInstance::call_multilevel*'`, dividindo pelo número de chamadas.
 - Memória: `valgrind` (memcheck) sob `xvfb-run`.
 
+**Actions do CI:** `checkout@v5`, `upload-artifact@v7` e `download-artifact@v8`, que rodam em Node 24 (as v4 eram Node 20, que o GitHub está aposentando). As v5/v6 de upload e a v6 de download ainda são Node 20. Defaults conferidos: artefato zipado, `include-hidden-files` e uma pasta por artefato no download. Run verde com o `_sc_` no pacote. Resta só um aviso informativo: `ubuntu-latest` passa para Ubuntu 26 a partir de 19/10/2026.
+
 **Pacote portátil do Windows (CI):**
 - O marcador do modo portátil é o arquivo visível `_sc_` (commit `7c0fed9`). O `upload-artifact@v4` descarta arquivos ocultos, e o `._sc_` sumia.
 - Sem o marcador, o editor usa `%APPDATA%\Godot` (e templates velhos que estiverem lá).
@@ -597,6 +599,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `19ad51e` | CI: actions em Node 24 (`checkout@v5`, `upload-artifact@v7`, `download-artifact@v8`); some o aviso de Node 20 |
 | `f9aff17` | editor de TileSet: shape de colisão editada arrastando na prévia; "+ Rect Shape" |
 | `021cb82` | TileSet: camadas de dados customizados; `TileMap.get_cell_custom_data` |
 | `c5e14b7` | TileSet: z de desenho por tile |
