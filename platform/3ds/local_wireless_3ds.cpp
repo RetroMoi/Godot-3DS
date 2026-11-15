@@ -26,11 +26,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "local_wireless_3ds.h"
 
 #include "globals.h"
 #include "os/os.h"
-#include "io/marshalls.h"
 #include "print_string.h"
 
 #include <stdlib.h>
@@ -53,13 +53,11 @@ extern "C" {
 // udsConnectionStatus::status values (as in Citra/Azahar's NWM-UDS implementation).
 #define NETSTATUS_NOT_CONNECTED 3
 
-struct LocalWireless::Room {
+struct LocalWirelessUDS::UDSRoom {
 	udsNetworkStruct network;
 	String host_name;
 	String info;
 };
-
-LocalWireless *LocalWireless::singleton = NULL;
 
 static String _uds_error(Result p_res) {
 	return String::num_int64((uint32_t)p_res, 16);
@@ -75,7 +73,7 @@ static String _node_username(const udsNodeInfo *p_node) {
 	return s;
 }
 
-Error LocalWireless::_init() {
+Error LocalWirelessUDS::_init() {
 
 	if (initialized)
 		return OK;
@@ -97,9 +95,9 @@ Error LocalWireless::_init() {
 	return OK;
 }
 
-Error LocalWireless::host(int p_max_players, const String &p_room_info, int p_mode) {
+Error LocalWirelessUDS::host(int p_max_players, const String &p_room_info, int p_mode) {
 
-	ERR_FAIL_COND_V(get_status() != STATUS_DISCONNECTED, ERR_ALREADY_IN_USE);
+	ERR_FAIL_COND_V(in_room, ERR_ALREADY_IN_USE);
 	ERR_FAIL_COND_V(scanning, ERR_BUSY);
 	Error err = _init();
 	if (err != OK)
@@ -124,16 +122,17 @@ Error LocalWireless::host(int p_max_players, const String &p_room_info, int p_mo
 			ERR_PRINTS("LocalWireless: could not set the room info (0x" + _uds_error(res) + ").");
 	}
 
-	packets.clear();
-	status = STATUS_HOST;
+	raw_packets.clear();
+	in_room = true;
+	hosting = true;
 	_invalidate_status();
 	return OK;
 }
 
-void LocalWireless::_scan_thread_func(void *p_self) {
+void LocalWirelessUDS::_scan_thread_func(void *p_self) {
 
-	LocalWireless *self = (LocalWireless *)p_self;
-	Vector<Room *> found;
+	LocalWirelessUDS *self = (LocalWirelessUDS *)p_self;
+	Vector<UDSRoom *> found;
 
 	void *buffer = malloc(SCAN_BUFFER_SIZE);
 	for (int attempt = 0; buffer && attempt < SCAN_ATTEMPTS && found.empty(); attempt++) {
@@ -148,7 +147,7 @@ void LocalWireless::_scan_thread_func(void *p_self) {
 		}
 
 		for (size_t i = 0; i < total; i++) {
-			Room *room = memnew(Room);
+			UDSRoom *room = memnew(UDSRoom);
 			room->network = networks[i].network;
 			room->host_name = _node_username(&networks[i].nodes[0]);
 
@@ -173,17 +172,17 @@ void LocalWireless::_scan_thread_func(void *p_self) {
 	self->scanning = false;
 }
 
-void LocalWireless::_clear_rooms() {
+void LocalWirelessUDS::_clear_rooms() {
 
 	for (int i = 0; i < rooms.size(); i++)
 		memdelete(rooms[i]);
 	rooms.clear();
 }
 
-Error LocalWireless::start_scan(int p_mode) {
+Error LocalWirelessUDS::start_scan(int p_mode) {
 
 	ERR_FAIL_COND_V(scanning, ERR_BUSY);
-	ERR_FAIL_COND_V(get_status() != STATUS_DISCONNECTED, ERR_ALREADY_IN_USE);
+	ERR_FAIL_COND_V(in_room, ERR_ALREADY_IN_USE);
 	Error err = _init();
 	if (err != OK)
 		return err;
@@ -204,30 +203,28 @@ Error LocalWireless::start_scan(int p_mode) {
 	return OK;
 }
 
-bool LocalWireless::is_scanning() const {
+bool LocalWirelessUDS::is_scanning() const {
 
 	return scanning;
 }
 
-Array LocalWireless::get_rooms() const {
+void LocalWirelessUDS::get_rooms(Vector<Room> *r_rooms) const {
 
-	Array result;
 	mutex->lock();
 	for (int i = 0; i < rooms.size(); i++) {
-		Dictionary d;
-		d["host_name"] = rooms[i]->host_name;
-		d["players"] = rooms[i]->network.total_nodes;
-		d["max_players"] = rooms[i]->network.max_nodes;
-		d["info"] = rooms[i]->info;
-		result.push_back(d);
+		Room r;
+		r.host_name = rooms[i]->host_name;
+		r.players = rooms[i]->network.total_nodes;
+		r.max_players = rooms[i]->network.max_nodes;
+		r.info = rooms[i]->info;
+		r_rooms->push_back(r);
 	}
 	mutex->unlock();
-	return result;
 }
 
-Error LocalWireless::join(int p_room_index) {
+Error LocalWirelessUDS::join(int p_room_index) {
 
-	ERR_FAIL_COND_V(get_status() != STATUS_DISCONNECTED, ERR_ALREADY_IN_USE);
+	ERR_FAIL_COND_V(in_room, ERR_ALREADY_IN_USE);
 	ERR_FAIL_COND_V(scanning, ERR_BUSY);
 
 	mutex->lock();
@@ -251,29 +248,31 @@ Error LocalWireless::join(int p_room_index) {
 		return ERR_CANT_CONNECT;
 	}
 
-	packets.clear();
-	status = STATUS_CLIENT;
+	raw_packets.clear();
+	in_room = true;
+	hosting = false;
 	_invalidate_status();
 	return OK;
 }
 
-void LocalWireless::leave() {
+void LocalWirelessUDS::leave() {
 
-	if (status == STATUS_DISCONNECTED)
+	if (!in_room)
 		return;
 
-	if (status == STATUS_HOST)
+	if (hosting)
 		udsDestroyNetwork();
 	else
 		udsDisconnectNetwork();
 	udsUnbind((udsBindContext *)bind_context);
 
-	status = STATUS_DISCONNECTED;
-	packets.clear();
+	in_room = false;
+	hosting = false;
+	raw_packets.clear();
 	_invalidate_status();
 }
 
-void LocalWireless::_invalidate_status() {
+void LocalWirelessUDS::_invalidate_status() {
 
 	status_valid = false;
 	names_bitmask = 0;
@@ -281,9 +280,9 @@ void LocalWireless::_invalidate_status() {
 		node_names[i] = String();
 }
 
-void LocalWireless::_refresh_status() const {
+void LocalWirelessUDS::_refresh_status() {
 
-	if (status == STATUS_DISCONNECTED)
+	if (!in_room)
 		return;
 
 	uint64_t frame = OS::get_singleton()->get_frames_drawn();
@@ -305,67 +304,62 @@ void LocalWireless::_refresh_status() const {
 	status_valid = true;
 }
 
-void LocalWireless::_check_connection() {
+bool LocalWirelessUDS::is_in_room() {
 
-	if (status != STATUS_CLIENT)
-		return;
-
-	// The host closed the room or went out of range.
+	if (!in_room)
+		return false;
+	if (hosting)
+		return true;
+	// A client: the host closed the room or went out of range.
 	_refresh_status();
-	if (status_valid && net_status == NETSTATUS_NOT_CONNECTED)
-		leave();
+	return !(status_valid && net_status == NETSTATUS_NOT_CONNECTED);
 }
 
-LocalWireless::Status LocalWireless::get_status() {
+int LocalWirelessUDS::get_my_id() {
 
-	_check_connection();
-	return status;
-}
-
-int LocalWireless::get_my_id() const {
-
-	if (status == STATUS_DISCONNECTED)
+	if (!in_room)
 		return 0;
 	_refresh_status();
 	return status_valid ? my_id : 0;
 }
 
-Array LocalWireless::get_players() const {
+uint32_t LocalWirelessUDS::get_player_mask() {
 
-	Array result;
-	if (status == STATUS_DISCONNECTED)
-		return result;
-
+	if (!in_room)
+		return 0;
 	_refresh_status();
-	if (!status_valid)
-		return result;
-
-	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (!(node_bitmask & (1 << i)))
-			continue;
-		int id = i + 1;
-		// Ask for a name only for players that joined since the last time.
-		if (!(names_bitmask & (1 << i)) || node_names[i] == String()) {
-			udsNodeInfo node;
-			node_names[i] = R_SUCCEEDED(udsGetNodeInformation(id, &node)) ? _node_username(&node) : String();
-		}
-		Dictionary d;
-		d["id"] = id;
-		d["name"] = node_names[i];
-		result.push_back(d);
-	}
-	names_bitmask = node_bitmask;
-	return result;
+	return status_valid ? node_bitmask : 0;
 }
 
-Error LocalWireless::send(const DVector<uint8_t> &p_data, int p_to) {
+String LocalWirelessUDS::get_player_name(int p_id) {
 
-	ERR_FAIL_COND_V(status == STATUS_DISCONNECTED, ERR_UNCONFIGURED);
-	ERR_FAIL_COND_V(p_data.size() == 0 || p_data.size() > MAX_PACKET_SIZE, ERR_INVALID_PARAMETER);
+	if (!in_room || p_id < 1 || p_id > MAX_PLAYERS)
+		return String();
+	_refresh_status();
+	int i = p_id - 1;
+	if (names_bitmask != node_bitmask) {
+		// Players joined or left: names are fetched again when asked for.
+		for (int j = 0; j < MAX_PLAYERS; j++) {
+			if (!(names_bitmask & (1 << j)))
+				node_names[j] = String();
+		}
+		names_bitmask &= node_bitmask;
+	}
+	if (!(names_bitmask & (1 << i)) && (node_bitmask & (1 << i))) {
+		udsNodeInfo node;
+		node_names[i] = R_SUCCEEDED(udsGetNodeInformation(p_id, &node)) ? _node_username(&node) : String();
+		names_bitmask |= (1 << i);
+	}
+	return node_names[i];
+}
+
+Error LocalWirelessUDS::send_raw(const uint8_t *p_data, int p_size, int p_to) {
+
+	ERR_FAIL_COND_V(!in_room, ERR_UNCONFIGURED);
+	ERR_FAIL_COND_V(p_size <= 0 || p_size > MAX_UDS_PACKET, ERR_INVALID_PARAMETER);
 
 	u16 to = p_to <= 0 ? UDS_BROADCAST_NETWORKNODEID : (u16)p_to;
-	DVector<uint8_t>::Read r = p_data.read();
-	Result res = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, r.ptr(), p_data.size());
+	Result res = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, p_data, p_size);
 	if (UDS_CHECK_SENDTO_FATALERROR(res)) {
 		ERR_PRINTS("LocalWireless: send failed (0x" + _uds_error(res) + ").");
 		return ERR_CONNECTION_ERROR;
@@ -373,25 +367,9 @@ Error LocalWireless::send(const DVector<uint8_t> &p_data, int p_to) {
 	return OK;
 }
 
-Error LocalWireless::send_var(const Variant &p_var, int p_to) {
+void LocalWirelessUDS::_pull_packets() {
 
-	int len = 0;
-	Error err = encode_variant(p_var, NULL, len);
-	ERR_FAIL_COND_V(err != OK, err);
-	ERR_FAIL_COND_V(len > MAX_PACKET_SIZE, ERR_INVALID_PARAMETER);
-
-	DVector<uint8_t> data;
-	data.resize(len);
-	{
-		DVector<uint8_t>::Write w = data.write();
-		encode_variant(p_var, w.ptr(), len);
-	}
-	return send(data, p_to);
-}
-
-void LocalWireless::_pull_packets() {
-
-	if (status == STATUS_DISCONNECTED || !recv_buffer)
+	if (!in_room || !recv_buffer)
 		return;
 
 	udsBindContext *ctx = (udsBindContext *)bind_context;
@@ -409,89 +387,38 @@ void LocalWireless::_pull_packets() {
 	while (true) {
 		size_t size = 0;
 		u16 sender = 0;
-		Result res = udsPullPacket(ctx, recv_buffer, MAX_PACKET_SIZE, &size, &sender);
+		Result res = udsPullPacket(ctx, recv_buffer, MAX_UDS_PACKET, &size, &sender);
 		if (R_FAILED(res) || size == 0)
 			break;
 
-		Packet p;
+		RawPacket p;
 		p.sender = sender;
 		p.data.resize(size);
-		{
-			DVector<uint8_t>::Write w = p.data.write();
-			memcpy(w.ptr(), recv_buffer, size);
-		}
-		packets.push_back(p);
-		if (packets.size() > MAX_QUEUED_PACKETS)
-			packets.pop_front(); // nobody is reading: keep the newest
+		memcpy(p.data.ptr(), recv_buffer, size);
+		raw_packets.push_back(p);
+		if (raw_packets.size() > MAX_QUEUED_PACKETS)
+			raw_packets.pop_front(); // nobody is reading: keep the newest
 	}
 }
 
-int LocalWireless::get_packet_count() {
+bool LocalWirelessUDS::pull_raw(Vector<uint8_t> *r_data, int *r_sender) {
 
-	_check_connection();
-	_pull_packets();
-	return packets.size();
-}
-
-DVector<uint8_t> LocalWireless::get_packet() {
-
-	if (packets.empty())
+	if (raw_packets.empty())
 		_pull_packets();
-	if (packets.empty())
-		return DVector<uint8_t>();
-
-	Packet p = packets.front()->get();
-	packets.pop_front();
-	last_sender = p.sender;
-	return p.data;
+	if (raw_packets.empty())
+		return false;
+	*r_data = raw_packets.front()->get().data;
+	*r_sender = raw_packets.front()->get().sender;
+	raw_packets.pop_front();
+	return true;
 }
 
-Variant LocalWireless::get_var() {
+LocalWirelessUDS::LocalWirelessUDS() {
 
-	DVector<uint8_t> data = get_packet();
-	if (data.size() == 0)
-		return Variant();
-
-	Variant v;
-	DVector<uint8_t>::Read r = data.read();
-	if (decode_variant(v, r.ptr(), data.size()) != OK)
-		return Variant();
-	return v;
-}
-
-void LocalWireless::_bind_methods() {
-
-	ObjectTypeDB::bind_method(_MD("host", "max_players", "room_info", "mode"), &LocalWireless::host, DEFVAL(4), DEFVAL(""), DEFVAL(0));
-	ObjectTypeDB::bind_method(_MD("start_scan", "mode"), &LocalWireless::start_scan, DEFVAL(0));
-	ObjectTypeDB::bind_method(_MD("is_scanning"), &LocalWireless::is_scanning);
-	ObjectTypeDB::bind_method(_MD("get_rooms"), &LocalWireless::get_rooms);
-	ObjectTypeDB::bind_method(_MD("join", "room_index"), &LocalWireless::join);
-	ObjectTypeDB::bind_method(_MD("leave"), &LocalWireless::leave);
-	ObjectTypeDB::bind_method(_MD("get_status"), &LocalWireless::get_status);
-	ObjectTypeDB::bind_method(_MD("is_host"), &LocalWireless::is_host);
-	ObjectTypeDB::bind_method(_MD("get_my_id"), &LocalWireless::get_my_id);
-	ObjectTypeDB::bind_method(_MD("get_players"), &LocalWireless::get_players);
-	ObjectTypeDB::bind_method(_MD("send", "data", "to_player"), &LocalWireless::send, DEFVAL(0));
-	ObjectTypeDB::bind_method(_MD("send_var", "var", "to_player"), &LocalWireless::send_var, DEFVAL(0));
-	ObjectTypeDB::bind_method(_MD("get_packet_count"), &LocalWireless::get_packet_count);
-	ObjectTypeDB::bind_method(_MD("get_packet"), &LocalWireless::get_packet);
-	ObjectTypeDB::bind_method(_MD("get_var"), &LocalWireless::get_var);
-	ObjectTypeDB::bind_method(_MD("get_packet_sender"), &LocalWireless::get_packet_sender);
-
-	BIND_CONSTANT(STATUS_DISCONNECTED);
-	BIND_CONSTANT(STATUS_HOST);
-	BIND_CONSTANT(STATUS_CLIENT);
-	BIND_CONSTANT(MAX_PLAYERS);
-	BIND_CONSTANT(MAX_PACKET_SIZE);
-}
-
-LocalWireless::LocalWireless() {
-
-	singleton = this;
 	initialized = false;
-	status = STATUS_DISCONNECTED;
+	in_room = false;
+	hosting = false;
 	comm_id = 0;
-	last_sender = 0;
 	scanning = false;
 	scan_mode = 0;
 	scan_thread = NULL;
@@ -505,10 +432,10 @@ LocalWireless::LocalWireless() {
 	mutex = Mutex::create();
 	bind_context = memalloc(sizeof(udsBindContext));
 	memset(bind_context, 0, sizeof(udsBindContext));
-	recv_buffer = (uint8_t *)memalloc(MAX_PACKET_SIZE);
+	recv_buffer = (uint8_t *)memalloc(MAX_UDS_PACKET);
 }
 
-LocalWireless::~LocalWireless() {
+LocalWirelessUDS::~LocalWirelessUDS() {
 
 	if (scan_thread) {
 		Thread::wait_to_finish(scan_thread);
@@ -522,5 +449,4 @@ LocalWireless::~LocalWireless() {
 	memfree(bind_context);
 	memfree(recv_buffer);
 	memdelete(mutex);
-	singleton = NULL;
 }

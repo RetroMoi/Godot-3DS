@@ -26,55 +26,37 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef LOCAL_WIRELESS_3DS_H
 #define LOCAL_WIRELESS_3DS_H
 
-#include "object.h"
+#include "io/local_wireless.h"
 #include "os/mutex.h"
 #include "os/thread.h"
-#include "list.h"
-#include "dvector.h"
 
-// Script singleton "LocalWireless": local wireless play between 3DS consoles (UDS, the same
-// "download play"-style network games use), up to 16 players, no Internet or access point.
-//
-// One console creates a room (host), the others look for rooms (start_scan) and join one.
-// Packets of up to 1478 bytes go to everyone or to one player; players are numbered from 1
-// (the host). Rooms are only seen by the same game: the network ID comes from the project name.
-class LocalWireless : public Object {
-
-	OBJ_TYPE(LocalWireless, Object);
-
-public:
-	enum Status {
-		STATUS_DISCONNECTED,
-		STATUS_HOST,
-		STATUS_CLIENT,
-	};
+// LocalWireless over UDS (the 3DS's local wireless). Rooms only seen by the same game: the
+// network ID comes from the project name.
+class LocalWirelessUDS : public LocalWirelessTransport {
 
 	enum {
-		MAX_PLAYERS = 16,
-		MAX_PACKET_SIZE = 1478, // UDS_DATAFRAME_MAXSIZE
-		MAX_ROOM_INFO = 200, // bytes of application data in the beacon
+		MAX_UDS_PACKET = 1478, // UDS_DATAFRAME_MAXSIZE
+		MAX_ROOM_INFO = LocalWireless::MAX_ROOM_INFO,
+		MAX_PLAYERS = LocalWireless::MAX_PLAYERS,
 	};
 
-private:
-	static LocalWireless *singleton;
-
-	struct Packet {
-		DVector<uint8_t> data;
+	struct UDSRoom;
+	struct RawPacket {
+		Vector<uint8_t> data;
 		int sender;
 	};
 
-	struct Room;
-
 	bool initialized;
-	Status status;
+	bool in_room;
+	bool hosting;
 	void *bind_context; // udsBindContext
 	uint32_t comm_id;
 	String passphrase;
-	List<Packet> packets;
-	int last_sender;
+	List<RawPacket> raw_packets;
 	uint8_t *recv_buffer;
 
 	// Scan, done in a thread (it takes a moment and would stall the game).
@@ -82,70 +64,46 @@ private:
 	Thread *scan_thread;
 	volatile bool scanning;
 	int scan_mode;
-	Vector<Room *> rooms;
+	Vector<UDSRoom *> rooms;
 
 	// Connection status cache: udsGetConnectionStatus is a call to the system (expensive at the
 	// Old 3DS's 268 MHz), so it is queried at most once per frame, and only when the system says
 	// it changed (with a refresh every 30 frames just in case). Names are fetched when the set of
 	// players changes.
-	mutable bool status_valid;
-	mutable uint64_t status_frame;
-	mutable uint32_t net_status;
-	mutable int my_id;
-	mutable uint16_t node_bitmask;
-	mutable uint16_t names_bitmask;
-	mutable String node_names[MAX_PLAYERS];
+	bool status_valid;
+	uint64_t status_frame;
+	uint32_t net_status;
+	int my_id;
+	uint16_t node_bitmask;
+	uint16_t names_bitmask;
+	String node_names[MAX_PLAYERS];
 	uint64_t pull_frame;
 
 	static void _scan_thread_func(void *p_self);
 	void _clear_rooms();
 	Error _init();
-	void _refresh_status() const;
+	void _refresh_status();
 	void _invalidate_status();
 	void _pull_packets();
-	void _check_connection();
-
-protected:
-	static void _bind_methods();
 
 public:
-	static LocalWireless *get_singleton() { return singleton; }
+	virtual Error host(int p_max_players, const String &p_room_info, int p_mode);
+	virtual Error start_scan(int p_mode);
+	virtual bool is_scanning() const;
+	virtual void get_rooms(Vector<Room> *r_rooms) const;
+	virtual Error join(int p_room_index);
+	virtual void leave();
+	virtual bool is_in_room();
+	virtual bool is_host() const { return in_room && hosting; }
+	virtual int get_my_id();
+	virtual uint32_t get_player_mask();
+	virtual String get_player_name(int p_id);
+	virtual int get_max_packet_size() const { return MAX_UDS_PACKET; }
+	virtual Error send_raw(const uint8_t *p_data, int p_size, int p_to);
+	virtual bool pull_raw(Vector<uint8_t> *r_data, int *r_sender);
 
-	// Creates a room for up to p_max_players (2-16). p_room_info (up to 200 bytes) is shown to
-	// whoever scans; p_mode separates rooms of the same game (e.g. game modes or versions).
-	Error host(int p_max_players = 4, const String &p_room_info = "", int p_mode = 0);
-
-	// Looks for rooms of this game in the background; poll is_scanning(), then get_rooms().
-	Error start_scan(int p_mode = 0);
-	bool is_scanning() const;
-	// [{ "host_name", "players", "max_players", "info" }], in the order join() takes.
-	Array get_rooms() const;
-	Error join(int p_room_index);
-
-	// Leaves the room (closes it, if host).
-	void leave();
-
-	Status get_status();
-	bool is_host() const { return status == STATUS_HOST; }
-	// This console's player number (1 = host), 0 when not in a room.
-	int get_my_id() const;
-	// [{ "id", "name" }] of everyone in the room, this console included.
-	Array get_players() const;
-
-	// p_to: player number, or 0 for everyone else.
-	Error send(const DVector<uint8_t> &p_data, int p_to = 0);
-	Error send_var(const Variant &p_var, int p_to = 0);
-
-	int get_packet_count();
-	// Removes and returns the next packet; get_packet_sender() then says who sent it.
-	DVector<uint8_t> get_packet();
-	Variant get_var();
-	int get_packet_sender() const { return last_sender; }
-
-	LocalWireless();
-	~LocalWireless();
+	LocalWirelessUDS();
+	~LocalWirelessUDS();
 };
-
-VARIANT_ENUM_CAST(LocalWireless::Status);
 
 #endif

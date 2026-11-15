@@ -28,6 +28,8 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
+#include "io/local_wireless.h"
+#include "io/local_wireless_udp.h"
 #include "main.h"
 #include "servers/visual/visual_server_raster.h"
 #include "core/register_core_types.h"
@@ -111,6 +113,7 @@ static bool force_lowdpi = false;
 static int init_screen = -1;
 static bool use_vsync = true;
 static bool editor = false;
+static LocalWireless *local_wireless_pc = NULL;
 
 static OS::ProcessID allow_focus_steal_pid = 0;
 
@@ -999,6 +1002,12 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	register_scene_types();
 	register_server_types();
 
+	// LocalWireless: the platform's own (3DS: UDS), or UDP for testing local play on a PC.
+	if (!LocalWireless::get_singleton()) {
+		local_wireless_pc = memnew(LocalWireless(memnew(LocalWirelessUDP)));
+		Globals::get_singleton()->add_singleton(Globals::Singleton("LocalWireless", local_wireless_pc));
+	}
+
 #ifdef TOOLS_ENABLED
 	EditorNode::register_editor_types();
 #endif
@@ -1523,6 +1532,9 @@ static uint64_t idle_process_max = 0;
 
 bool Main::iteration() {
 
+	if (LocalWireless::get_singleton())
+		LocalWireless::get_singleton()->poll(); // resends, delivery, join/leave signals
+
 	uint64_t ticks = OS::get_singleton()->get_ticks_usec();
 	uint64_t ticks_elapsed = ticks - last_ticks;
 
@@ -1705,6 +1717,11 @@ void Main::cleanup() {
 	}
 
 	OS::get_singleton()->delete_main_loop();
+
+	if (local_wireless_pc) {
+		memdelete(local_wireless_pc);
+		local_wireless_pc = NULL;
+	}
 
 	OS::get_singleton()->_cmdline.clear();
 	OS::get_singleton()->_execpath = "";

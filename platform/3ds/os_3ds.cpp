@@ -340,7 +340,7 @@ void OS_3DS::initialize(const VideoMode& p_desired,int p_video_driver,int p_audi
 	platform_3ds = memnew( Platform3DS );
 	Globals::get_singleton()->add_singleton(Globals::Singleton("Platform3DS", platform_3ds));
 
-	local_wireless = memnew( LocalWireless );
+	local_wireless = memnew( LocalWireless(memnew(LocalWirelessUDS)) );
 	Globals::get_singleton()->add_singleton(Globals::Singleton("LocalWireless", local_wireless));
 }
 
