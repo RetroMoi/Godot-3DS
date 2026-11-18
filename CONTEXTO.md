@@ -647,7 +647,8 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - o host também confere o status do sistema (sala perdida ou falha ao ler o status → `disconnected`);
   - se criar ou entrar em sala falhar, a engine reinicia o serviço e tenta uma vez mais.
 - Validado no emulador do Old 3DS, com o sono simulado no quadro 300: o host volta ao lobby com "A sessão terminou" e cria a sala de novo. A sala normal segue sem desconexão falsa.
-- Falta: teste no console fechando a tampa de verdade.
+- CI do `591ccb8`: passou. O editor Windows travou 25 min instalando o MinGW (problema do runner do GitHub, não do código); depois de cancelar e rodar de novo, passou em 9 min.
+- Falta: teste no console fechando a tampa de verdade (host e convidado). A decisão sobre o modo de espera fica para depois (usuário).
 - Lado do jogo (para o Open):
   - `coop.gd` `_create()` sai em silêncio quando `lw.get_status() != 0`; deveria chamar `leave()` (se fora do mundo) ou avisar;
   - a mensagem de `_on_disconnected` ("o host saiu ou ficou fora de alcance") não serve para o próprio host. Sugestão: "A sessão foi encerrada (o console entrou em modo de espera ou perdeu a conexão)."
@@ -742,6 +743,10 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Hipótese principal: cada `udsSendTo`/`udsPullPacket` é um pedido síncrono ao serviço do sistema (que roda no núcleo 1, dividido com o mixer de áudio do app, que tem 30% dele). Se ele demora a responder, o quadro do jogo fica esperando.
 - Se a medição confirmar, a correção é tirar essas chamadas da thread principal: uma thread de rede com filas.
 - Próximo passo: o usuário roda o `coop_test` no Old 3DS e anota as duas linhas de desempenho em três situações (lobby; host sozinho; os dois na sala, nos dois papéis).
+
+### 5.14 Brainstorming: lógica do jogo em C/C++/C# em vez de GDScript (sem código)
+- Pergunta do usuário: a lógica (GDScript) é o maior gargalo? A engine suporta C, C# ou C++? Quanto se ganharia convertendo o jogo inteiro para cada um? É para ele pensar com o Open.
+- Resposta e estimativas: ver a conversa de 18/11. O resumo entra aqui quando houver decisão.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
