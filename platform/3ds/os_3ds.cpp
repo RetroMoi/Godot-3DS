@@ -151,8 +151,11 @@ static void apt_hook_callback(APT_HookType hook, void* param)
 {
 	switch (hook) {
 		case APTHOOK_ONSUSPEND: // HOME menu / another applet opened
+			apt_lost_focus = true;
+			break;
 		case APTHOOK_ONSLEEP:   // lid closed
 			apt_lost_focus = true;
+			LocalWirelessUDS::notify_sleep(); // the radio goes off: any local room is lost
 			break;
 		case APTHOOK_ONRESTORE:
 		case APTHOOK_ONWAKEUP:

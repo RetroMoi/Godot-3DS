@@ -73,8 +73,35 @@ static String _node_username(const udsNodeInfo *p_node) {
 	return s;
 }
 
+volatile bool LocalWirelessUDS::slept = false;
+
+void LocalWirelessUDS::_reset_service() {
+
+	if (scan_thread) { // never restart the service under a running scan
+		Thread::wait_to_finish(scan_thread);
+		memdelete(scan_thread);
+		scan_thread = NULL;
+	}
+	if (initialized)
+		udsExit();
+	initialized = false;
+	needs_reset = false;
+}
+
+void LocalWirelessUDS::poll() {
+
+	if (slept) {
+		slept = false;
+		needs_reset = true;
+		if (in_room)
+			room_lost = true; // the system dropped the room while asleep
+	}
+}
+
 Error LocalWirelessUDS::_init() {
 
+	if (needs_reset && !in_room)
+		_reset_service();
 	if (initialized)
 		return OK;
 
@@ -109,6 +136,12 @@ Error LocalWirelessUDS::host(int p_max_players, const String &p_room_info, int p
 	CharString pass = passphrase.utf8();
 	udsBindContext *ctx = (udsBindContext *)bind_context;
 	Result res = udsCreateNetwork(&network, pass.get_data(), pass.length() + 1, ctx, DATA_CHANNEL, UDS_DEFAULT_RECVBUFSIZE);
+	if (R_FAILED(res)) {
+		// The service may be in a bad state (e.g. after sleep): restart it and try once more.
+		_reset_service();
+		if (_init() == OK)
+			res = udsCreateNetwork(&network, pass.get_data(), pass.length() + 1, ctx, DATA_CHANNEL, UDS_DEFAULT_RECVBUFSIZE);
+	}
 	if (R_FAILED(res)) {
 		ERR_PRINTS("LocalWireless: could not create the room (0x" + _uds_error(res) + ").");
 		return ERR_CANT_CREATE;
@@ -244,6 +277,12 @@ Error LocalWirelessUDS::join(int p_room_index) {
 			break;
 	}
 	if (R_FAILED(res)) {
+		// The service may be in a bad state (e.g. after sleep): restart it and try once more.
+		_reset_service();
+		if (_init() == OK)
+			res = udsConnectNetwork(&network, pass.get_data(), pass.length() + 1, ctx, UDS_BROADCAST_NETWORKNODEID, UDSCONTYPE_Client, DATA_CHANNEL, UDS_DEFAULT_RECVBUFSIZE);
+	}
+	if (R_FAILED(res)) {
 		ERR_PRINTS("LocalWireless: could not join the room (0x" + _uds_error(res) + ").");
 		return ERR_CANT_CONNECT;
 	}
@@ -268,8 +307,11 @@ void LocalWirelessUDS::leave() {
 
 	in_room = false;
 	hosting = false;
+	room_lost = false;
 	raw_packets.clear();
 	_invalidate_status();
+	if (needs_reset)
+		_reset_service();
 }
 
 void LocalWirelessUDS::_invalidate_status() {
@@ -296,8 +338,10 @@ void LocalWirelessUDS::_refresh_status() {
 
 	udsConnectionStatus constatus;
 	service_calls++;
-	if (R_FAILED(udsGetConnectionStatus(&constatus)))
+	if (R_FAILED(udsGetConnectionStatus(&constatus))) {
+		room_lost = true; // the service no longer knows this room
 		return;
+	}
 	net_status = constatus.status;
 	my_id = constatus.cur_NetworkNodeID;
 	node_bitmask = constatus.node_bitmask;
@@ -307,12 +351,14 @@ void LocalWirelessUDS::_refresh_status() {
 
 bool LocalWirelessUDS::is_in_room() {
 
-	if (!in_room)
+	if (!in_room || room_lost)
 		return false;
-	if (hosting)
-		return true;
-	// A client: the host closed the room or went out of range.
+	// Host and client alike: the system may drop the room (sleep, radio off); a client also
+	// loses it when the host closes it or goes out of range. (The host used to be assumed in
+	// its room forever, so it never got "disconnected" and could not create a room again.)
 	_refresh_status();
+	if (room_lost)
+		return false;
 	return !(status_valid && net_status == NETSTATUS_NOT_CONNECTED);
 }
 
@@ -449,6 +495,8 @@ LocalWirelessUDS::LocalWirelessUDS() {
 	names_bitmask = 0;
 	pull_frame = (uint64_t)-1;
 	service_calls = 0;
+	room_lost = false;
+	needs_reset = false;
 	mutex = Mutex::create();
 	bind_context = memalloc(sizeof(udsBindContext));
 	memset(bind_context, 0, sizeof(udsBindContext));

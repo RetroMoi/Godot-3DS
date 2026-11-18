@@ -636,6 +636,23 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - convidado com `rec` > 0 e `conf 0`: os rápidos chegam e o welcome não;
   - `falha` alto: o sistema recusa os envios.
 
+**Bug do host após fechar a tampa (relatado com o jogo; corrigido na engine):**
+- Sintoma: o host fecha a tampa (o console dorme), a sessão cai, e ele não consegue mais criar sala.
+- Causas na engine:
+  1. `LocalWirelessUDS::is_in_room()` devolvia sempre `true` para o host. Ele nunca recebia `disconnected` e o status ficava "host" para sempre.
+  2. O sono desliga o rádio e o sistema derruba a sala, mas o serviço UDS não era reiniciado: a próxima `udsCreateNetwork` podia falhar.
+- Correção:
+  - o hook do APT avisa o sono (`LocalWirelessUDS::notify_sleep`, só no `ONSLEEP`; o menu HOME não encerra);
+  - ao acordar, a sala conta como perdida (`disconnected` no host e no convidado) e o serviço é reiniciado (`udsExit` + `udsInit`) antes da próxima sala;
+  - o host também confere o status do sistema (sala perdida ou falha ao ler o status → `disconnected`);
+  - se criar ou entrar em sala falhar, a engine reinicia o serviço e tenta uma vez mais.
+- Validado no emulador do Old 3DS, com o sono simulado no quadro 300: o host volta ao lobby com "A sessão terminou" e cria a sala de novo. A sala normal segue sem desconexão falsa.
+- Falta: teste no console fechando a tampa de verdade.
+- Lado do jogo (para o Open):
+  - `coop.gd` `_create()` sai em silêncio quando `lw.get_status() != 0`; deveria chamar `leave()` (se fora do mundo) ou avisar;
+  - a mensagem de `_on_disconnected` ("o host saiu ou ficou fora de alcance") não serve para o próprio host. Sugestão: "A sessão foi encerrada (o console entrou em modo de espera ou perdeu a conexão)."
+- Decisão em aberto (do usuário): manter "fechar a tampa encerra a sessão" (atual) ou impedir o sono durante a sessão (`aptSetSleepAllowed(false)` enquanto em sala; a sessão continua com a tampa fechada).
+
 **Correção (`f2337f2`):** `StreamPeerBuffer::get_partial_data` (do 2.1) não tinha o `return` final. Em build otimizado, toda leitura (`get_u8`, `get_16`...) derrubava o jogo. Afeta qualquer uso de `StreamPeerBuffer`, não só o co-op.
 
 **Referência (`misc/3ds-build/coop_test`, ver o README):**

@@ -67,6 +67,14 @@ class LocalWirelessUDS : public LocalWirelessTransport {
 	uint8_t *send_buffer; // destination byte + data
 	uint32_t service_calls; // IPC requests to the UDS service (get_stats)
 
+	// Sleep (lid closed) turns the radio off and the system drops the room. On waking up the
+	// session is over (is_in_room() turns false, so the game gets "disconnected"), and the UDS
+	// service is restarted before the next room: without that, creating a room again could fail.
+	static volatile bool slept; // set by the APT hook (another thread), handled in poll()
+	bool room_lost; // the system dropped the room (sleep, or its status says so)
+	bool needs_reset; // restart the UDS service (udsExit + udsInit) before the next room
+	void _reset_service();
+
 	// Scan, done in a thread (it takes a moment and would stall the game).
 	Mutex *mutex;
 	Thread *scan_thread;
@@ -95,6 +103,9 @@ class LocalWirelessUDS : public LocalWirelessTransport {
 	void _pull_packets();
 
 public:
+	static void notify_sleep() { slept = true; } // from the APT hook: the console is going to sleep
+
+	virtual void poll();
 	virtual Error host(int p_max_players, const String &p_room_info, int p_mode);
 	virtual Error start_scan(int p_mode);
 	virtual bool is_scanning() const;
