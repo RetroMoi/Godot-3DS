@@ -746,7 +746,32 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 ### 5.14 Brainstorming: lógica do jogo em C/C++/C# em vez de GDScript (sem código)
 - Pergunta do usuário: a lógica (GDScript) é o maior gargalo? A engine suporta C, C# ou C++? Quanto se ganharia convertendo o jogo inteiro para cada um? É para ele pensar com o Open.
-- Resposta e estimativas: ver a conversa de 18/11. O resumo entra aqui quando houver decisão.
+- **Resumo da resposta (18/11), estimativas a partir das medições de 4.4b, 4.5 e 5.2:**
+  - **Gargalo:** depende da cena.
+    - Com muitos inimigos, é a lógica: na bancada de 32 no Old 3DS, a IA custa ~13,7 ms (29,1 − 15,4).
+    - Explorando com poucos inimigos, é o desenho: lógica ~1,5–2 ms contra desenho ~4–5 ms no console (emulador 0,3–0,4 x 2,1–2,2 ms; o console custa ~4–5x no script e ~2x no desenho).
+    - Os 45 FPS do co-op ainda não têm causa medida.
+  - **Linguagens no Godot 2.1:**
+    - GDScript é a única linguagem de script de jogo.
+    - C++ só como módulo da engine, compilado dentro do editor e do template (não existe GDNative no 2.1).
+    - C não dá ganho sobre C++: a API é C++. O módulo `cscript` é um esboço inacabado, desligado.
+    - C# não existe no 2.1 (o Mono chegou no 3.0) e não é viável no 3DS.
+  - **Ganho estimado com o jogo todo em C++:**
+    - A lógica fica ~3–6x mais rápida, não 30x: contas puras ganham 20–40x, mas boa parte do custo já é trabalho nativo (grade, transformações, animação, áreas), que ganha só ~1,5–2x (sem o Variant).
+    - Na bancada, a IA cairia de ~13,7 para ~2,5–4,5 ms (quadro de ~29 para ~18–20 ms).
+    - Explorando, economiza ~1–1,5 ms, sem mudar o FPS (já é 60).
+  - **Custo:**
+    - ~3,5 mil linhas de GDScript de jogo para reescrever;
+    - cada mudança exige compilar editor e template;
+    - erro vira crash em vez de erro de script;
+    - o código do jogo passa a morar na engine (mistura a divisão Claude/Open).
+  - **Recomendação:** híbrido. Levar para C++ (na engine, como foi com a `CollisionGrid2D`) só os pontos quentes medidos, por exemplo:
+    - passo de movimento/IA dos morcegos;
+    - interpolação das marionetes;
+    - codificação dos pacotes.
+    - Junto, as próximas melhorias da VM (entrada de função de ~970 instruções, constantes de classe).
+    - Isso deve dar a maior parte do ganho com uma fração do custo.
+    - Medir antes, incluindo os números do `coop_test` no Old 3DS.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
