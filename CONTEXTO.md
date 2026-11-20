@@ -798,6 +798,28 @@ Também gasta memória e tempo de carga, com centenas de itens.
     - Isso deve dar a maior parte do ganho com uma fração do custo.
     - Medir antes, incluindo os números do `coop_test` no Old 3DS.
 
+### 5.15 Bench de despacho para o "task/sequence runner" (pedido do Open, 20/11; sem feature)
+- Contexto: no HGSS (decomp pret/pokeheartgold), um TaskManager com pilha de tarefas faz o papel de co-rotina. No ARPG, a lógica sequencial (diálogo, fade, prompt, cutscene) vira máquina de estados com flags. O Open quer números antes de escolher entre pilha em GDScript, `yield` ou um runner nativo.
+- Bench: `misc/3ds-build/dispatch_bench` (README com a tabela). Azahar, relógio emulado, igual no Old e no New. Total por tarefa com N=100:
+  - a, nós com `_fixed_process` (laço da engine): ~3,6 µs;
+  - b, laço GDScript com `task.step()`: ~10,2 µs (8,0 da chamada + 2,2 do laço `while`);
+  - c, `task.call("step")`: ~12,5 µs;
+  - d, `state.resume()`: ~35 µs.
+  - No Old 3DS real, esperar ~4–5x (5.2). Falta rodar no console.
+- **Leitura do `yield` (`gd_function.cpp`):**
+  - Cada `yield` faz `memnew(GDFunctionState)` (objeto `Reference`, registrado e removido do `ObjectDB`), um `Vector` da pilha (`alloca_size`) e copia os Variants da pilha. São 2 alocações por `yield`, liberadas quando o estado anterior cai.
+  - Tamanhos fixos por função, então o malloc tende a reaproveitar os blocos: o custo é tempo, não fragmentação.
+  - `CallState.instance` é um ponteiro cru. **Em release (o template do 3DS) o `resume()` não confere se o objeto dono foi liberado**; só o debug confere (`#ifdef DEBUG_ENABLED`). Retomar depois de um `queue_free` (troca de cena, por exemplo) acessa memória liberada e derruba o jogo.
+  - `state.self` e os locais: um `Reference` fica vivo (preso pelo estado; ciclo se o objeto guarda o próprio estado); um `Node` é ponteiro cru e pode ficar pendurado.
+  - `yield(obj, "sinal")` só custa quando o sinal dispara (conexão oneshot), não por quadro. Se o emissor for liberado, a conexão cai e a função nunca termina.
+- **Leitura do cache de chamada (`_call_cached`):** confirmado.
+  - A chave é `get_type_name()` (o tipo nativo).
+  - Se o tipo nativo não tem o método, o slot fica "genérico" e vai para `Variant::call_ptr` → `Object::call` → `GDInstance::call`, que procura o nome no script e na herança.
+  - Se o nativo tem um método de mesmo nome, o cache confere `si->has_method()` a cada chamada e, havendo método no script, também vai para o caminho genérico.
+  - Ou seja: o cache cobre só `MethodBind` nativo. `task.call("step")` passa pelo `MethodBind` `call` e ainda converte a String em StringName por chamada.
+- **Runner nativo:** custaria ~o modo a (~3,6 µs/tarefa), economizando ~6,6 µs emulados (~30 µs no console) por tarefa por quadro em relação ao b. Com poucas tarefas ativas (≤10), são ≤0,3 ms no console. Escopo pequeno e genérico (um laço que chama `step` com StringName pronto), mas o ganho só aparece com muitas tarefas.
+- Correção pequena possível (não pedida, não muda semântica): no release, o `resume()` conferir o `instance_id` como o debug já faz, trocando crash por erro.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
