@@ -694,6 +694,21 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	if (video_driver == "") // specified in engine.cfg
 		video_driver = _GLOBAL_DEF("display/driver", Variant((const char *)OS::get_singleton()->get_video_driver_name(0)));
 
+	// Nintendo 3DS: the base resolution can't exceed the screens (400x240, or 400x480 with
+	// display/3ds_dual_screen). The editor's Project Settings refuse larger values; a project set
+	// larger by hand is clamped when the game runs.
+	if (!editor && globals->has("display/width") && globals->has("display/height")) {
+		bool dual = globals->has("display/3ds_dual_screen") && bool(globals->get("display/3ds_dual_screen"));
+		int max_w = 400, max_h = dual ? 480 : 240;
+		int w = globals->get("display/width");
+		int h = globals->get("display/height");
+		if (w > max_w || h > max_h) {
+			WARN_PRINT(("display/width and display/height (" + itos(w) + "x" + itos(h) + ") exceed the Nintendo 3DS screens: using " + itos(MIN(w, max_w)) + "x" + itos(MIN(h, max_h)) + ".").utf8().get_data());
+			globals->set("display/width", MIN(w, max_w));
+			globals->set("display/height", MIN(h, max_h));
+		}
+	}
+
 	if (!force_res && use_custom_res && globals->has("display/width"))
 		video_mode.width = globals->get("display/width");
 	if (!force_res && use_custom_res && globals->has("display/height"))

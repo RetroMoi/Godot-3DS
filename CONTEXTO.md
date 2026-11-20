@@ -140,7 +140,13 @@ São dois projetos ligados:
     - itens com textura de render target ficam fora do cache de geometria.
   - O toque continua em coordenadas de janela (400x480); a `Viewport` converte (`_get_input_pre_xform`).
   - O aviso do `main.cpp` aceita tamanho da mesma forma com `viewport` e avisa se não dividir 400x480.
-  - As guias do editor 2D escalam com o tamanho do projeto.
+  - As guias do editor 2D escalam com o tamanho do projeto só nos modos `viewport` e `2d`; com `disabled`, ficam no tamanho nativo de 400x480 (o console mostra o canvas 1:1).
+- **Resolução base limitada às telas (20/11):** máximo 400x240, ou 400x480 com `3ds_dual_screen`.
+  - Nas Configurações do Projeto, um valor maior em `display/width`/`height` volta para o máximo, com um aviso que sugere um divisor com `stretch_mode="viewport"`. Também vale ao ligar o `3ds_dual_screen`.
+  - Ao rodar o jogo (`main.cpp`), um projeto editado à mão com valor maior é limitado, com aviso.
+  - `display/test_width`/`test_height` (a janela do PC) não são limitados.
+  - Motivo: maior que as telas, o `2d` encolhe e perde pixels, e o `viewport` gastaria VRAM (800x960 → textura de 1024x1024, ~4 MB dos 6 MB) ou falharia.
+  - Validado no editor (largura 800 → 400, altura 999 → 480, com o aviso) e na execução no PC (800x960 → aviso e 400x480).
   - Teste: `misc/3ds-build/viewport_test`. Validado no emulador do Old 3DS: orientação, recorte, camada só embaixo e barras com 200x200, a 60 FPS. No PC, o toque convertido bate (100,360 → 50,179).
 - **Achado: deslocamento de 1 linha (o defeito antigo "linha de 1 px no topo"):**
   - No emulador, a imagem das duas telas desce 1 linha, e a última linha reaparece na linha 0. Igual nos modos `2d` e `viewport`, então não é do render target.

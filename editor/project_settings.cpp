@@ -764,6 +764,9 @@ void ProjectSettings::_settings_prop_edited(const String &p_name) {
 
 	String full_item = globals_editor->get_full_item_path(p_name);
 
+	if (full_item == "display/width" || full_item == "display/height" || full_item == "display/3ds_dual_screen")
+		_clamp_3ds_resolution();
+
 	if (!Globals::get_singleton()->is_persisting(full_item)) {
 		Globals::get_singleton()->set_persisting(full_item, true);
 
@@ -779,6 +782,37 @@ void ProjectSettings::_settings_prop_edited(const String &p_name) {
 		globals_editor->get_property_editor()->update_tree();
 	}
 	_settings_changed();
+}
+
+// The base resolution can't be larger than the Nintendo 3DS screens: 400x240 (top screen), or
+// 400x480 with display/3ds_dual_screen. A larger value is replaced by the maximum, with a warning.
+// (display/test_width and test_height, the PC window, are not limited.)
+void ProjectSettings::_clamp_3ds_resolution() {
+
+	Globals *g = Globals::get_singleton();
+	bool dual = g->has("display/3ds_dual_screen") && bool(g->get("display/3ds_dual_screen"));
+	int max_w = 400;
+	int max_h = dual ? 480 : 240;
+	int w = g->has("display/width") ? int(g->get("display/width")) : max_w;
+	int h = g->has("display/height") ? int(g->get("display/height")) : max_h;
+	if (w <= max_w && h <= max_h)
+		return;
+
+	if (w > max_w) {
+		g->set("display/width", max_w);
+		g->set_persisting("display/width", true);
+	}
+	if (h > max_h) {
+		g->set("display/height", max_h);
+		g->set_persisting("display/height", true);
+	}
+	globals_editor->get_property_editor()->update_tree();
+	String max_size = itos(max_w) + "x" + itos(max_h);
+	String text = vformat(TTR("The Nintendo 3DS shows at most %s (%s)."), max_size, dual ? TTR("both screens") : TTR("top screen"));
+	text += "\n" + vformat(TTR("The base resolution was limited to %s."), itos(MIN(w, max_w)) + "x" + itos(MIN(h, max_h)));
+	text += "\n\n" + vformat(TTR("For a smaller, pixelated look use a size that divides it (e.g. %s) with stretch_mode \"viewport\"."), itos(max_w / 2) + "x" + itos(max_h / 2));
+	resolution_warning->set_text(text);
+	resolution_warning->popup_centered_minsize();
 }
 
 void ProjectSettings::_settings_changed() {
@@ -1365,6 +1399,9 @@ ProjectSettings::ProjectSettings(EditorData *p_data) {
 
 	message = memnew(ConfirmationDialog);
 	add_child(message);
+	resolution_warning = memnew(AcceptDialog);
+	resolution_warning->set_title(TTR("Warning!"));
+	add_child(resolution_warning);
 	//	message->get_cancel()->hide();
 	message->set_hide_on_ok(true);
 

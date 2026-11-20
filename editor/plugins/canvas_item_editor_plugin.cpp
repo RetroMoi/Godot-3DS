@@ -1994,9 +1994,12 @@ void CanvasItemEditor::_viewport_draw() {
 
 		// Nintendo 3DS with both screens: top screen 400x240, bottom screen 320x240 centered below
 		// it. The strips beside the bottom screen are not shown on the console: shade them. A
-		// smaller game area of the same shape (stretch_mode="viewport", e.g. 200x240) is the same
-		// layout scaled down.
-		Vector2 k(screen_size.width / 400.0, screen_size.height / 480.0);
+		// smaller game area stretched to the screens (stretch_mode "viewport" or "2d", e.g. 200x240)
+		// is the same layout scaled down; without stretching the canvas is shown 1:1.
+		String stretch = Globals::get_singleton()->has("display/stretch_mode") ? String(Globals::get_singleton()->get("display/stretch_mode")) : String("disabled");
+		Vector2 k(1, 1);
+		if (stretch == "viewport" || stretch == "2d")
+			k = Vector2(screen_size.width / 400.0, screen_size.height / 480.0);
 		Rect2 screens[2] = { Rect2(0, 0, 400 * k.x, 240 * k.y), Rect2(40 * k.x, 240 * k.y, 320 * k.x, 240 * k.y) };
 		for (int s = 0; s < 2; s++) {
 			Vector2 p[4] = {

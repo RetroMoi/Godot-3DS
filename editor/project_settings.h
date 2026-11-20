@@ -61,6 +61,7 @@ class ProjectSettings : public AcceptDialog {
 
 	HBoxContainer *add_prop_bar;
 	ConfirmationDialog *message;
+	AcceptDialog *resolution_warning; // base resolution larger than the 3DS screens
 	LineEdit *category;
 	LineEdit *property;
 	OptionButton *type;
@@ -115,6 +116,7 @@ class ProjectSettings : public AcceptDialog {
 	void _show_last_added(const InputEvent &p_event, const String &p_name);
 
 	void _settings_prop_edited(const String &p_name);
+	void _clamp_3ds_resolution();
 	void _settings_changed();
 
 	//ProjectExportSettings *export_settings;
