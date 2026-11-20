@@ -487,8 +487,27 @@ Também gasta memória e tempo de carga, com centenas de itens.
      - Testado em `.tres` e `.res`.
    - **Colisão visual (`f9aff17`):** na prévia do tile, arrastar a shape move o Shape Offset; a alça muda o extents do retângulo (canto) ou o raio do círculo (lado direito). Pixels inteiros, uma ação de desfazer por arrasto. Tile sem shape ganha "+ Rect Shape" (retângulo cobrindo a célula, conforme o Tile Origin).
    - **No ambiente de teste, o clique simulado em Cena > Desfazer às vezes não dispara; o Ctrl+Z com o mouse sobre o mapa funciona.**
+   - **Zoom na prévia do tile (pedido do usuário, 20/11; inspirado no `GenericTilePolygonEditor` do Godot 4):**
+     - a rodinha dá zoom em direção ao cursor, em passos 25%, 50% e depois inteiros de 1x a 64x (pixel art nítida);
+     - o botão do meio arrasta a vista;
+     - botões −, ajustar (`ZoomReset`) e + no canto de cima; o nível de zoom aparece embaixo, com "(fit)" quando ajustado sozinho;
+     - trocar de tile volta ao ajuste automático; durante o arraste da shape, a vista fica parada.
+     - Testado no editor com o TileSet do jogo (cópia): 400% → 1200% com 3 passos, e o arraste com o botão do meio.
 4. Padrões.
 5. Terrenos/autotile (só no editor).
+
+**Caixa de seleção da `CollisionShape2D` no editor 2D (pedido do usuário, 20/11):**
+- Antes, a caixa laranja usava `shape->get_rect().grow(3)` (3 unidades de folga, que com zoom alto ficavam bem maiores que a shape), guardada no último desenho; e arrastar as alças escalava o nó.
+- Agora, para retângulo, círculo e cápsula:
+  - a caixa é o tamanho exato da shape, calculado na hora;
+  - as alças mudam o tamanho da própria shape: `extents`; raio pelo lado que mais mudou; raio pela largura e altura pelo resto, com mínimo de 1;
+  - o nó se desloca para o lado oposto ao arrastado ficar parado;
+  - o desfazer guarda também o tamanho (`edit_get_state`/`edit_set_state` com um 4º item).
+- Segmento, raio e polígonos mantêm a folga de 3 e a escala do nó.
+- Testado no editor (cápsula do HitBox do player: caixa justa, alça alarga e move o nó) e o ciclo do desfazer por script (raio 5 → 8 → 5, posição volta).
+- O Cena > Desfazer pelo menu não roda no harness, nem para um `Sprite`: o editor ignora o desfazer com botão do mouse pressionado (`get_mouse_button_state`), e o clique no menu ainda conta como pressionado.
+- Atenção: a shape é um recurso; se for compartilhada entre nós, todos mudam (como pelo Inspetor).
+- O `xclick.py` (scratchpad) ganhou `dclick:X,Y`, para abrir pastas e recursos no FileSystem.
 
 **Testes de editor sem tela:**
 - Xvfb + `python-xlib` (XTest) para clicar e teclar, com capturas de tela via `import`.

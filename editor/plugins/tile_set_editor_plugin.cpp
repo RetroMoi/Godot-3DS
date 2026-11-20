@@ -283,6 +283,80 @@ TileSetTilePreview::TileSetTilePreview() {
 	view_zoom = 1;
 	drag = DRAG_NONE;
 	set_focus_mode(FOCUS_CLICK);
+
+	manual_zoom = 0;
+	panning = false;
+	zoom_buttons = memnew(HBoxContainer);
+	add_child(zoom_buttons);
+	zoom_less = memnew(ToolButton);
+	zoom_less->set_tooltip(TTR("Zoom Out"));
+	zoom_less->connect("pressed", this, "_zoom_less");
+	zoom_buttons->add_child(zoom_less);
+	zoom_reset = memnew(ToolButton);
+	zoom_reset->set_tooltip(TTR("Fit the tile (zoom and position)"));
+	zoom_reset->connect("pressed", this, "_zoom_fit");
+	zoom_buttons->add_child(zoom_reset);
+	zoom_more = memnew(ToolButton);
+	zoom_more->set_tooltip(TTR("Zoom In"));
+	zoom_more->connect("pressed", this, "_zoom_more");
+	zoom_buttons->add_child(zoom_more);
+	set_tooltip(TTR("Mouse wheel: zoom. Middle button: pan. Drag the shape to move it, its handle to resize it."));
+}
+
+// Zoom levels: whole numbers from 1x up, so pixel art stays sharp.
+static const float tile_preview_zooms[] = { 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
+static const int tile_preview_zoom_count = sizeof(tile_preview_zooms) / sizeof(tile_preview_zooms[0]);
+
+void TileSetTilePreview::_zoom_at(float p_zoom, const Vector2 &p_screen_pos) {
+
+	if (manual_zoom <= 0) { // leaving the fitted view: start from what is on screen
+		manual_zoom = view_zoom;
+		manual_ofs = view_ofs;
+	}
+	// Keep the point under the cursor in place.
+	Vector2 tile_pos = (p_screen_pos - manual_ofs) / manual_zoom;
+	manual_zoom = p_zoom;
+	manual_ofs = (p_screen_pos - tile_pos * manual_zoom).floor();
+	update();
+}
+
+void TileSetTilePreview::_zoom_step(int p_dir, const Vector2 &p_screen_pos) {
+
+	float current = manual_zoom > 0 ? manual_zoom : view_zoom;
+	float next = current;
+	if (p_dir > 0) {
+		for (int i = 0; i < tile_preview_zoom_count; i++) {
+			if (tile_preview_zooms[i] > current + 0.001) {
+				next = tile_preview_zooms[i];
+				break;
+			}
+		}
+	} else {
+		for (int i = tile_preview_zoom_count - 1; i >= 0; i--) {
+			if (tile_preview_zooms[i] < current - 0.001) {
+				next = tile_preview_zooms[i];
+				break;
+			}
+		}
+	}
+	if (next != current)
+		_zoom_at(next, p_screen_pos);
+}
+
+void TileSetTilePreview::_zoom_less() {
+
+	_zoom_step(-1, get_size() / 2);
+}
+
+void TileSetTilePreview::_zoom_more() {
+
+	_zoom_step(1, get_size() / 2);
+}
+
+void TileSetTilePreview::_zoom_fit() {
+
+	manual_zoom = 0;
+	update();
 }
 
 Size2 TileSetTilePreview::_tile_size() const {
@@ -333,6 +407,32 @@ void TileSetTilePreview::_input_event(const InputEvent &p_event) {
 	if (tileset.is_null() || !tileset->has_tile(tile))
 		return;
 	Ref<Shape2D> shape = tileset->tile_get_shape(tile);
+
+	// View: the wheel zooms towards the cursor, the middle button pans.
+	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.pressed && drag == DRAG_NONE &&
+			(p_event.mouse_button.button_index == BUTTON_WHEEL_UP || p_event.mouse_button.button_index == BUTTON_WHEEL_DOWN)) {
+		_zoom_step(p_event.mouse_button.button_index == BUTTON_WHEEL_UP ? 1 : -1, Vector2(p_event.mouse_button.x, p_event.mouse_button.y));
+		accept_event();
+		return;
+	}
+	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.button_index == BUTTON_MIDDLE) {
+		panning = p_event.mouse_button.pressed;
+		pan_last = Vector2(p_event.mouse_button.x, p_event.mouse_button.y);
+		if (panning && manual_zoom <= 0) {
+			manual_zoom = view_zoom;
+			manual_ofs = view_ofs;
+		}
+		accept_event();
+		return;
+	}
+	if (p_event.type == InputEvent::MOUSE_MOTION && panning) {
+		Vector2 p(p_event.mouse_motion.x, p_event.mouse_motion.y);
+		manual_ofs += p - pan_last;
+		pan_last = p;
+		update();
+		accept_event();
+		return;
+	}
 
 	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.button_index == BUTTON_LEFT) {
 		Vector2 p = (Vector2(p_event.mouse_button.x, p_event.mouse_button.y) - view_ofs) / view_zoom;
@@ -395,11 +495,16 @@ void TileSetTilePreview::_input_event(const InputEvent &p_event) {
 void TileSetTilePreview::_bind_methods() {
 
 	ObjectTypeDB::bind_method("_input_event", &TileSetTilePreview::_input_event);
+	ObjectTypeDB::bind_method("_zoom_less", &TileSetTilePreview::_zoom_less);
+	ObjectTypeDB::bind_method("_zoom_more", &TileSetTilePreview::_zoom_more);
+	ObjectTypeDB::bind_method("_zoom_fit", &TileSetTilePreview::_zoom_fit);
 	ADD_SIGNAL(MethodInfo("shape_edited"));
 }
 
 void TileSetTilePreview::set_tile(const Ref<TileSet> &p_tileset, int p_tile) {
 
+	if (p_tileset != tileset || p_tile != tile)
+		manual_zoom = 0; // another tile: fit it
 	tileset = p_tileset;
 	tile = p_tile;
 	update();
@@ -434,6 +539,16 @@ Vector2 TileSetTilePreview::_texture_pos(const Size2 &p_size, const Vector2 &p_o
 
 void TileSetTilePreview::_notification(int p_what) {
 
+	if (p_what == NOTIFICATION_ENTER_TREE) {
+		zoom_less->set_icon(get_icon("ZoomLess", "EditorIcons"));
+		zoom_reset->set_icon(get_icon("ZoomReset", "EditorIcons"));
+		zoom_more->set_icon(get_icon("ZoomMore", "EditorIcons"));
+	}
+	if (p_what == NOTIFICATION_RESIZED || p_what == NOTIFICATION_ENTER_TREE) {
+		Size2 bs = zoom_buttons->get_combined_minimum_size();
+		zoom_buttons->set_pos(Point2(get_size().x - bs.x - 2, 2));
+		zoom_buttons->set_size(bs);
+	}
 	if (p_what != NOTIFICATION_DRAW)
 		return;
 
@@ -466,6 +581,10 @@ void TileSetTilePreview::_notification(int p_what) {
 	zoom = MIN(zoom, 8.0f);
 	Vector2 ofs = (area - bounds.size * zoom) / 2 - bounds.pos * zoom; // screen = ofs + world * zoom
 	ofs = ofs.floor();
+	if (manual_zoom > 0) { // zoomed or panned by the user
+		zoom = manual_zoom;
+		ofs = manual_ofs;
+	}
 	if (drag != DRAG_NONE) {
 		// Keep the view still while dragging: refitting it to a growing shape would feed back
 		// into the drag.
@@ -525,6 +644,11 @@ void TileSetTilePreview::_notification(int p_what) {
 	Color oc(1, 0.3, 0.3);
 	draw_line(a - Vector2(6, 0), a + Vector2(7, 0), oc, 2);
 	draw_line(a - Vector2(0, 6), a + Vector2(0, 7), oc, 2);
+
+	// Zoom level, bottom left (the buttons are top right; the preview can be narrow).
+	Ref<Font> font = get_font("font", "Label");
+	String zt = itos(int(zoom * 100 + 0.5)) + "%" + (manual_zoom > 0 ? "" : " (" + TTR("fit") + ")");
+	draw_string(font, Point2(6, area.y - 6 - font->get_descent()), zt, Color(1, 1, 1, 0.7));
 }
 
 //////////////////////////////////////////////////////////////////////////////

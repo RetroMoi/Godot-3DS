@@ -191,9 +191,90 @@ Ref<Shape2D> CollisionShape2D::get_shape() const {
 	return shape;
 }
 
+// A shape whose size the editor box edits directly (see edit_set_rect).
+static bool _is_box_resizable(const Ref<Shape2D> &p_shape) {
+
+	return p_shape.is_valid() && (p_shape->cast_to<RectangleShape2D>() || p_shape->cast_to<CircleShape2D>() || p_shape->cast_to<CapsuleShape2D>());
+}
+
 Rect2 CollisionShape2D::get_item_rect() const {
 
+	// From the shape itself, not from the last draw (which only happens in the editor or with
+	// visible collisions). Resizable shapes: the exact bounds, so the editor box and its handles
+	// sit on the shape at any zoom (a margin in canvas units grows with the zoom).
+	if (_is_box_resizable(shape))
+		return shape->get_rect();
+	if (shape.is_valid())
+		return shape->get_rect().grow(3); // thin shapes (segment, ray): still clickable
 	return rect;
+}
+
+Variant CollisionShape2D::edit_get_state() const {
+
+	Array state = Node2D::edit_get_state();
+	if (shape.is_valid()) {
+		if (shape->cast_to<RectangleShape2D>())
+			state.push_back(shape->cast_to<RectangleShape2D>()->get_extents());
+		else if (shape->cast_to<CircleShape2D>())
+			state.push_back(shape->cast_to<CircleShape2D>()->get_radius());
+		else if (shape->cast_to<CapsuleShape2D>())
+			state.push_back(Vector2(shape->cast_to<CapsuleShape2D>()->get_radius(), shape->cast_to<CapsuleShape2D>()->get_height()));
+	}
+	return state;
+}
+
+void CollisionShape2D::edit_set_state(const Variant &p_state) {
+
+	Array state = p_state;
+	ERR_FAIL_COND(state.size() < 3);
+	Array node_state;
+	for (int i = 0; i < 3; i++)
+		node_state.push_back(state[i]);
+	Node2D::edit_set_state(node_state);
+	if (state.size() < 4 || shape.is_null())
+		return;
+	if (shape->cast_to<RectangleShape2D>() && state[3].get_type() == Variant::VECTOR2)
+		shape->cast_to<RectangleShape2D>()->set_extents(state[3]);
+	else if (shape->cast_to<CircleShape2D>() && (state[3].get_type() == Variant::REAL || state[3].get_type() == Variant::INT))
+		shape->cast_to<CircleShape2D>()->set_radius(state[3]);
+	else if (shape->cast_to<CapsuleShape2D>() && state[3].get_type() == Variant::VECTOR2) {
+		Vector2 rh = state[3];
+		shape->cast_to<CapsuleShape2D>()->set_radius(rh.x);
+		shape->cast_to<CapsuleShape2D>()->set_height(rh.y);
+	}
+}
+
+void CollisionShape2D::edit_set_rect(const Rect2 &p_edit_rect) {
+
+	if (!_is_box_resizable(shape)) {
+		Node2D::edit_set_rect(p_edit_rect); // scales the node, as before
+		return;
+	}
+
+	// p_edit_rect is the new box in the node's local space (the shape is centered on the
+	// origin): give the shape that size and move the node to its center, so the edge opposite
+	// the dragged one stays put.
+	Rect2 r = p_edit_rect;
+	Size2 size(Math::abs(r.size.x), Math::abs(r.size.y));
+	Vector2 center = r.pos + r.size / 2;
+	Size2 old = shape->get_rect().size;
+
+	if (shape->cast_to<RectangleShape2D>()) {
+		shape->cast_to<RectangleShape2D>()->set_extents(Vector2(MAX(size.x / 2, 0.5), MAX(size.y / 2, 0.5)));
+	} else if (shape->cast_to<CircleShape2D>()) {
+		// A circle has one size: follow the side that changed the most.
+		float d = Math::abs(size.x - old.x) >= Math::abs(size.y - old.y) ? size.x : size.y;
+		shape->cast_to<CircleShape2D>()->set_radius(MAX(d / 2, 0.5));
+	} else {
+		// Capsule (vertical): the width is the diameter, the rest of the height is the middle
+		// (at least 1: with a zero middle its outline repeats points and can't be drawn).
+		CapsuleShape2D *capsule = shape->cast_to<CapsuleShape2D>();
+		float radius = MAX(size.x / 2, 0.5);
+		capsule->set_radius(radius);
+		capsule->set_height(MAX(size.y - radius * 2, 1));
+	}
+
+	set_pos(get_pos() + get_transform().basis_xform(center));
 }
 
 void CollisionShape2D::set_trigger(bool p_trigger) {

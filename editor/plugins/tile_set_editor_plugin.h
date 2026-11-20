@@ -91,6 +91,23 @@ class TileSetTilePreview : public Control {
 	Vector2 view_ofs;
 	float view_zoom;
 
+	// Zoom and pan, as in Godot 4's tile polygon editor: the view fits the tile until the mouse
+	// wheel zooms (towards the cursor) or the middle button pans it; the reset button (or another
+	// tile) fits it again.
+	float manual_zoom; // 0: fit the tile
+	Vector2 manual_ofs;
+	bool panning;
+	Vector2 pan_last;
+	HBoxContainer *zoom_buttons;
+	ToolButton *zoom_less;
+	ToolButton *zoom_reset;
+	ToolButton *zoom_more;
+	void _zoom_at(float p_zoom, const Vector2 &p_screen_pos);
+	void _zoom_step(int p_dir, const Vector2 &p_screen_pos);
+	void _zoom_less();
+	void _zoom_more();
+	void _zoom_fit();
+
 	// Dragging the collision shape: move it (Shape Offset) or resize it (a rectangle's extents
 	// from its corner handle, a circle's radius from its right handle).
 	enum Drag {
