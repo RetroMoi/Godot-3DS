@@ -91,9 +91,9 @@ class TileSetTilePreview : public Control {
 	Vector2 view_ofs;
 	float view_zoom;
 
-	// Zoom and pan, as in Godot 4's tile polygon editor: the view fits the tile until the mouse
-	// wheel zooms (towards the cursor) or the middle button pans it; the reset button (or another
-	// tile) fits it again.
+	// Zoom and pan, as in Godot 4's tile polygon editor and the atlas grid: the view fits the tile
+	// until Ctrl + wheel zooms (towards the cursor), the wheel scrolls or the middle button pans
+	// it; the reset button (or another tile) fits it again.
 	float manual_zoom; // 0: fit the tile
 	Vector2 manual_ofs;
 	bool panning;

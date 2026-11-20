@@ -300,7 +300,7 @@ TileSetTilePreview::TileSetTilePreview() {
 	zoom_more->set_tooltip(TTR("Zoom In"));
 	zoom_more->connect("pressed", this, "_zoom_more");
 	zoom_buttons->add_child(zoom_more);
-	set_tooltip(TTR("Mouse wheel: zoom. Middle button: pan. Drag the shape to move it, its handle to resize it."));
+	set_tooltip(TTR("Ctrl + wheel: zoom. Wheel: scroll (Shift: sideways). Middle button: pan. Drag the shape to move it, its handle to resize it."));
 }
 
 // Zoom levels: whole numbers from 1x up, so pixel art stays sharp.
@@ -408,10 +408,24 @@ void TileSetTilePreview::_input_event(const InputEvent &p_event) {
 		return;
 	Ref<Shape2D> shape = tileset->tile_get_shape(tile);
 
-	// View: the wheel zooms towards the cursor, the middle button pans.
+	// View, as in the atlas grid next to it (and Godot 4): Ctrl + wheel zooms towards the
+	// cursor, the wheel scrolls (Shift: sideways), the middle button pans.
 	if (p_event.type == InputEvent::MOUSE_BUTTON && p_event.mouse_button.pressed && drag == DRAG_NONE &&
 			(p_event.mouse_button.button_index == BUTTON_WHEEL_UP || p_event.mouse_button.button_index == BUTTON_WHEEL_DOWN)) {
-		_zoom_step(p_event.mouse_button.button_index == BUTTON_WHEEL_UP ? 1 : -1, Vector2(p_event.mouse_button.x, p_event.mouse_button.y));
+		int dir = p_event.mouse_button.button_index == BUTTON_WHEEL_UP ? 1 : -1;
+		if (p_event.mouse_button.mod.control) {
+			_zoom_step(dir, Vector2(p_event.mouse_button.x, p_event.mouse_button.y));
+		} else {
+			if (manual_zoom <= 0) {
+				manual_zoom = view_zoom;
+				manual_ofs = view_ofs;
+			}
+			if (p_event.mouse_button.mod.shift)
+				manual_ofs.x += 48 * dir;
+			else
+				manual_ofs.y += 48 * dir;
+			update();
+		}
 		accept_event();
 		return;
 	}

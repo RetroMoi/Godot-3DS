@@ -52,6 +52,7 @@ São dois projetos ligados:
   - **Medir antes de otimizar.**
   - Dizer o que foi validado (PC, emulador, console) e o que não foi.
 - Quando o usuário disser "só vamos debater", **não alterar nada**.
+- Quando houver uma alternativa melhor do que o pedido, **sugerir** (com o motivo), em vez de seguir cegamente.
 - **Contexto:** manter este `CONTEXTO.md` (raiz do Godot-3DS) atualizado e versionado.
 - Não ajudar com pirataria ou DRM, nem recriar jogos comerciais.
 - O e-mail do usuário é privado.
@@ -488,11 +489,11 @@ Também gasta memória e tempo de carga, com centenas de itens.
    - **Colisão visual (`f9aff17`):** na prévia do tile, arrastar a shape move o Shape Offset; a alça muda o extents do retângulo (canto) ou o raio do círculo (lado direito). Pixels inteiros, uma ação de desfazer por arrasto. Tile sem shape ganha "+ Rect Shape" (retângulo cobrindo a célula, conforme o Tile Origin).
    - **No ambiente de teste, o clique simulado em Cena > Desfazer às vezes não dispara; o Ctrl+Z com o mouse sobre o mapa funciona.**
    - **Zoom na prévia do tile (pedido do usuário, 20/11; inspirado no `GenericTilePolygonEditor` do Godot 4):**
-     - a rodinha dá zoom em direção ao cursor, em passos 25%, 50% e depois inteiros de 1x a 64x (pixel art nítida);
+     - **Ctrl+rodinha** dá zoom em direção ao cursor, em passos 25%, 50% e depois inteiros de 1x a 64x (pixel art nítida); a rodinha sozinha rola (Shift: para os lados), igual à grade do atlas ao lado e ao Godot 4 (o usuário pediu primeiro a rodinha sozinha e depois preferiu o Ctrl, como no 4);
      - o botão do meio arrasta a vista;
      - botões −, ajustar (`ZoomReset`) e + no canto de cima; o nível de zoom aparece embaixo, com "(fit)" quando ajustado sozinho;
      - trocar de tile volta ao ajuste automático; durante o arraste da shape, a vista fica parada.
-     - Testado no editor com o TileSet do jogo (cópia): 400% → 1200% com 3 passos, e o arraste com o botão do meio.
+     - Testado no editor com o TileSet do jogo (cópia): Ctrl+rodinha 400% → 800% com 2 passos; rodinha sozinha rola sem mudar o zoom; arraste com o botão do meio.
 4. Padrões.
 5. Terrenos/autotile (só no editor).
 
@@ -507,7 +508,7 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - Testado no editor (cápsula do HitBox do player: caixa justa, alça alarga e move o nó) e o ciclo do desfazer por script (raio 5 → 8 → 5, posição volta).
 - O Cena > Desfazer pelo menu não roda no harness, nem para um `Sprite`: o editor ignora o desfazer com botão do mouse pressionado (`get_mouse_button_state`), e o clique no menu ainda conta como pressionado.
 - Atenção: a shape é um recurso; se for compartilhada entre nós, todos mudam (como pelo Inspetor).
-- O `xclick.py` (scratchpad) ganhou `dclick:X,Y`, para abrir pastas e recursos no FileSystem.
+- O `xclick.py` (scratchpad) ganhou `dclick:X,Y` (abrir pastas e recursos no FileSystem) e `keydown:ctrl`/`keyup:ctrl` (segurar tecla, ex.: Ctrl+rodinha).
 
 **Testes de editor sem tela:**
 - Xvfb + `python-xlib` (XTest) para clicar e teclar, com capturas de tela via `import`.
