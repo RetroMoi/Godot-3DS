@@ -62,6 +62,8 @@ extern "C" {
 */
 class RasterizerCitro3d : public Rasterizer {
 
+	struct RenderTarget;
+
 	struct Texture {
 
 		uint32_t flags;
@@ -77,7 +79,11 @@ class RasterizerCitro3d : public Rasterizer {
 		// the GPU's tiled order, so a new palette is one pass over the texture memory.
 		Vector<uint8_t> palette_tiled;
 		bool palette_full_written; // padding written once; later passes may skip it
+		// Texture of a render target (Viewport): drawn by the GPU in VRAM, stored rotated like
+		// the LCD framebuffers (see render_target_set_size), so it is sampled with rotated UVs.
+		RenderTarget *render_target;
 		Texture() {
+			render_target = NULL;
 			tex.data = NULL;
 			flags=width=height=0;
 			format=Image::FORMAT_GRAYSCALE;
@@ -585,6 +591,16 @@ class RasterizerCitro3d : public Rasterizer {
 		Texture *texture_ptr;
 		RID texture;
 		C3D_RenderTarget *target;
+		int width, height; // size of the image (the GPU texture is larger: power of two, rotated)
+		// Its texture was last drawn to the screens: the root of stretch_mode="viewport". Then
+		// the canvas layers' screens (set_canvas_layer_screens) apply inside it.
+		bool screen_blit;
+		RenderTarget() {
+			texture_ptr = NULL;
+			target = NULL;
+			width = height = 0;
+			screen_blit = false;
+		}
 	};
 	mutable RID_Owner<RenderTarget> render_target_owner;
 	
@@ -804,6 +820,18 @@ class RasterizerCitro3d : public Rasterizer {
 	void _canvas_render_item_list(CanvasItem *p_item_list, const Color& p_modulate, const Rect2 *p_cull);
 	void _set_canvas_color(const Color& p_color);
 	RenderTarget* current_rt;
+	// Part of the current render target that a screen shows (stretch_mode="viewport" with both
+	// screens: the 400x480 layout scaled to the target, e.g. 200x240 -> top 200x120, bottom
+	// x 20-180, y 120-240).
+	Rect2 _rt_screen_region(int p_screen) const;
+	void _draw_render_target_quad(const Rect2& p_rect, const Rect2& p_src_region, const Texture *p_texture, bool p_h_flip, bool p_v_flip);
+	void _blit_render_target_to_screens(const Rect2& p_rect, Texture *p_texture);
+	Vector<C3D_RenderTarget*> targets_to_free; // deleted at the next begin_frame, like textures
+	bool canvas_items_active; // inside canvas_render_items (vs. VisualServer drawing to the screen)
+	bool in_frame; // between C3D_FrameBegin and C3D_FrameEnd
+	void _render_target_release(RenderTarget *p_rt);
+	bool layer_clip_on; // a canvas layer limited to one screen inside a render target
+	Rect2 layer_clip;
 	bool current_rt_transparent;
 	bool current_rt_vflip;
 // 	ViewportData *current_vd;

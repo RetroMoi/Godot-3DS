@@ -1993,8 +1993,11 @@ void CanvasItemEditor::_viewport_draw() {
 	if (Globals::get_singleton()->has("display/3ds_dual_screen") && bool(Globals::get_singleton()->get("display/3ds_dual_screen"))) {
 
 		// Nintendo 3DS with both screens: top screen 400x240, bottom screen 320x240 centered below
-		// it. The strips beside the bottom screen are not shown on the console: shade them.
-		Rect2 screens[2] = { Rect2(0, 0, 400, 240), Rect2(40, 240, 320, 240) };
+		// it. The strips beside the bottom screen are not shown on the console: shade them. A
+		// smaller game area of the same shape (stretch_mode="viewport", e.g. 200x240) is the same
+		// layout scaled down.
+		Vector2 k(screen_size.width / 400.0, screen_size.height / 480.0);
+		Rect2 screens[2] = { Rect2(0, 0, 400 * k.x, 240 * k.y), Rect2(40 * k.x, 240 * k.y, 320 * k.x, 240 * k.y) };
 		for (int s = 0; s < 2; s++) {
 			Vector2 p[4] = {
 				transform.xform(screens[s].pos),
@@ -2005,7 +2008,7 @@ void CanvasItemEditor::_viewport_draw() {
 			for (int i = 0; i < 4; i++)
 				VisualServer::get_singleton()->canvas_item_add_line(ci, p[i], p[(i + 1) % 4], area_axis_color);
 		}
-		Rect2 hidden[2] = { Rect2(0, 240, 40, 240), Rect2(360, 240, 40, 240) };
+		Rect2 hidden[2] = { Rect2(0, 240 * k.y, 40 * k.x, 240 * k.y), Rect2(360 * k.x, 240 * k.y, 40 * k.x, 240 * k.y) };
 		for (int i = 0; i < 2; i++) {
 			Vector2 from = transform.xform(hidden[i].pos);
 			Vector2 to = transform.xform(hidden[i].pos + hidden[i].size);

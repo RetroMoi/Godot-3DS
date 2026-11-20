@@ -728,9 +728,20 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF("display/always_on_top", video_mode.always_on_top);
 	// Nintendo 3DS: use both screens. The game area is then 400x480 (set width=400, height=480):
 	// the top screen shows y 0-240, the bottom screen x 40-360, y 240-480, and touching the bottom
-	// screen also acts as the mouse there.
-	if (GLOBAL_DEF("display/3ds_dual_screen", false) && (int(globals->get("display/width")) != 400 || int(globals->get("display/height")) != 480))
-		WARN_PRINT("display/3ds_dual_screen is on: set display/width=400 and display/height=480.");
+	// screen also acts as the mouse there. Or the same layout at a smaller scale with
+	// stretch_mode="viewport" (e.g. 200x240: drawn at that size, each pixel shown as 2x2; the top
+	// screen shows y 0-120, the bottom screen x 20-180, y 120-240).
+	if (GLOBAL_DEF("display/3ds_dual_screen", false)) {
+		int w = globals->get("display/width");
+		int h = globals->get("display/height");
+		String stretch = globals->has("display/stretch_mode") ? String(globals->get("display/stretch_mode")) : String();
+		bool scaled = stretch == "viewport" && w > 0 && w * 480 == h * 400;
+		if (!(w == 400 && h == 480) && !scaled) {
+			WARN_PRINT("display/3ds_dual_screen is on: set display/width=400 and display/height=480, or a smaller size of the same shape (e.g. 200x240) with display/stretch_mode=\"viewport\".");
+		} else if (scaled && (400 % w != 0 || 480 % h != 0)) {
+			WARN_PRINT("display/3ds_dual_screen with stretch_mode=\"viewport\": a size that divides 400x480 (200x240, 100x120) keeps every pixel the same size on the screens.");
+		}
+	}
 	{
 		// The values above come from the project itself (or the editor window), so record the OS
 		// defaults as the "revert" values shown in Project Settings.

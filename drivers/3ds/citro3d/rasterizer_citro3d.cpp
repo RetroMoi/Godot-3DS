@@ -56,6 +56,8 @@
 	GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
 	GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
+static void _set_scissor(const Rect2& p_screen, int x, int y, int w, int h);
+
 /* TEXTURE API */
 
 // #define print(...) printf(__VA_ARGS__)
@@ -224,6 +226,14 @@ void RasterizerCitro3d::texture_set_flags(RID p_texture,uint32_t p_flags)
 	bool was_repeat = texture->flags & VS::TEXTURE_FLAG_REPEAT;
 	bool was_filter = texture->flags & VS::TEXTURE_FLAG_FILTER;
 	texture->flags=p_flags|cube; // can't remove a cube from being a cube
+	if (texture->render_target) {
+		// Drawn by the GPU, no image to re-upload: only the filter applies.
+		bool f = texture->flags & VS::TEXTURE_FLAG_FILTER;
+		if (texture->tex.data)
+			C3D_TexSetFilter(&texture->tex, f ? GPU_LINEAR : GPU_NEAREST, f ? GPU_LINEAR : GPU_NEAREST);
+		_invalidate_texture_state();
+		return;
+	}
 
 	bool repeat = texture->flags & VS::TEXTURE_FLAG_REPEAT;
 	bool filter = texture->flags & VS::TEXTURE_FLAG_FILTER;
@@ -2075,25 +2085,81 @@ RID RasterizerCitro3d::viewport_data_create()
 	return RID();
 }
 
+// Render targets (Viewports drawn into a texture; the root viewport of stretch_mode="viewport").
+// The GPU texture is allocated by render_target_set_size, in VRAM, at the next power of two and
+// rotated like the LCD framebuffers: the canvas code draws every target the same way (Mtx_OrthoTilt
+// projection, rotated viewport and scissor), so the texture's width holds the image's height.
+// _draw_render_target_quad samples it with matching rotated UVs. Not linked to a screen: linking
+// it to GFX_TOP would unlink the real screen target (citro3d keeps one target per screen).
 RID RasterizerCitro3d::render_target_create()
 {
 	print("render_target_create\n");
-	RenderTarget* rt = memnew(RenderTarget);	
+	RenderTarget* rt = memnew(RenderTarget);
 	Texture *texture = memnew(Texture);
-	
-	rt->target = TOP_TARGET_CREATE();
-	// Not linked to a screen: an off-screen target is drawn into a texture. (Linking it to
-	// GFX_TOP would unlink the real screen target, citro3d keeps one target per screen.)
-	C3D_RenderTargetClear(rt->target,C3D_CLEAR_ALL,CLEAR_COLOR,0);
+	texture->render_target = rt;
+	texture->format = Image::FORMAT_RGBA;
 	rt->texture_ptr = texture;
 	rt->texture = texture_owner.make_rid( texture );
-	
 	return render_target_owner.make_rid( rt );
 }
+
+void RasterizerCitro3d::_render_target_release(RenderTarget *p_rt)
+{
+	_batch_flush();
+	_invalidate_texture_state();
+	if (p_rt == current_rt)
+		set_render_target(RID());
+	// C3D_RenderTargetDelete must not run inside a frame (citro3d panics): at the end of
+	// end_frame, or right away outside a frame. The texture memory goes like any texture.
+	if (p_rt->target) {
+		if (in_frame)
+			targets_to_free.push_back(p_rt->target);
+		else
+			C3D_RenderTargetDelete(p_rt->target); // waits for the GPU to finish with it
+		p_rt->target = NULL;
+	}
+	_texture_release(p_rt->texture_ptr->tex);
+	p_rt->width = p_rt->height = 0;
+}
+
 void RasterizerCitro3d::render_target_set_size(RID p_render_target, int p_width, int p_height)
 {
 	RenderTarget* rt = render_target_owner.get( p_render_target );
-	
+	ERR_FAIL_COND(!rt);
+	if (p_width <= 0 || p_height <= 0)
+		return;
+	if (rt->target && rt->width == p_width && rt->height == p_height)
+		return;
+	_render_target_release(rt);
+
+	// Rotated: width = image height, height = image width (see above).
+	int tw = next_power_of_2(MAX(p_height, 8));
+	int th = next_power_of_2(MAX(p_width, 8));
+	if (tw > 1024 || th > 1024) {
+		ERR_PRINTS("3DS: render target of " + itos(p_width) + "x" + itos(p_height) + " is too large (1024 at most).");
+		return;
+	}
+	Texture *texture = rt->texture_ptr;
+	if (!C3D_TexInitVRAM(&texture->tex, tw, th, GPU_RGBA8)) {
+		texture->tex.data = NULL;
+		ERR_PRINTS("3DS: not enough VRAM for a render target of " + itos(p_width) + "x" + itos(p_height) + ".");
+		return;
+	}
+	C3D_TexSetFilter(&texture->tex, GPU_NEAREST, GPU_NEAREST);
+	C3D_TexSetWrap(&texture->tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+	rt->target = C3D_RenderTargetCreateFromTex(&texture->tex, GPU_TEXFACE_2D, 0, -1); // 2D: no depth
+	if (!rt->target) {
+		_texture_release(texture->tex);
+		ERR_PRINTS("3DS: could not create a render target of " + itos(p_width) + "x" + itos(p_height) + ".");
+		return;
+	}
+	C3D_RenderTargetClear(rt->target, C3D_CLEAR_ALL, 0x000000FF, 0);
+	rt->width = p_width;
+	rt->height = p_height;
+	texture->width = p_width;
+	texture->height = p_height;
+	texture->flags &= ~VS::TEXTURE_FLAG_FILTER;
+	_invalidate_texture_state();
 }
 RID RasterizerCitro3d::render_target_get_texture(RID p_render_target) const
 {
@@ -2128,6 +2194,7 @@ void RasterizerCitro3d::begin_frame()
 	frame++;
 	uint64_t t0 = svcGetSystemTick();
 	C3D_FrameBegin(0);
+	in_frame = true;
 	stat_frame_begin_tick = svcGetSystemTick();
 	stat_gpu_wait_ticks = stat_frame_begin_tick - t0;
 	stat_draw_calls = stat_vertices = stat_items = 0;
@@ -2236,6 +2303,8 @@ RasterizerCitro3d::CanvasCache *RasterizerCitro3d::_canvas_cache_build(CanvasIte
 				  _to_fixed16(r.pos.x + r.size.width, 8, v[2].x) && _to_fixed16(r.pos.y + r.size.height, 8, v[2].y);
 
 		int16_t u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+		if (ok && texture && texture->render_target)
+			ok = false; // rotated UVs (_draw_render_target_quad): draw it the normal way
 		if (ok && texture) {
 			Rect2 src = (rect->flags & CANVAS_RECT_REGION) ? rect->source : Rect2(0, 0, texture->width, texture->height);
 			ok = _to_fixed16(src.pos.x, 16, u0) && _to_fixed16(src.pos.y, 16, v0) &&
@@ -2380,12 +2449,23 @@ void RasterizerCitro3d::set_render_target(RID p_render_target, bool p_transparen
 	_batch_flush();
 	print("set_render_target\n");
 	current_rt_vflip=p_vflip;
+	layer_clip_on = false;
+	if (current_rt && in_frame) {
+		// Leaving a render target: write the GPU's framebuffer cache out to the texture before
+		// anything samples it (e.g. the root viewport drawn to the screens right after).
+		GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH, 1);
+		GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE, 1);
+	}
 	
 	if (p_render_target.is_valid())
 	{
 		RenderTarget *rt = render_target_owner.get(p_render_target);
 		ERR_FAIL_COND(!rt);
-		ERR_FAIL_COND(!rt->target);
+		if (!rt->target) { // no size yet, or out of VRAM (error printed): draw on the screen
+			current_rt = NULL;
+			C3D_SetFrameBuf(&base_framebuffer->target->frameBuf);
+			return;
+		}
 		//C3D_RenderTargetSetOutput(rt->target, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 		C3D_SetFrameBuf(&rt->target->frameBuf);
 		//C3D_RenderBufBind(&rt->target->renderBuf);
@@ -2551,6 +2631,12 @@ void RasterizerCitro3d::end_frame()
 
 	// Also queues the transfers of the screen targets and the buffer swap (see begin_frame).
 	C3D_FrameEnd(GX_CMDLIST_UPDATE_GAS_ACC | GX_CMDLIST_FLUSH);
+	in_frame = false;
+	// Render targets released during the frame (outside a frame now, as citro3d requires;
+	// C3D_RenderTargetDelete waits for the GPU).
+	for (int i = 0; i < targets_to_free.size(); i++)
+		C3D_RenderTargetDelete(targets_to_free[i]);
+	targets_to_free.clear();
 	last_frame_stats.end_ticks = svcGetSystemTick() - end_start;
 	last_frame_stats.draw_calls = stat_draw_calls;
 	last_frame_stats.vertices = stat_vertices;
@@ -2914,6 +3000,24 @@ void RasterizerCitro3d::canvas_draw_rect(const Rect2& p_rect, int p_flags, const
 {
 	Texture *texture = p_texture.is_valid() ? texture_owner.get(p_texture) : NULL;
 
+	if (texture && texture->render_target)
+	{
+		if (!texture->tex.data)
+			return; // render target without a size yet
+		if (!current_rt && !canvas_items_active) {
+			// VisualServer drawing a render target to the screen: the root viewport of
+			// stretch_mode="viewport". Goes to both screens in dual screen mode.
+			_blit_render_target_to_screens(p_rect, texture);
+		} else {
+			// Inside the canvas (e.g. a ViewportSprite).
+			Rect2 src = (p_flags & CANVAS_RECT_REGION) ? p_source : Rect2(0, 0, texture->width, texture->height);
+			_batch_begin(texture, p_modulate);
+			_draw_render_target_quad(p_rect, src, texture, p_flags & CANVAS_RECT_FLIP_H, p_flags & CANVAS_RECT_FLIP_V);
+		}
+		_rinfo.ci_draw_commands++;
+		return;
+	}
+
 	if (texture)
 	{
 		bool flip_h = p_flags & CANVAS_RECT_FLIP_H;
@@ -3029,7 +3133,22 @@ void *RasterizerCitro3d::_alloc_frame_vertices(size_t p_bytes)
 void RasterizerCitro3d::_canvas_scissor_off()
 {
 	_batch_flush();
+	if (layer_clip_on && current_rt) {
+		// A layer shown on one screen only (see canvas_begin_layer): keep it in that part.
+		const Rect2 &c = layer_clip;
+		_set_scissor(Rect2(0, 0, current_rt->width, current_rt->height), c.pos.x, c.pos.y, c.size.width, c.size.height);
+		return;
+	}
 	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+}
+
+Rect2 RasterizerCitro3d::_rt_screen_region(int p_screen) const
+{
+	// The 400x480 dual screen layout, scaled to the render target (e.g. 200x240 at 1/2).
+	float kx = current_rt->width / float(TOP_SCREEN_WIDTH);
+	float ky = current_rt->height / float(TOP_SCREEN_HEIGHT * 2);
+	Rect2 r = _screen_region(p_screen);
+	return Rect2(r.pos.x * kx, r.pos.y * ky, r.size.width * kx, r.size.height * ky);
 }
 
 bool RasterizerCitro3d::_cmdbuf_has_room()
@@ -3537,8 +3656,10 @@ static void _set_scissor(const Rect2& p_screen, int x, int y, int w, int h)
 void RasterizerCitro3d::_set_canvas_scissor(CanvasItem* p_item)
 {
 	_batch_flush();
-	const Rect2 &r = p_item->final_clip_rect;
-	Rect2 screen = current_rt ? _screen_region(0) : _screen_region(canvas_screen);
+	Rect2 r = p_item->final_clip_rect;
+	if (layer_clip_on)
+		r = r.clip(layer_clip);
+	Rect2 screen = current_rt ? Rect2(0, 0, current_rt->width, current_rt->height) : _screen_region(canvas_screen);
 	_set_scissor(screen, Math::floor(r.pos.x), Math::floor(r.pos.y), Math::ceil(r.pos.x + r.size.x) - Math::floor(r.pos.x), Math::ceil(r.pos.y + r.size.y) - Math::floor(r.pos.y));
 }
 
@@ -3553,7 +3674,8 @@ void RasterizerCitro3d::_canvas_draw_on_screen(int p_screen)
 {
 	_batch_flush();
 	canvas_screen = p_screen;
-	Rect2 r = _screen_region(p_screen);
+	// A render target is drawn whole (its size), a screen shows its part of the canvas.
+	Rect2 r = current_rt ? Rect2(0, 0, current_rt->width, current_rt->height) : _screen_region(p_screen);
 
 	if (!current_rt) {
 		RenderTarget *rt = (p_screen == 1 && bottom_framebuffer) ? bottom_framebuffer : base_framebuffer;
@@ -3719,8 +3841,24 @@ int RasterizerCitro3d::get_layer_screens(int p_layer) const
 Rect2 RasterizerCitro3d::canvas_begin_layer(int p_layer, const Rect2 &p_area)
 {
 	canvas_layer_screens = 3;
-	if (!dual_screen || current_rt)
+	layer_clip_on = false;
+	if (!dual_screen)
 		return p_area;
+	if (current_rt) {
+		// stretch_mode="viewport": the root render target is the whole 400x480 layout at a
+		// smaller scale (drawn to both screens afterwards). A layer limited to one screen is
+		// culled and clipped to that screen's part of it. Other render targets: no screens.
+		if (!current_rt->screen_blit)
+			return p_area;
+		switch (get_layer_screens(p_layer)) {
+			case 0: return Rect2(); // hidden
+			case 1: layer_clip = _rt_screen_region(0); break;
+			case 2: layer_clip = _rt_screen_region(1); break;
+			default: return p_area;
+		}
+		layer_clip_on = true;
+		return layer_clip;
+	}
 	canvas_layer_screens = get_layer_screens(p_layer);
 	switch (canvas_layer_screens) {
 		case 0: return Rect2(); // hidden
@@ -3733,6 +3871,7 @@ Rect2 RasterizerCitro3d::canvas_begin_layer(int p_layer, const Rect2 &p_area)
 void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,const Color& p_modulate,CanvasLight *p_light)
 {
 	canvas_modulate = p_modulate;
+	canvas_items_active = true;
 
 	if (dual_screen && !current_rt) {
 		// The 400x480 canvas is drawn once per screen, each with its own projection, scissor and
@@ -3748,6 +3887,7 @@ void RasterizerCitro3d::canvas_render_items(CanvasItem *p_item_list,int p_z,cons
 		_canvas_render_item_list(p_item_list, p_modulate, NULL);
 	}
 
+	canvas_items_active = false;
 	canvas_modulate = Color(1, 1, 1, 1);
 }
 
@@ -3976,7 +4116,17 @@ bool RasterizerCitro3d::is_shader(const RID& p_rid) const {
 
 void RasterizerCitro3d::free(const RID& p_rid) {
 
-	if (texture_owner.owns(p_rid)) {
+	if (render_target_owner.owns(p_rid)) {
+
+		RenderTarget *rt = render_target_owner.get(p_rid);
+		_render_target_release(rt);
+		Texture *texture = rt->texture_ptr;
+		texture_owner.free(rt->texture);
+		render_target_owner.free(p_rid);
+		memdelete(texture);
+		memdelete(rt);
+
+	} else if (texture_owner.owns(p_rid)) {
 
 // 		print("delete texture\n");
 		Texture *texture = texture_owner.get(p_rid);
@@ -5490,6 +5640,67 @@ void RasterizerCitro3d::_draw_textured_quad(const Rect2& p_rect, const Rect2& p_
 	_batch_add(v);
 }
 
+// Image pixel (x, y) of a render target texture is at texel (h - y, w - x) of the rotated GPU
+// texture (the same mapping as _set_scissor: screen x along the framebuffer's y axis, screen y
+// reversed along its x axis; both counted from the far end).
+#define RT_UV(m_x, m_y) Vector2((h - (m_y)) * iw, (w - (m_x)) * ih)
+
+void RasterizerCitro3d::_draw_render_target_quad(const Rect2& p_rect, const Rect2& p_src_region, const Texture *p_texture, bool p_h_flip, bool p_v_flip)
+{
+	// Like _draw_textured_quad, for a render target's rotated texture (_batch_begin first).
+	float w = p_texture->width, h = p_texture->height;
+	float iw = 1.0f / p_texture->tex.width, ih = 1.0f / p_texture->tex.height;
+	float sx0 = p_src_region.pos.x, sx1 = p_src_region.pos.x + p_src_region.size.width;
+	float sy0 = p_src_region.pos.y, sy1 = p_src_region.pos.y + p_src_region.size.height;
+	if (p_h_flip)
+		SWAP(sx0, sx1);
+	if (p_v_flip)
+		SWAP(sy0, sy1);
+	float x0 = p_rect.pos.x, x1 = p_rect.pos.x + p_rect.size.width;
+	float y0 = p_rect.pos.y, y1 = p_rect.pos.y + p_rect.size.height;
+	Vertex v[4] = {
+		{ Vector3(x0, y0, 0.5f), RT_UV(sx0, sy0) },
+		{ Vector3(x1, y0, 0.5f), RT_UV(sx1, sy0) },
+		{ Vector3(x1, y1, 0.5f), RT_UV(sx1, sy1) },
+		{ Vector3(x0, y1, 0.5f), RT_UV(sx0, sy1) },
+	};
+	_batch_add(v);
+}
+
+void RasterizerCitro3d::_blit_render_target_to_screens(const Rect2& p_rect, Texture *p_texture)
+{
+	// The root viewport of stretch_mode="viewport" (e.g. 200x240) onto the screens (400x480 in
+	// dual screen mode): nearest, so each pixel becomes a 2x2 block. Each screen gets its part,
+	// like the canvas in native mode: the top screen y 0-120 of the image, the bottom screen its
+	// centre x 20-180, y 120-240.
+	_batch_flush();
+	p_texture->render_target->screen_blit = true;
+
+	// Black bars when the image is not the screens' shape (nothing else clears the screens in
+	// this mode). Drawn, not cleared with C3D_RenderTargetClear: that memory fill is not ordered
+	// with the draws and could land after the image. (Not Rect2::encloses: it is strict at the
+	// far edges, false for the very same rect.)
+	float sh = dual_screen ? TOP_SCREEN_HEIGHT * 2 : TOP_SCREEN_HEIGHT;
+	bool covers = p_rect.pos.x <= 0 && p_rect.pos.y <= 0 && p_rect.pos.x + p_rect.size.width >= TOP_SCREEN_WIDTH && p_rect.pos.y + p_rect.size.height >= sh;
+
+	// Copy, no blending: the image's alpha means nothing on the screens.
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+	Rect2 src(0, 0, p_texture->width, p_texture->height);
+	for (int s = dual_screen ? 1 : 0; s >= 0; s--) {
+		_canvas_draw_on_screen(s);
+		if (!covers) {
+			_batch_begin(NULL, Color(0, 0, 0, 1));
+			_draw_quad(_screen_region(s));
+			_batch_flush();
+		}
+		_batch_begin(p_texture, Color(1, 1, 1, 1));
+		_draw_render_target_quad(p_rect, src, p_texture, false, false);
+		_batch_flush();
+	}
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
+	canvas_blend_mode = VS::MATERIAL_BLEND_MODE_MIX;
+}
+
 static const C3D_Material material =
 	{
 		{ 0.2f, 0.2f, 0.2f }, //ambient
@@ -5678,6 +5889,9 @@ RasterizerCitro3d *RasterizerCitro3d::singleton = NULL;
 RasterizerCitro3d::RasterizerCitro3d()
 : current_rt (NULL)
 {
+	canvas_items_active = false;
+	in_frame = false;
+	layer_clip_on = false;
 	dual_screen = false;
 	bottom_framebuffer = NULL;
 	singleton = this;

@@ -91,7 +91,9 @@ public:
 	};
 
 	// Dual screen mode: draw canvas layer p_layer (0 = the world, CanvasLayer nodes = their
-	// "layer") only on these screens. Default: both.
+	// "layer") only on these screens. Default: both. With stretch_mode="viewport" (e.g. 200x240)
+	// the layer is clipped to that screen's part of the game area (top: y 0-120; bottom:
+	// x 20-180, y 120-240).
 	void set_canvas_layer_screens(int p_layer, int p_screens);
 	int get_canvas_layer_screens(int p_layer) const;
 

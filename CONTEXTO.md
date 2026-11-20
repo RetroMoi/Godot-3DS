@@ -127,6 +127,25 @@ São dois projetos ligados:
 - Tela de cima: y de 0 a 240. Tela de baixo: x de 40 a 360, y de 240 a 480.
 - Tela por camada: `Platform3DS.set_canvas_layer_screens(layer, SCREEN_TOP|SCREEN_BOTTOM|SCREEN_BOTH)`.
 - O toque na tela de baixo vira mouse e `SCREEN_TOUCH`.
+- **`stretch_mode="viewport"` em escala menor** (pedido do Open, 20/11): por exemplo, 200x240 com `3ds_dual_screen=true`.
+  - O jogo é desenhado num render target do tamanho do projeto, e cada pixel vira um bloco 2x2 (nearest).
+  - A tela de cima mostra y 0–120; a de baixo, o centro x 20–180, y 120–240.
+  - Antes ficava parado na splash: o render target nunca recebia textura e era sempre 400x240.
+  - Implementação no `RasterizerCitro3d`:
+    - render target de verdade: textura em VRAM na potência de 2, girada como os framebuffers do LCD, para o código do canvas desenhar nela sem mudança; `render_target_set_size` (re)cria; liberação no `free()`, com o `C3D_RenderTargetDelete` fora do quadro;
+    - `_draw_render_target_quad` amostra com UVs girados;
+    - a cópia final do `VisualServer` vai para as duas telas (`_blit_render_target_to_screens`), sem mistura, com barras pretas desenhadas quando a proporção não fecha;
+    - flush do framebuffer ao sair do alvo;
+    - camadas com `set_canvas_layer_screens` recortadas à parte da tela dentro do alvo;
+    - itens com textura de render target ficam fora do cache de geometria.
+  - O toque continua em coordenadas de janela (400x480); a `Viewport` converte (`_get_input_pre_xform`).
+  - O aviso do `main.cpp` aceita tamanho da mesma forma com `viewport` e avisa se não dividir 400x480.
+  - As guias do editor 2D escalam com o tamanho do projeto.
+  - Teste: `misc/3ds-build/viewport_test`. Validado no emulador do Old 3DS: orientação, recorte, camada só embaixo e barras com 200x200, a 60 FPS. No PC, o toque convertido bate (100,360 → 50,179).
+- **Achado: deslocamento de 1 linha (o defeito antigo "linha de 1 px no topo"):**
+  - No emulador, a imagem das duas telas desce 1 linha, e a última linha reaparece na linha 0. Igual nos modos `2d` e `viewport`, então não é do render target.
+  - Ligar o scissor do tamanho da tela não mudou nada (revertido): é de apresentação ou do emulador.
+  - Não corrigido sem confirmar no console. Teste: no `viewport_test`, na tela de baixo, o quadrado amarelo deve encostar no topo, e não pode haver uma linha magenta de 1 px no topo à direita; na tela de cima, nenhuma linha azul no topo à esquerda.
 
 **Batching 2D:**
 - Quadrados com a mesma textura e cor saem num único desenho.
@@ -828,7 +847,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 **Engine, próximo passo (combinado com o usuário):**
 - Editor de TileSet, fase 4 (padrões) e depois fase 5 (terrenos/autotile, só no editor) (5.7). A fase 3 está feita.
-- Investigar: no 3DS, o que passa de y=240 na tela de cima reaparece como 1 linha no topo (visto num teste com uma faixa de tiles cruzando a borda; anterior às mudanças de hoje). Ver se acontece no jogo.
+- Investigar: deslocamento de 1 linha com a última linha no topo (visto no emulador, nos modos `2d` e `viewport`; ver 3.4). Confirmar no console com o `viewport_test` antes de corrigir.
 
 **Decisões em aberto:**
 - Y-sort das árvores: B, C ou nada (5.1). Medir antes.
