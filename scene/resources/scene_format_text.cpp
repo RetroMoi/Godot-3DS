@@ -334,6 +334,13 @@ Error ResourceInteractiveLoaderText::poll() {
 			}
 		}
 
+#ifdef TOOLS_ENABLED
+		// Freshly loaded, not edited (as the binary loader does). Otherwise every scene save in the
+		// editor would rewrite the external file that owns this sub-resource.
+		if (res.is_valid())
+			res->set_edited(false);
+#endif
+
 		return OK;
 
 	} else if (next_tag.name == "resource") {

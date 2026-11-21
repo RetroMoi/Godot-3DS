@@ -377,7 +377,16 @@ void PlaceHolderScriptInstance::update(const List<PropertyInfo> &p_properties, c
 
 	if (owner && owner->get_script_instance() == this) {
 
+#ifdef TOOLS_ENABLED
+		// Only refreshes the inspector: the stored values did not change, so the owner must not
+		// start looking edited (scene saves would rewrite its file from memory).
+		bool was_edited = owner->is_edited();
 		owner->_change_notify();
+		if (!was_edited)
+			owner->set_edited(false);
+#else
+		owner->_change_notify();
+#endif
 	}
 	//change notify
 }

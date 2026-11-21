@@ -775,9 +775,19 @@ bool EditorNode::_find_and_save_resource(RES res, Map<RES, bool> &processed, int
 
 	if (res->get_path().is_resource_file()) {
 		if (changed || subchanged) {
-			//save
-			print_line("Also saving modified external resource: " + res->get_path());
-			Error err = ResourceSaver::save(res->get_path(), res, flags);
+			String path = res->get_path();
+			uint64_t known = res->get_last_modified_time();
+			uint64_t on_disk = FileAccess::exists(path) ? FileAccess::get_modified_time(path) : 0;
+			if (known != 0 && on_disk != 0 && on_disk != known && res->editor_can_reload_from_file()) {
+				// The file changed outside the editor (another tool, git) after the editor loaded or
+				// saved it: keep the file and take its contents, instead of writing the older copy over it.
+				print_line("Not overwriting external resource changed on disk (reloaded instead): " + path);
+				res->set_edited(true); // so the reload reports that the editor's changes were dropped
+				_reload_changed_resource(res, on_disk);
+			} else {
+				print_line("Also saving modified external resource: " + path);
+				Error err = ResourceSaver::save(path, res, flags);
+			}
 		}
 		processed[res] = false; //because it's a file
 		return false;
@@ -786,6 +796,20 @@ bool EditorNode::_find_and_save_resource(RES res, Map<RES, bool> &processed, int
 		processed[res] = changed;
 		return changed;
 	}
+}
+
+void EditorNode::_reload_changed_resource(RES p_res, uint64_t p_modified_time) {
+
+	if (p_res->is_edited())
+		print_line("Reloaded (changed on disk; unsaved edits in the editor were discarded): " + p_res->get_path());
+	else
+		print_line("Reloaded (changed on disk): " + p_res->get_path());
+	p_res->reload_from_file();
+	// reload_from_file() sets the properties one by one, which marks the resource as edited, and does
+	// not record the file's time: without this, every focus in would reload it again, throwing away
+	// whatever was changed in the inspector since then.
+	p_res->set_last_modified_time(p_modified_time);
+	p_res->set_edited(false);
 }
 
 bool EditorNode::_find_and_save_edited_subresources(Object *obj, Map<RES, bool> &processed, int32_t flags) {
@@ -2784,7 +2808,7 @@ void EditorNode::_menu_option_confirm(int p_option, bool p_confirmed) {
 					continue;
 				uint64_t mt = FileAccess::get_modified_time(E->get()->get_path());
 				if (mt != E->get()->get_last_modified_time()) {
-					E->get()->reload_from_file();
+					_reload_changed_resource(E->get(), mt);
 				}
 			}
 
@@ -4971,7 +4995,7 @@ void EditorNode::reload_scene(const String &p_path) {
 			continue;
 		uint64_t mt = FileAccess::get_modified_time(E->get()->get_path());
 		if (mt != E->get()->get_last_modified_time()) {
-			E->get()->reload_from_file();
+			_reload_changed_resource(E->get(), mt);
 		}
 	}
 

@@ -509,6 +509,9 @@ private:
 	void _remove_edited_scene();
 	void _remove_scene(int index);
 	bool _find_and_save_resource(RES p_res, Map<RES, bool> &processed, int32_t flags);
+	// Reloads a resource whose file changed outside the editor and records the file's time, so the
+	// editor's copy matches the disk (and is not reloaded again on every focus in).
+	void _reload_changed_resource(RES p_res, uint64_t p_modified_time);
 	bool _find_and_save_edited_subresources(Object *obj, Map<RES, bool> &processed, int32_t flags);
 	void _save_edited_subresources(Node *scene, Map<RES, bool> &processed, int32_t flags);
 

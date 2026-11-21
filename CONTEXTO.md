@@ -861,6 +861,29 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - Se algum menu for navegável pelo direcional no futuro: FOCUS_ALL só nele, `grab_focus()` ao abrir e `release_focus()` ao fechar.
 - **Engine:** nada a mudar. Mudar o padrão (toque não pegar foco) quebraria menus navegáveis por direcional e fugiria do Godot.
 
+### 5.17 "Salvar" do Inspetor gravou valores antigos (21/11; bug da engine, corrigido)
+- **Relato:** o usuário editou um recurso no Inspetor e usou Salvar, mas o jogo rodou com os valores antigos. Funcionou com Salvar como, sobrescrevendo o arquivo.
+- **Os dois botões chamam a mesma gravação** (`save_resource_in_path`). Salvar → Play simples funciona (testado com `cave_enter.tres` e `dialogue_font.tres`). O problema é a cópia em memória ser trocada antes da gravação.
+- **Causa 1: recarga ao voltar o foco.** Com o foco de volta (`NOTIFICATION_WM_FOCUS_IN`), o editor recarrega do disco todo recurso cuja data mudou (`DEPENDENCY_LOAD_CHANGED_IMAGES`; apesar do nome, vale para todo `.tres`).
+  - O `reload_from_file()` não gravava a nova data. Um arquivo mudado fora do editor uma vez (o Open, `git pull`) passava a ser recarregado **a cada troca de janela**, apagando o que tinha sido editado no Inspetor.
+  - Reproduzido: mudança externa → foco → editar o Speaker para "Mine" → trocar de janela e voltar → o Inspetor volta para o valor do disco → Salvar grava o valor velho.
+  - Imagens alteradas também eram recarregadas a cada foco (custo à toa).
+- **Causa 2: o Play regravava arquivos a partir da memória.** O salvamento automático (`_find_and_save_resource`) regrava todo recurso externo marcado como editado. Havia marcações falsas:
+  - **Recursos com script:** o `PlaceHolderScriptInstance::update` chama `_change_notify()`, que marca o dono como editado.
+  - **Sub-recursos embutidos de `.tres`/`.tscn`:** o carregador de texto não limpava a marca (o binário limpa), e o arquivo dono era sempre regravado (ex.: `outside.tres`).
+  - Efeito: o Play regravava `choice_yes.tres`, `cave_enter.tres` e `outside.tres` sem ninguém mexer, desfazendo mudanças feitas no disco. Reproduzido com a mudança feita com o editor em foco. Isso também explica ruídos no git como `choices = null` e linhas em branco.
+- **Correção (engine):**
+  - `EditorNode::_reload_changed_resource`: recarrega, grava a data do arquivo e limpa a marca de editado; avisa no Output (e diz quando descartou edições não salvas).
+  - O salvamento automático não sobrescreve arquivo que mudou no disco depois que o editor o carregou ou salvou; recarrega em vez disso (o disco vence, como no Godot 4).
+  - Placeholder de script não marca mais o dono como editado.
+  - O carregador de texto limpa a marca dos sub-recursos.
+- **Validado no editor (Xvfb):**
+  - A: o caso do usuário grava "Mine".
+  - B: o Play mantém a mudança externa.
+  - C: edição sem Salvar ainda é salva pelo Play.
+  - D: no conflito, o disco vence com aviso.
+  - E: o Play não regrava mais `outside.tres` nem os diálogos.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
