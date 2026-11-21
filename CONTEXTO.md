@@ -972,6 +972,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `f5d3ecd` | editor: o Salvar do Inspetor não perde mais edições para recargas do disco; o Play não sobrescreve arquivos mais novos nem regrava recursos intocados (5.17) |
 | `f2337f2` | `coop_test` (referência de co-op) e correção de leitura do `StreamPeerBuffer` (faltava `return`) |
 | `ca45bd0` | `LocalWireless` genérico: canal confiável, sinais de entrada/saída, simulação, transporte UDP no PC |
 | `fbe1b9e` | editor: Importar > Palette Texture; "Use Palette Texture..." no painel TileSet |
