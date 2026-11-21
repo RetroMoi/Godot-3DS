@@ -840,6 +840,27 @@ Também gasta memória e tempo de carga, com centenas de itens.
 - **Runner nativo:** custaria ~o modo a (~3,6 µs/tarefa), economizando ~6,6 µs emulados (~30 µs no console) por tarefa por quadro em relação ao b. Com poucas tarefas ativas (≤10), são ≤0,3 ms no console. Escopo pequeno e genérico (um laço que chama `step` com StringName pronto), mas o ganho só aparece com muitas tarefas.
 - Correção pequena possível (não pedida, não muda semântica): no release, o `resume()` conferir o `instance_id` como o debug já faz, trocando crash por erro.
 
+### 5.16 Botão da HUD "reativado" pelo A (21/11; é do jogo, comportamento padrão do Godot; correção com o Open)
+- Sintoma: depois de tocar num botão da HUD, apertar A no console aciona o botão de novo.
+- **Mecanismo da engine (padrão, igual no Godot 4):**
+  - Clique/toque com o botão esquerdo pega o foco do teclado se `focus_mode != FOCUS_NONE` (`viewport.cpp` ~1730).
+  - O controle com foco recebe as teclas; `BaseButton` aperta com `ui_accept` (`base_button.cpp` ~169).
+  - `ui_up/down/left/right` movem o foco entre controles e marcam a entrada como tratada (~1990–2030).
+  - Ordem: `_input` dos nós → GUI → `_unhandled_input`. O player lê em `_input`, então anda normalmente e o botão também recebe o evento.
+  - O padrão de `BaseButton` é `enabled_focus_mode = FOCUS_ALL` (2); o `.tscn` só grava o padrão.
+- **Configuração do jogo que dispara:**
+  - `engine.cfg`: `jbutton(0, 1)` (A) está em `ui_accept` e em `talk`.
+  - Os botões com FOCUS_ALL são: os 7 da HUD em `scene/test_player.tscn`, os 3 do lobby em `coop/coop.gd` (`_make_button` faz `set_enabled_focus_mode(2)`) e o Sim/Não de `ui/confirm_prompt.tscn`.
+  - Todos são só de toque; nenhum código faz `grab_focus`.
+- **Efeitos:**
+  - O A reaperta o último botão tocado.
+  - O direcional move o foco em silêncio entre os botões da HUD, e o A depois aperta outro botão.
+  - No lobby co-op, tocar em "Procurar" e depois apertar A chama `_create` (pelo `_input`) **e** `_scan` (pelo botão).
+- **Correção (jogo):**
+  - `enabled_focus_mode = 0` (FOCUS_NONE) em todo botão só de toque: HUD, lobby (`set_enabled_focus_mode(0)`) e confirm prompt.
+  - Se algum menu for navegável pelo direcional no futuro: FOCUS_ALL só nele, `grab_focus()` ao abrir e `release_focus()` ao fechar.
+- **Engine:** nada a mudar. Mudar o padrão (toque não pegar foco) quebraria menus navegáveis por direcional e fugiria do Godot.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
@@ -890,6 +911,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 - Open: migrar o dia/noite para o `PaletteTexture` (5.10). Importar > Palette Texture com `outside_atlas.png` e os 5 `.hex`, gerando `res://tileset/outside_palettes.res`; no painel TileSet, "Use Palette Texture..."; salvar o TileSet. No `day_night.gd`: tirar os `preload` dos PNGs, o pré-cálculo e o `set_data`; a transição chama `blend_palettes(de, para, t)` a cada quadro e termina com `set_palette(destino)`. Os nomes das paletas: `base` (dia), `mrng`, `dusk`, `night`, `latenight`. O `create_from_blend` (5.9) fica como alternativa para arte sem paleta.
 - Open: remover os `hide()` dos CollisionShape2D em `player.gd` e `enemy.gd`, e apagar `debug/visible_collision_shapes` do `engine.cfg`, se tiver sido posta lá (5.8). Para testar no 3DS, usar a opção na tela de exportação.
 
+- Open: `enabled_focus_mode = 0` nos botões só de toque (HUD de `test_player.tscn`, `_make_button` do `coop.gd`, Sim/Não do `confirm_prompt.tscn`), para o A não reapertar o último botão tocado (5.16).
 - Open: co-op no jogo com os gráficos reais, seguindo 5.12 (mensagem + complemento entregues ao usuário). Testar no PC com duas janelas antes do console.
 - Engine: medir por que o Old 3DS fica a 45 FPS no `coop_test` (custo da rede por quadro?) e o que compõe os ~12 MB do `.3dsx` (5.13).
 
