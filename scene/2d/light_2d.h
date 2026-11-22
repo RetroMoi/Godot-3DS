@@ -136,6 +136,7 @@ public:
 	Color get_shadow_color() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return texture.is_valid(); }
 
 	String get_configuration_warning() const;
 

@@ -101,6 +101,7 @@ public:
 	virtual bool edit_has_pivot() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return polygon.size() > 0; }
 
 	Polygon2D();
 };

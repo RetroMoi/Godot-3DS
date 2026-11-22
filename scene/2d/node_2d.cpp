@@ -215,6 +215,11 @@ Matrix32 Node2D::get_transform() const {
 	return _mat;
 }
 
+bool Node2D::edit_use_rect() const {
+
+	return get_script_instance() && get_script_instance()->has_method("_get_item_rect");
+}
+
 Rect2 Node2D::get_item_rect() const {
 
 	if (get_script_instance()) {

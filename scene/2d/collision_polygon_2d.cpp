@@ -227,6 +227,9 @@ void CollisionPolygon2D::_notification(int p_what) {
 				break;
 			{
 				Color color = get_debug_color();
+				CollisionObject2D *co = get_parent() ? get_parent()->cast_to<CollisionObject2D>() : NULL;
+				if (co && co->is_collision_inactive())
+					color = Shape2D::get_debug_disabled_color(color);
 				if (build_mode == BUILD_SEGMENTS || polygon.size() < 3) {
 					// Segments collide only along the edges: lines, no fill.
 					Color c = color;

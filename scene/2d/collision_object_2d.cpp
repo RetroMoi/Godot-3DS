@@ -29,8 +29,20 @@
 /*************************************************************************/
 
 #include "collision_object_2d.h"
+#include "scene/main/scene_main_loop.h"
 #include "scene/scene_string_names.h"
 #include "servers/physics_2d_server.h"
+
+void CollisionObject2D::update_debug_shapes() {
+
+	if (!is_inside_tree() || (!get_tree()->is_editor_hint() && !get_tree()->is_debugging_collisions_hint()))
+		return;
+	for (int i = 0; i < get_child_count(); i++) {
+		Node *c = get_child(i);
+		if (c->is_type("CollisionShape2D") || c->is_type("CollisionPolygon2D"))
+			c->cast_to<CanvasItem>()->update();
+	}
+}
 
 void CollisionObject2D::_update_shapes_from_children() {
 

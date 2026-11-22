@@ -105,6 +105,7 @@ public:
 	bool is_pressed() const;
 
 	Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return texture.is_valid(); }
 
 	TouchScreenButton();
 };

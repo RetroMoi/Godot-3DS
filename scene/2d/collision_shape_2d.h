@@ -71,6 +71,7 @@ public:
 	void set_shape(const Ref<Shape2D> &p_shape);
 	Ref<Shape2D> get_shape() const;
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return true; }
 
 	// Editor box: a rectangle, circle or capsule is resized by its own size (extents, radius,
 	// height) instead of scaling the node; its box is the shape's exact bounds.

@@ -181,9 +181,9 @@ public:
 	virtual void edit_set_rect(const Rect2 &p_edit_rect);
 	virtual void edit_rotate(float p_rot);
 	virtual Size2 edit_get_minimum_size() const;
-	// Whether the 2D editor shows a box (with resize handles) for this item. Nodes defined by their
-	// children, like Area2D and the physics bodies (their size is their shapes'), have none, as in
-	// Godot 4: a cross at the origin, picked by clicking near it, moved and rotated but not resized.
+	// Whether the 2D editor shows a box (with resize handles) for this item. Controls do; Node2D-based
+	// nodes only when they have a visible size (see Node2D), as in Godot 4. Without one: a cross at
+	// the origin, picked by clicking near it, moved and rotated but not resized.
 	virtual bool edit_use_rect() const { return true; }
 
 	/* VISIBILITY */

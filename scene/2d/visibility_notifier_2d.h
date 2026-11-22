@@ -61,6 +61,7 @@ public:
 	bool is_on_screen() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return true; }
 
 	VisibilityNotifier2D();
 };

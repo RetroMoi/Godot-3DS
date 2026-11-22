@@ -401,6 +401,11 @@ void Area2D::_notification(int p_what) {
 	}
 }
 
+bool Area2D::is_collision_inactive() const {
+
+	return (!is_monitoring_enabled() || collision_mask == 0) && (!monitorable || layer_mask == 0);
+}
+
 void Area2D::set_enable_monitoring(bool p_enable) {
 
 	if (!is_inside_tree()) {
@@ -417,6 +422,7 @@ void Area2D::set_enable_monitoring(bool p_enable) {
 	ERR_FAIL_COND(locked);
 
 	monitoring = p_enable;
+	update_debug_shapes();
 
 	if (monitoring) {
 
@@ -446,6 +452,7 @@ void Area2D::set_monitorable(bool p_enable) {
 		return;
 
 	monitorable = p_enable;
+	update_debug_shapes();
 
 	Physics2DServer::get_singleton()->area_set_monitorable(get_rid(), monitorable);
 }
@@ -513,6 +520,7 @@ void Area2D::set_collision_mask(uint32_t p_mask) {
 
 	collision_mask = p_mask;
 	Physics2DServer::get_singleton()->area_set_collision_mask(get_rid(), p_mask);
+	update_debug_shapes();
 }
 
 uint32_t Area2D::get_collision_mask() const {
@@ -524,6 +532,7 @@ void Area2D::set_layer_mask(uint32_t p_mask) {
 
 	layer_mask = p_mask;
 	Physics2DServer::get_singleton()->area_set_layer_mask(get_rid(), p_mask);
+	update_debug_shapes();
 }
 
 uint32_t Area2D::get_layer_mask() const {

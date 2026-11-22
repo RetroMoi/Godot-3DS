@@ -70,6 +70,8 @@ public:
 	static bool is_debug_outline_enabled();
 	// Closed outline along p_points in the opaque version of p_color (lines: thin in the editor).
 	static void draw_debug_outline(const RID &p_to_rid, const Vector<Vector2> &p_points, const Color &p_color);
+	// Gray, half as opaque: shapes that collide with nothing (as Godot 4 draws disabled shapes).
+	static Color get_debug_disabled_color(const Color &p_color);
 	Shape2D();
 	~Shape2D();
 };

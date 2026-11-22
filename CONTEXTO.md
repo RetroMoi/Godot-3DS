@@ -519,6 +519,8 @@ Também gasta memória e tempo de carga, com centenas de itens.
 
 **Repositório:** o `.gitignore` tem `editor/*`, então arquivos **novos** em `editor/` precisam de `git add -f`.
 
+- **Prévia do tile cresce com o painel (22/11):** a prévia e as propriedades agora ficam num divisor arrastável. Quando a zona de propriedades é alargada, a largura extra vai para a prévia (as propriedades mantêm 200 px). O zoom de encaixe vai até 16x (antes 8x).
+
 ### 5.8 "Colisões visíveis" não aparecia (resolvido na engine `88e9e69`; falta um ajuste no jogo)
 **Causa (no jogo):** `player.gd` (`_ready`, ~linha 95) e `enemy.gd` (`_ready`, ~linha 47) dão `hide()` nos CollisionShape2D para o servidor visual não percorrê-los. Escondidos, a opção Depurar > Colisões Visíveis não tem o que mostrar. Além disso:
 - a colisão do mundo (árvores) é a `CollisionGrid2D`, que não tinha desenho de depuração;
@@ -930,10 +932,41 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - setas do teclado, inclusive em um Area2D girado e com escala (escala e rotação mantidas).
 - **Observado, já existia antes:** Ctrl+Z depois de mover com as setas não desfaz no harness, nem para um item com caixa.
 
+- **Estendido a todo nó 2D (22/11, como no Godot 4):**
+  - `Node2D::edit_use_rect()` é `false` por padrão; um script com `_get_item_rect()` dá caixa ao nó.
+  - Ficam com caixa só os nós com tamanho visível:
+    - Sprite e ViewportSprite com textura;
+    - AnimatedSprite com quadro válido;
+    - Polygon2D com pontos;
+    - Light2D com textura;
+    - TouchScreenButton com textura;
+    - BackBufferCopy, VisibilityNotifier2D/Enabler2D, CollisionPolygon2D;
+    - o nosso CollisionShape2D, que redimensiona o shape (no Godot 4 ele usa alças próprias).
+  - Ficam só com a cruz: Node2D, Position2D, TileMap, Camera2D, Path2D, Particles2D, RayCast2D, YSort, Joints e afins.
+  - Testado com Node2D, Sprite com e sem textura, Position2D, Polygon2D, TileMap, Camera2D e Light2D.
+
 **Templates (verificado no código, 22/11):** o editor procura primeiro o template personalizado do preset.
 - Com o marcador `_sc_` (ou `._sc_`) ao lado do `.exe`, procura em `<pasta do .exe>\editor_data\templates\`. A pasta vem do caminho real do executável (`OS::get_executable_path`), não da pasta de trabalho nem do atalho.
 - Sem o marcador, procura em `%APPDATA%\Godot\templates\`.
 - O editor do usuário fica em `Downloads\3DS\Editor\`. Ao atualizar à mão, copiar o pacote inteiro (exe + `editor_data\templates`). Também dá para usar `sync-engine.ps1 -EngineRoot "%USERPROFILE%\Downloads\3DS"`, que instala em `...\3DS\editor` e preserva o `editor_data` (exceto templates e tmp).
+
+### 5.20 Shapes cinza quando a colisão está desligada (22/11; como os "disabled" do Godot 4)
+- O Godot 4 pinta de cinza (metade da opacidade) o `CollisionShape2D` com `disabled`. O 2.1 não tem esse campo, então a regra é pelo nó pai:
+  - **Area2D:** não detecta nada (`monitoring` desligado ou `mask` 0) **e** não pode ser detectado (`monitorable` desligado ou `layers` 0).
+  - **Corpos:** `layers` 0 e `mask` 0.
+  - O TileMap sem `layers`/`mask` já não cria corpos nem desenha colisões.
+- **Implementação:**
+  - `CollisionObject2D::is_collision_inactive()`, com versões em `Area2D` e `PhysicsBody2D`.
+  - Os setters de monitoring, monitorable, layers e mask chamam `update_debug_shapes()`, que redesenha os filhos shape e polígono. Só faz algo no editor ou com colisões visíveis.
+  - Cor: `Shape2D::get_debug_disabled_color()` = cinza com o brilho (V) da cor e alfa/2; o contorno fica cinza opaco.
+- **No ARPG** as áreas são de mão única:
+  - HitBox/HurtBox do morcego alternam `monitorable`;
+  - HitBox/StompBox/TalkBox do player e DetectRadius alternam `monitoring`.
+  - Ficam cinza exatamente quando o jogo as desliga.
+  - A `damage_area` fica sempre ativa: `monitoring` ligado com `mask` 128.
+- **Testado:**
+  - editor: área e corpo desligados cinza; troca ao vivo pelo Inspetor (só `monitoring` desligado mantém a cor; com `monitorable` também desligado, fica cinza);
+  - jogo com `-dc`: um script alternando `monitorable` a cada segundo.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;

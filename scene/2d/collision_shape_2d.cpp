@@ -152,7 +152,11 @@ void CollisionShape2D::_notification(int p_what) {
 
 			rect = Rect2();
 
-			shape->draw(get_canvas_item(), get_debug_color());
+			Color color = get_debug_color();
+			CollisionObject2D *co = get_parent() ? get_parent()->cast_to<CollisionObject2D>() : NULL;
+			if (co && co->is_collision_inactive())
+				color = Shape2D::get_debug_disabled_color(color);
+			shape->draw(get_canvas_item(), color);
 
 			rect = shape->get_rect();
 			rect = rect.grow(3);

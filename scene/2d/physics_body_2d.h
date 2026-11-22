@@ -58,6 +58,9 @@ protected:
 	static void _bind_methods();
 
 public:
+	// No layer and no mask: collides with nothing.
+	virtual bool is_collision_inactive() const { return mask == 0 && collision_mask == 0; }
+
 	void set_layer_mask(uint32_t p_mask);
 	uint32_t get_layer_mask() const;
 

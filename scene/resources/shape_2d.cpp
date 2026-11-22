@@ -49,6 +49,12 @@ Color Shape2D::get_default_debug_color() {
 	return Color(0.0, 0.6, 0.7, 0.5);
 }
 
+Color Shape2D::get_debug_disabled_color(const Color &p_color) {
+
+	float v = p_color.get_v();
+	return Color(v, v, v, p_color.a * 0.5);
+}
+
 bool Shape2D::is_debug_outline_enabled() {
 
 	Globals *g = Globals::get_singleton();

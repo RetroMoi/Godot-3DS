@@ -88,6 +88,7 @@ public:
 	Vector<Point2> get_polygon() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return true; }
 
 	int get_collision_object_first_shape() const { return shape_from; }
 	int get_collision_object_last_shape() const { return shape_to; }

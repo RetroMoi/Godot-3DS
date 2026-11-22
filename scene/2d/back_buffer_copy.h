@@ -60,6 +60,7 @@ public:
 	CopyMode get_copy_mode() const;
 
 	Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return true; }
 
 	BackBufferCopy();
 	~BackBufferCopy();

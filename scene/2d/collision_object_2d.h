@@ -76,9 +76,11 @@ protected:
 	void _mouse_exit();
 
 public:
-	// No editor box: an Area2D or body is as big as its CollisionShape2D/CollisionPolygon2D children,
-	// which have boxes of their own (as in Godot 4).
-	virtual bool edit_use_rect() const { return false; }
+	// True when the object can neither detect nor be detected: its CollisionShape2D/CollisionPolygon2D
+	// children are drawn gray (editor, visible collision shapes), like Godot 4's disabled shapes.
+	virtual bool is_collision_inactive() const { return false; }
+	// Redraws those children when what is_collision_inactive() reads changes.
+	void update_debug_shapes();
 
 	void add_shape(const Ref<Shape2D> &p_shape, const Matrix32 &p_transform = Matrix32());
 	int get_shape_count() const;

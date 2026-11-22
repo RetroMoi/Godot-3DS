@@ -112,6 +112,7 @@ void PhysicsBody2D::set_layer_mask(uint32_t p_mask) {
 
 	mask = p_mask;
 	Physics2DServer::get_singleton()->body_set_layer_mask(get_rid(), p_mask);
+	update_debug_shapes();
 }
 
 uint32_t PhysicsBody2D::get_layer_mask() const {
@@ -123,6 +124,7 @@ void PhysicsBody2D::set_collision_mask(uint32_t p_mask) {
 
 	collision_mask = p_mask;
 	Physics2DServer::get_singleton()->body_set_collision_mask(get_rid(), p_mask);
+	update_debug_shapes();
 }
 
 uint32_t PhysicsBody2D::get_collision_mask() const {

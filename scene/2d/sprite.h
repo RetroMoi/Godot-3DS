@@ -101,6 +101,7 @@ public:
 	Color get_modulate() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return texture.is_valid(); }
 
 	Sprite();
 };
@@ -139,6 +140,7 @@ public:
 	Color get_modulate() const;
 
 	virtual Rect2 get_item_rect() const;
+	virtual bool edit_use_rect() const { return texture.is_valid(); }
 
 	virtual String get_configuration_warning() const;
 

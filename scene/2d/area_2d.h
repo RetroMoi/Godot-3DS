@@ -157,6 +157,9 @@ public:
 	void set_priority(real_t p_priority);
 	real_t get_priority() const;
 
+	// Detects nothing (monitoring off or empty mask) and can't be detected (monitorable off or no layer).
+	virtual bool is_collision_inactive() const;
+
 	void set_enable_monitoring(bool p_enable);
 	bool is_monitoring_enabled() const;
 

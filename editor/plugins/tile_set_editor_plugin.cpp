@@ -592,7 +592,7 @@ void TileSetTilePreview::_notification(int p_what) {
 	float zoom = MIN(area.x / bounds.size.x, area.y / bounds.size.y);
 	if (zoom >= 1)
 		zoom = Math::floor(zoom);
-	zoom = MIN(zoom, 8.0f);
+	zoom = MIN(zoom, 16.0f); // a wide preview shows the tile bigger
 	Vector2 ofs = (area - bounds.size * zoom) / 2 - bounds.pos * zoom; // screen = ofs + world * zoom
 	ofs = ofs.floor();
 	if (manual_zoom > 0) { // zoomed or panned by the user
@@ -1387,13 +1387,16 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	remove_tile_button->connect("pressed", this, "_remove_tile_pressed");
 	props_hb->add_child(remove_tile_button);
 
-	HBoxContainer *props_body = memnew(HBoxContainer);
+	// Preview | properties. The preview takes the width the panel gains when it is widened (more
+	// room for the zoom); the divider between the two can be dragged too.
+	HSplitContainer *props_body = memnew(HSplitContainer);
 	props_body->set_v_size_flags(SIZE_EXPAND_FILL);
 	props->add_child(props_body);
 
 	// The tile as the TileMap draws it: Tex Offset and Shape Offset at a glance.
 	VBoxContainer *preview_vb = memnew(VBoxContainer);
-	preview_vb->set_custom_minimum_size(Size2(130 * EDSCALE, 0));
+	preview_vb->set_custom_minimum_size(Size2(120 * EDSCALE, 0));
+	preview_vb->set_h_size_flags(SIZE_EXPAND_FILL);
 	props_body->add_child(preview_vb);
 	tile_preview = memnew(TileSetTilePreview);
 	tile_preview->set_v_size_flags(SIZE_EXPAND_FILL);
@@ -1418,7 +1421,7 @@ TileSetEditor::TileSetEditor(EditorNode *p_editor) {
 	tile_preview->connect("shape_edited", this, "_preview_shape_edited");
 
 	tile_properties = memnew(PropertyEditor);
-	tile_properties->set_h_size_flags(SIZE_EXPAND_FILL);
+	tile_properties->set_custom_minimum_size(Size2(200 * EDSCALE, 0));
 	tile_properties->set_v_size_flags(SIZE_EXPAND_FILL);
 	tile_properties->hide_top_label();
 	tile_properties->set_show_categories(false);

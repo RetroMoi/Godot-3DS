@@ -91,6 +91,10 @@ public:
 	float get_global_rotd() const;
 	Size2 get_global_scale() const;
 	virtual Rect2 get_item_rect() const;
+	// No box in the 2D editor, as in Godot 4: only nodes with a visible size (a Sprite with a texture,
+	// a Polygon2D, a collision shape...) have one; others are a cross at their origin. A script that
+	// defines _get_item_rect() gives its node a box.
+	virtual bool edit_use_rect() const;
 
 	void set_transform(const Matrix32 &p_transform);
 	void set_global_transform(const Matrix32 &p_transform);

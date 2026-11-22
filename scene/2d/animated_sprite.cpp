@@ -527,6 +527,13 @@ Color AnimatedSprite::get_modulate() const {
 	return modulate;
 }
 
+bool AnimatedSprite::edit_use_rect() const {
+
+	if (!frames.is_valid() || !frames->has_animation(animation) || frame < 0 || frame >= frames->get_frame_count(animation))
+		return false;
+	return frames->get_frame(animation, frame).is_valid();
+}
+
 Rect2 AnimatedSprite::get_item_rect() const {
 
 	if (!frames.is_valid() || !frames->has_animation(animation) || frame < 0 || frame >= frames->get_frame_count(animation)) {
