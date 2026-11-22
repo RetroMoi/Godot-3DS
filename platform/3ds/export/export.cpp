@@ -752,12 +752,33 @@ class EditorExportPlatform3DS : public EditorExportPlatform {
 		return banner.save_png(p_path);
 	}
 
+	// The CIA is built from temporary files in editor_data/tmp/3ds_cia (the romfs holds a copy of
+	// the game's data): removed once makerom is done, whether the export worked or not.
+	static void _remove_cia_tmp(const String &p_tmp) {
+		static const char *files[] = { "romfs/data.pck", "icon.icn", "app.rsf", "banner.png", "banner.wav", "banner.bnr", NULL };
+		DirAccess *da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+		for (int i = 0; files[i]; i++) {
+			String f = p_tmp + "/" + files[i];
+			if (da->file_exists(f))
+				da->remove(f);
+		}
+		da->remove(p_tmp + "/romfs");
+		da->remove(p_tmp);
+		memdelete(da);
+	}
+
 	Error _export_cia(const String &p_path, const String &p_elf, const Vector<uint8_t> &p_pck, const Vector<uint8_t> &p_smdh, const Image &p_icon48, const String &p_title) {
 		String tmp = EditorSettings::get_singleton()->get_settings_path() + "/tmp/3ds_cia";
 		DirAccess *dir = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
 		dir->make_dir_recursive(tmp + "/romfs");
 		memdelete(dir);
 
+		Error err = _export_cia_files(tmp, p_path, p_elf, p_pck, p_smdh, p_icon48, p_title);
+		_remove_cia_tmp(tmp);
+		return err;
+	}
+
+	Error _export_cia_files(const String &tmp, const String &p_path, const String &p_elf, const Vector<uint8_t> &p_pck, const Vector<uint8_t> &p_smdh, const Image &p_icon48, const String &p_title) {
 		if (write_file(tmp + "/romfs/data.pck", p_pck) != OK || write_file(tmp + "/icon.icn", p_smdh) != OK) {
 			EditorNode::add_io_error("Couldn't write temporary files in:\n" + tmp);
 			return ERR_FILE_CANT_WRITE;

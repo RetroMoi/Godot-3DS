@@ -1232,6 +1232,12 @@ Error EditorExportPlatform::save_pack(FileAccess *dst, bool p_make_bundles, int 
 	}
 
 	memdelete(tmp);
+	{
+		// packtmp holds every exported file: don't leave a copy of the game in editor_data/tmp.
+		DirAccess *da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+		da->remove(tmppath);
+		memdelete(da);
+	}
 
 	dst->store_64(dst->get_pos() - ofs_begin);
 	dst->store_32(0x43504447); //GDPK

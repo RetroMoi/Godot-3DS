@@ -979,6 +979,19 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - `icon.png` da raiz.
 - **Mantidos:** `icon_godot.png`, o botão da documentação online do Godot, e os ícones das plataformas de exportação (`platform/*/logo.png`).
 - O Windows guarda ícones em cache: um atalho ou ícone fixado antigo pode demorar a mudar (refazer o atalho resolve).
+- **Correção (22/11):** na primeira versão, o corte entre a cabeça e o rótulo (y=900) passava pela base da cabeça.
+  - Os ~10 px de baixo vinham da arte original: faixa azul nos tamanhos de 48 a 256 px, e a versão só com a cabeça perdia essa borda.
+  - O primeiro recolor também deixava bordas azul-claras onde o branco encosta no azul (olhos, boca).
+  - Refeito com um recolor que trata cada pixel como mistura de azul com cinza (a quantidade de azul decide o quanto vira vermelho) e com o corte no vão vazio entre cabeça e rótulo (y=925). Conferido por script: nenhum pixel azulado em nenhum tamanho.
+
+### 5.22 Exportação deixava cópias do jogo em `editor_data\tmp` (22/11; corrigido)
+- `packtmp` (bug do 2.1 original): toda exportação monta o pacote do jogo nesse arquivo e não o apagava. Agora é apagado depois de copiado para o `.pck` (`editor_import_export.cpp`).
+- `.cia`: a pasta `tmp/3ds_cia` (romfs com o `data.pck` do jogo, ícone, banner, rsf) ficava para trás. Agora é apagada ao fim, com sucesso ou erro (`_remove_cia_tmp`).
+- O `.3dsx` já apagava o `3ds_data.pck` dele.
+- Testado pela linha de comando:
+  - `.cia` falhando no bannertool: a pasta temporária some mesmo assim;
+  - `.3dsx` completo: sem restos em `tmp`.
+- Os `scnexp-*` (cache de cenas convertidas) continuam: são cache, pequenos.
 
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
