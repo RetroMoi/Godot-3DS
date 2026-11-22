@@ -910,6 +910,31 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - Cores de hitbox, hurtbox e corpo direto nos nós (Inspetor → Debug Color).
   - No ARPG, as áreas com a cor padrão (ex.: `damage_area`, áreas de fala) ficam por cima e escondem as coloridas: dar cor ou transparência a elas também.
 
+### 5.19 Area2D e corpos sem caixa no editor 2D (22/11; feito, como no Godot 4)
+- **Antes:** o Area2D (e todo CollisionObject2D) herdava do Node2D a caixa padrão de 64×64. Ela não tinha relação com os shapes, os puxadores mudavam a escala do nó (deformando os shapes) e ela "roubava" cliques.
+- **Godot 4:** `CollisionObject2D` não tem `_edit_use_rect`. Sem caixa e sem puxadores: só a origem, que se move e gira. O tamanho é editado no CollisionShape2D/CollisionPolygon2D filho.
+- **Feito:**
+  - `CanvasItem::edit_use_rect()` (padrão `true`); `CollisionObject2D` devolve `false`. Vale para Area2D, StaticBody2D, KinematicBody2D (o Player) e RigidBody2D.
+  - O editor 2D (`canvas_item_editor_plugin.cpp`):
+    - desenha uma cruz na origem, nos eixos do nó, no lugar da caixa, e não mostra puxadores;
+    - seleciona o nó com um clique a até 8 px da origem; clicar dentro de um shape seleciona o shape;
+    - estando selecionado, arrastar a cruz move o nó, mesmo com um shape filho por cima (como a alça de mover do Godot 4);
+    - na seleção por retângulo, o nó entra se a origem estiver dentro;
+    - as setas do teclado mexem só a posição, alinhadas à tela. O caminho antigo, por `edit_set_rect`, zerava a escala de um nó sem caixa.
+  - "Enquadrar" e os ícones de trava usam a origem.
+- **Testado no editor (Xvfb), cena de teste e `player.tscn`:**
+  - selecionar pela árvore e pelo clique na cruz;
+  - arrastar a cruz, com e sem shape por cima;
+  - clique no shape seleciona o shape (com puxadores);
+  - seleção por retângulo; StaticBody2D com cruz; ferramenta de girar;
+  - setas do teclado, inclusive em um Area2D girado e com escala (escala e rotação mantidas).
+- **Observado, já existia antes:** Ctrl+Z depois de mover com as setas não desfaz no harness, nem para um item com caixa.
+
+**Templates (verificado no código, 22/11):** o editor procura primeiro o template personalizado do preset.
+- Com o marcador `_sc_` (ou `._sc_`) ao lado do `.exe`, procura em `<pasta do .exe>\editor_data\templates\`. A pasta vem do caminho real do executável (`OS::get_executable_path`), não da pasta de trabalho nem do atalho.
+- Sem o marcador, procura em `%APPDATA%\Godot\templates\`.
+- O editor do usuário fica em `Downloads\3DS\Editor\`. Ao atualizar à mão, copiar o pacote inteiro (exe + `editor_data\templates`). Também dá para usar `sync-engine.ps1 -EngineRoot "%USERPROFILE%\Downloads\3DS"`, que instala em `...\3DS\editor` e preserva o `editor_data` (exceto templates e tmp).
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;

@@ -76,6 +76,10 @@ protected:
 	void _mouse_exit();
 
 public:
+	// No editor box: an Area2D or body is as big as its CollisionShape2D/CollisionPolygon2D children,
+	// which have boxes of their own (as in Godot 4).
+	virtual bool edit_use_rect() const { return false; }
+
 	void add_shape(const Ref<Shape2D> &p_shape, const Matrix32 &p_transform = Matrix32());
 	int get_shape_count() const;
 	void set_shape(int p_shape_idx, const Ref<Shape2D> &p_shape);

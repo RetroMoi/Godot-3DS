@@ -423,6 +423,19 @@ bool CanvasItemEditor::_is_part_of_subscene(CanvasItem *p_item) {
 	return item_owner && item_owner != scene_node && p_item != scene_node && item_owner->get_filename() != "";
 }
 
+// Box of an item in the 2D editor. Items without one (Area2D, physics bodies: see
+// CanvasItem::edit_use_rect) are a point at their origin.
+static Rect2 _edit_rect(const CanvasItem *p_item) {
+
+	return p_item->edit_use_rect() ? p_item->get_item_rect() : Rect2();
+}
+
+// An item without a box is picked by clicking within this distance (screen pixels) of its origin.
+static bool _origin_hit(const Matrix32 &p_xform, const Point2 &p_screen_pos) {
+
+	return p_xform.xform(Vector2()).distance_to(p_screen_pos) <= 8 * EDSCALE;
+}
+
 // slow but modern computers should have no problem
 CanvasItem *CanvasItemEditor::_select_canvas_item_at_pos(const Point2 &p_pos, Node *p_node, const Matrix32 &p_parent_xform, const Matrix32 &p_canvas_xform) {
 
@@ -450,10 +463,8 @@ CanvasItem *CanvasItemEditor::_select_canvas_item_at_pos(const Point2 &p_pos, No
 
 	if (c && c->is_visible() && !c->has_meta("_edit_lock_") && !_is_part_of_subscene(c) && !c->cast_to<CanvasLayer>()) {
 
-		Rect2 rect = c->get_item_rect();
-		Point2 local_pos = (p_parent_xform * p_canvas_xform * c->get_transform()).affine_inverse().xform(p_pos);
-
-		if (rect.has_point(local_pos))
+		Matrix32 xform = p_parent_xform * p_canvas_xform * c->get_transform();
+		if (c->edit_use_rect() ? c->get_item_rect().has_point(xform.affine_inverse().xform(p_pos)) : _origin_hit(xform, p_pos))
 			return c;
 	}
 
@@ -480,10 +491,8 @@ void CanvasItemEditor::_find_canvas_items_at_pos(const Point2 &p_pos, Node *p_no
 
 	if (c && c->is_visible() && !c->has_meta("_edit_lock_") && !c->cast_to<CanvasLayer>()) {
 
-		Rect2 rect = c->get_item_rect();
-		Point2 local_pos = (p_parent_xform * p_canvas_xform * c->get_transform()).affine_inverse().xform(p_pos);
-
-		if (rect.has_point(local_pos)) {
+		Matrix32 xform = p_parent_xform * p_canvas_xform * c->get_transform();
+		if (c->edit_use_rect() ? c->get_item_rect().has_point(xform.affine_inverse().xform(p_pos)) : _origin_hit(xform, p_pos)) {
 			Node2D *node = c->cast_to<Node2D>();
 
 			_SelectResult res;
@@ -526,7 +535,7 @@ void CanvasItemEditor::_find_canvas_items_at_rect(const Rect2 &p_rect, Node *p_n
 
 	if (c && c->is_visible() && !c->has_meta("_edit_lock_") && !c->cast_to<CanvasLayer>()) {
 
-		Rect2 rect = c->get_item_rect();
+		Rect2 rect = _edit_rect(c);
 		Matrix32 xform = p_parent_xform * p_canvas_xform * c->get_transform();
 
 		if (p_rect.has_point(xform.xform(rect.pos)) &&
@@ -640,7 +649,15 @@ void CanvasItemEditor::_key_move(const Vector2 &p_dir, bool p_snap, KeyMoveMODE 
 
 		undo_redo->add_undo_method(canvas_item, "edit_set_state", canvas_item->edit_get_state());
 
-		if (p_move_mode == MOVE_VIEW_BASE) {
+		if (p_move_mode == MOVE_VIEW_BASE && !canvas_item->edit_use_rect() && canvas_item->cast_to<Node2D>()) {
+
+			// No box to move (Area2D, bodies): shift the position by the screen-aligned step, in the
+			// parent's space.
+			Node2D *node_2d = canvas_item->cast_to<Node2D>();
+			Matrix32 parent_xform = canvas_item->get_global_transform_with_canvas() * node_2d->get_transform().affine_inverse();
+			undo_redo->add_do_method(node_2d, "set_pos", node_2d->get_pos() + parent_xform.affine_inverse().basis_xform(drag));
+
+		} else if (p_move_mode == MOVE_VIEW_BASE) {
 
 			// drag =  transform.affine_inverse().basis_xform(p_dir); // zoom sensitive
 			drag = canvas_item->get_global_transform_with_canvas().affine_inverse().basis_xform(drag);
@@ -685,7 +702,7 @@ Point2 CanvasItemEditor::_find_topleftmost_point() {
 		if (canvas_item->get_viewport() != EditorNode::get_singleton()->get_scene_root())
 			continue;
 
-		Rect2 rect = canvas_item->get_item_rect();
+		Rect2 rect = _edit_rect(canvas_item);
 		Matrix32 xform = canvas_item->get_global_transform_with_canvas();
 
 		r2.expand_to(xform.xform(rect.pos));
@@ -745,6 +762,8 @@ CanvasItemEditor::DragType CanvasItemEditor::_find_drag_type(const Matrix32 &p_x
 	CanvasItem *canvas_item = get_single_item();
 
 	ERR_FAIL_COND_V(!canvas_item, DRAG_NONE);
+	if (!canvas_item->edit_use_rect())
+		return DRAG_NONE; // no box, no resize handles
 
 	Rect2 rect = canvas_item->get_item_rect();
 	Matrix32 xforml = canvas_item->get_global_transform_with_canvas();
@@ -1392,6 +1411,14 @@ void CanvasItemEditor::_viewport_input_event(const InputEvent &p_event) {
 			if (tool == TOOL_SELECT) {
 				drag = _find_drag_type(xform, rect, click, drag_point_from);
 
+				// An item without a box is moved by dragging its origin cross, even where one of its
+				// shapes covers it (like the move gizmo of Godot 4).
+				if (drag == DRAG_NONE && !b.doubleclick && !canvas_item->edit_use_rect() && _origin_hit(xform, click)) {
+					_prepare_drag(click);
+					viewport->update();
+					return;
+				}
+
 				if (b.doubleclick) {
 
 					if (canvas_item->get_filename() != "" && canvas_item != editor->get_edited_scene()) {
@@ -1919,8 +1946,18 @@ void CanvasItemEditor::_viewport_draw() {
 
 		VisualServer::get_singleton()->canvas_item_add_set_transform(ci, Matrix32());
 
-		for (int i = 0; i < 4; i++) {
-			viewport->draw_line(endpoints[i], endpoints[(i + 1) % 4], c, 2);
+		bool use_rect = canvas_item->edit_use_rect();
+		if (use_rect) {
+			for (int i = 0; i < 4; i++) {
+				viewport->draw_line(endpoints[i], endpoints[(i + 1) % 4], c, 2);
+			}
+		} else {
+			// No box (Area2D, physics bodies): a cross at the origin, along the item's axes.
+			Vector2 o = xform.get_origin();
+			Vector2 ax = xform.basis_xform(Vector2(1, 0)).normalized() * 10 * EDSCALE;
+			Vector2 ay = xform.basis_xform(Vector2(0, 1)).normalized() * 10 * EDSCALE;
+			viewport->draw_line(o - ax, o + ax, c, 2);
+			viewport->draw_line(o - ay, o + ay, c, 2);
 		}
 
 		if (single && (tool == TOOL_SELECT || tool == TOOL_MOVE || tool == TOOL_ROTATE || tool == TOOL_EDIT_PIVOT)) { //kind of sucks
@@ -1934,7 +1971,7 @@ void CanvasItemEditor::_viewport_draw() {
 				}
 			}
 
-			if (tool == TOOL_SELECT) {
+			if (tool == TOOL_SELECT && use_rect) {
 
 				for (int i = 0; i < 4; i++) {
 
@@ -2262,7 +2299,7 @@ void CanvasItemEditor::_find_canvas_items_span(Node *p_node, Rect2 &r_rect, cons
 
 	if (c && c->is_visible()) {
 
-		Rect2 rect = c->get_item_rect();
+		Rect2 rect = _edit_rect(c);
 		Matrix32 xform = p_xform * c->get_transform();
 
 		LockList lock;
@@ -2903,7 +2940,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 				//if (!canvas_item->is_visible()) continue;
 				++count;
 
-				Rect2 item_rect = canvas_item->get_item_rect();
+				Rect2 item_rect = _edit_rect(canvas_item);
 
 				Vector2 pos = canvas_item->get_global_transform().get_origin();
 				Vector2 scale = canvas_item->get_global_transform().get_scale();
