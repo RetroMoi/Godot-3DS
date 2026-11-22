@@ -33,6 +33,7 @@
 #include "global_constants.h"
 #include "globals.h"
 #include "os/keyboard.h"
+#include "scene/resources/shape_2d.h"
 #include "scene/gui/margin_container.h"
 #include "scene/gui/tab_container.h"
 #include "translation.h"
@@ -818,6 +819,34 @@ void ProjectSettings::_clamp_3ds_resolution() {
 void ProjectSettings::_settings_changed() {
 
 	timer->start();
+	_update_collision_debug_preview();
+}
+
+static void _redraw_collision_shapes(Node *p_node) {
+
+	if (p_node->is_type("CollisionShape2D") || p_node->is_type("CollisionPolygon2D"))
+		p_node->cast_to<CanvasItem>()->update();
+	for (int i = 0; i < p_node->get_child_count(); i++)
+		_redraw_collision_shapes(p_node->get_child(i));
+}
+
+void ProjectSettings::_update_collision_debug_preview() {
+
+	SceneTree *st = SceneTree::get_singleton();
+	Globals *g = Globals::get_singleton();
+	if (!st || !g->has("debug/collision_shape_color"))
+		return;
+	Color color = g->get("debug/collision_shape_color");
+	bool outline = Shape2D::is_debug_outline_enabled();
+	if (color == st->get_debug_collisions_color() && outline == last_collision_outline)
+		return;
+	// The SceneTree holds the project's color for the session; shapes without a color of their own
+	// read it when drawing.
+	st->set_debug_collisions_color(color);
+	last_collision_outline = outline;
+	Node *scene = EditorNode::get_singleton()->get_edited_scene();
+	if (scene)
+		_redraw_collision_shapes(scene);
 }
 
 void ProjectSettings::queue_save() {
@@ -1258,6 +1287,8 @@ void ProjectSettings::_bind_methods() {
 }
 
 ProjectSettings::ProjectSettings(EditorData *p_data) {
+
+	last_collision_outline = Shape2D::is_debug_outline_enabled();
 
 	singleton = this;
 	set_title(TTR("Project Settings (engine.cfg)"));

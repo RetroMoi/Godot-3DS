@@ -304,8 +304,17 @@ void TileMap::_update_dirty_quadrants() {
 
 	bool debug_shapes = st && st->is_debugging_collisions_hint();
 	if (debug_shapes) {
-		debug_collision_color = st->get_debug_collisions_color();
+		debug_collision_color = get_collision_debug_color();
 	}
+	bool debug_outline = debug_shapes && Shape2D::is_debug_outline_enabled();
+	// Outlines of the debug shapes, drawn after all the fills of a quadrant: drawing them tile by
+	// tile alternates two colors, and every change of color is a draw of its own on the 3DS.
+	struct DebugOutline {
+		RID item;
+		Matrix32 xform;
+		Ref<Shape2D> shape;
+	};
+	Vector<DebugOutline> debug_outlines;
 
 	// Y-sort origin: the quadrant's canvas item (whose position is its sort key) moves by
 	// sort_ofs and its tiles are drawn sort_ofs higher, so drawing, collision and navigation
@@ -342,6 +351,7 @@ void TileMap::_update_dirty_quadrants() {
 		int prev_z = 0;
 		RID prev_canvas_item;
 		RID prev_debug_canvas_item;
+		debug_outlines.clear();
 
 		for (int i = 0; i < q.cells.size(); i++) {
 
@@ -547,7 +557,14 @@ void TileMap::_update_dirty_quadrants() {
 
 					if (debug_canvas_item) {
 						vs->canvas_item_add_set_transform(debug_canvas_item, xform);
-						shape->draw(debug_canvas_item, debug_collision_color);
+						shape->draw_fill(debug_canvas_item, debug_collision_color);
+						if (debug_outline) {
+							DebugOutline o;
+							o.item = debug_canvas_item;
+							o.xform = xform;
+							o.shape = shape;
+							debug_outlines.push_back(o);
+						}
 					}
 					ps->body_add_shape(body, shape->get_rid(), xform);
 					ps->body_set_shape_metadata(body, shape_idx++, Vector2(E->key().x, E->key().y));
@@ -596,6 +613,14 @@ void TileMap::_update_dirty_quadrants() {
 				oc.id = orid;
 				q.occluder_instances[E->key()] = oc;
 			}
+		}
+
+		for (int i = 0; i < debug_outlines.size(); i++) {
+			DebugOutline o = debug_outlines[i];
+			vs->canvas_item_add_set_transform(o.item, o.xform);
+			o.shape->draw_outline(o.item, debug_collision_color);
+			if (i + 1 == debug_outlines.size() || debug_outlines[i + 1].item != o.item)
+				vs->canvas_item_add_set_transform(o.item, Matrix32());
 		}
 
 		// keep just as many bodies as needed
@@ -1075,6 +1100,38 @@ void TileMap::set_collision_bounce(float p_bounce) {
 		}
 	}
 }
+void TileMap::set_collision_debug_color(const Color &p_color) {
+
+	// A color equal to the project's counts as "no color of its own": it keeps following the project.
+	collision_debug_color_custom = p_color != Shape2D::get_default_debug_color();
+	collision_debug_color = p_color;
+	// The debug shapes are drawn when the quadrants are built: redraw them if they are visible.
+	if (is_inside_tree() && get_tree()->is_debugging_collisions_hint()) {
+		for (Map<PosKey, Quadrant>::Element *E = quadrant_map.front(); E; E = E->next())
+			_make_quadrant_dirty(E);
+	}
+}
+
+Color TileMap::get_collision_debug_color() const {
+
+	return collision_debug_color_custom ? collision_debug_color : Shape2D::get_default_debug_color();
+}
+
+void TileMap::_validate_property(PropertyInfo &property) const {
+
+	// Saved only when the map has a color of its own.
+	if (property.name == "collision/debug_color" && !collision_debug_color_custom)
+		property.usage &= ~PROPERTY_USAGE_STORAGE;
+}
+
+Variant TileMap::_property_get_revert(const String &p_name) const {
+
+	// Inspector revert button: back to the project's color.
+	if (p_name == "collision/debug_color")
+		return Shape2D::get_default_debug_color();
+	return Variant();
+}
+
 float TileMap::get_collision_bounce() const {
 
 	return bounce;
@@ -1474,6 +1531,9 @@ void TileMap::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("set_collision_friction", "value"), &TileMap::set_collision_friction);
 	ObjectTypeDB::bind_method(_MD("get_collision_friction"), &TileMap::get_collision_friction);
 
+	ObjectTypeDB::bind_method(_MD("set_collision_debug_color", "color"), &TileMap::set_collision_debug_color);
+	ObjectTypeDB::bind_method(_MD("get_collision_debug_color"), &TileMap::get_collision_debug_color);
+	ObjectTypeDB::bind_method(_MD("_property_get_revert", "property"), &TileMap::_property_get_revert);
 	ObjectTypeDB::bind_method(_MD("set_collision_bounce", "value"), &TileMap::set_collision_bounce);
 	ObjectTypeDB::bind_method(_MD("get_collision_bounce"), &TileMap::get_collision_bounce);
 
@@ -1527,6 +1587,7 @@ void TileMap::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "collision/bounce", PROPERTY_HINT_RANGE, "0,1,0.01"), _SCS("set_collision_bounce"), _SCS("get_collision_bounce"));
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision/layers", PROPERTY_HINT_ALL_FLAGS), _SCS("set_collision_layer"), _SCS("get_collision_layer"));
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision/mask", PROPERTY_HINT_ALL_FLAGS), _SCS("set_collision_mask"), _SCS("get_collision_mask"));
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "collision/debug_color"), _SCS("set_collision_debug_color"), _SCS("get_collision_debug_color"));
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "occluder/light_mask", PROPERTY_HINT_ALL_FLAGS), _SCS("set_occluder_light_mask"), _SCS("get_occluder_light_mask"));
 
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "tile_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), _SCS("_set_tile_data"), _SCS("_get_tile_data"));
@@ -1559,6 +1620,8 @@ TileMap::TileMap() {
 	collision_mask = 1;
 	friction = 1;
 	bounce = 0;
+	collision_debug_color = Shape2D::get_default_debug_color();
+	collision_debug_color_custom = false;
 	mode = MODE_SQUARE;
 	half_offset = HALF_OFFSET_DISABLED;
 	use_kinematic = false;

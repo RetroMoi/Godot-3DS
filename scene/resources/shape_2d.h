@@ -54,9 +54,22 @@ public:
 	Variant collide_with_motion_and_get_contacts(const Matrix32 &p_local_xform, const Vector2 &p_local_motion, const Ref<Shape2D> &p_shape, const Matrix32 &p_shape_xform, const Vector2 &p_p_shape_motion);
 	Variant collide_and_get_contacts(const Matrix32 &p_local_xform, const Ref<Shape2D> &p_shape, const Matrix32 &p_shape_xform);
 
+	// Debug drawing: the fill, plus an opaque outline when the project's option is on.
 	virtual void draw(const RID &p_to_rid, const Color &p_color) {}
+	// The two parts of draw(), for callers drawing many shapes (a TileMap draws all the fills and then
+	// all the outlines, so each part batches into one draw on the 3DS).
+	virtual void draw_fill(const RID &p_to_rid, const Color &p_color) { draw(p_to_rid, p_color); }
+	virtual void draw_outline(const RID &p_to_rid, const Color &p_color) {}
 	virtual Rect2 get_rect() const { return Rect2(); }
 	virtual RID get_rid() const;
+
+	// Debug drawing of collision shapes (in the editor, and in a game with visible collision shapes).
+	// The project's color (debug/collision_shape_color), used by shapes without a color of their own.
+	static Color get_default_debug_color();
+	// Whether filled shapes get an opaque outline (debug/collision_shape_outline), as in newer Godot.
+	static bool is_debug_outline_enabled();
+	// Closed outline along p_points in the opaque version of p_color (lines: thin in the editor).
+	static void draw_debug_outline(const RID &p_to_rid, const Vector<Vector2> &p_points, const Color &p_color);
 	Shape2D();
 	~Shape2D();
 };

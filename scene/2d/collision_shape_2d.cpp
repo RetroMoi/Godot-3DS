@@ -152,8 +152,7 @@ void CollisionShape2D::_notification(int p_what) {
 
 			rect = Rect2();
 
-			Color draw_col = get_tree()->get_debug_collisions_color();
-			shape->draw(get_canvas_item(), draw_col);
+			shape->draw(get_canvas_item(), get_debug_color());
 
 			rect = shape->get_rect();
 			rect = rect.grow(3);
@@ -318,7 +317,39 @@ String CollisionShape2D::get_configuration_warning() const {
 	return String();
 }
 
+void CollisionShape2D::set_debug_color(const Color &p_color) {
+
+	// A color equal to the project's counts as "no color of its own": it keeps following the project.
+	debug_color_custom = p_color != Shape2D::get_default_debug_color();
+	debug_color = p_color;
+	update();
+}
+
+Color CollisionShape2D::get_debug_color() const {
+
+	return debug_color_custom ? debug_color : Shape2D::get_default_debug_color();
+}
+
+void CollisionShape2D::_validate_property(PropertyInfo &property) const {
+
+	// Saved only when the shape has a color of its own.
+	if (property.name == "debug_color" && !debug_color_custom)
+		property.usage &= ~PROPERTY_USAGE_STORAGE;
+}
+
+Variant CollisionShape2D::_property_get_revert(const String &p_name) const {
+
+	// Inspector revert button: back to the project's color.
+	if (p_name == "debug_color")
+		return Shape2D::get_default_debug_color();
+	return Variant();
+}
+
 void CollisionShape2D::_bind_methods() {
+
+	ObjectTypeDB::bind_method(_MD("set_debug_color", "color"), &CollisionShape2D::set_debug_color);
+	ObjectTypeDB::bind_method(_MD("get_debug_color"), &CollisionShape2D::get_debug_color);
+	ObjectTypeDB::bind_method(_MD("_property_get_revert", "property"), &CollisionShape2D::_property_get_revert);
 
 	ObjectTypeDB::bind_method(_MD("set_shape", "shape"), &CollisionShape2D::set_shape);
 	ObjectTypeDB::bind_method(_MD("get_shape"), &CollisionShape2D::get_shape);
@@ -334,6 +365,7 @@ void CollisionShape2D::_bind_methods() {
 
 	ADD_PROPERTYNZ(PropertyInfo(Variant::OBJECT, "shape", PROPERTY_HINT_RESOURCE_TYPE, "Shape2D"), _SCS("set_shape"), _SCS("get_shape"));
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "trigger"), _SCS("set_trigger"), _SCS("is_trigger"));
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "debug_color"), _SCS("set_debug_color"), _SCS("get_debug_color"));
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "_update_shape_index", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), _SCS("_set_update_shape_index"), _SCS("_get_update_shape_index"));
 }
 
@@ -345,4 +377,6 @@ CollisionShape2D::CollisionShape2D() {
 	unparenting = false;
 	can_update_body = false;
 	update_shape_index = -1;
+	debug_color = Shape2D::get_default_debug_color();
+	debug_color_custom = false;
 }

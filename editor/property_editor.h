@@ -228,6 +228,9 @@ class PropertyEditor : public Control {
 	bool _might_be_in_instance();
 	bool _get_instanced_node_original_property(const StringName &p_prop, Variant &value);
 	bool _is_property_different(const Variant &p_current, const Variant &p_orig, int p_usage = 0);
+	// Default only known at run time (e.g. a collision shape's debug color follows a project setting):
+	// the edited object answers _property_get_revert(name) with the value, or null when there is none.
+	bool _get_property_revert(const String &p_name, Variant &r_value);
 
 	void _refresh_item(TreeItem *p_item);
 	void _set_range_def(Object *p_item, String prop, float p_frame);

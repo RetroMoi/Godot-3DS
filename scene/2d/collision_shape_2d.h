@@ -44,6 +44,10 @@ class CollisionShape2D : public Node2D {
 	bool can_update_body;
 	void _shape_changed();
 	int update_shape_index;
+	// Debug color (editor / visible collision shapes). Without a color of its own, the shape follows
+	// the project's debug/collision_shape_color, and nothing is saved in the scene.
+	Color debug_color;
+	bool debug_color_custom;
 
 	void _set_update_shape_index(int p_index);
 	int _get_update_shape_index() const;
@@ -57,8 +61,13 @@ protected:
 	static void _bind_methods();
 
 	void _add_to_collision_object(Object *p_obj);
+	virtual void _validate_property(PropertyInfo &property) const;
+	Variant _property_get_revert(const String &p_name) const;
 
 public:
+	void set_debug_color(const Color &p_color);
+	Color get_debug_color() const;
+
 	void set_shape(const Ref<Shape2D> &p_shape);
 	Ref<Shape2D> get_shape() const;
 	virtual Rect2 get_item_rect() const;

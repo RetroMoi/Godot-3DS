@@ -69,9 +69,21 @@ void ConvexPolygonShape2D::_bind_methods() {
 
 void ConvexPolygonShape2D::draw(const RID &p_to_rid, const Color &p_color) {
 
+	draw_fill(p_to_rid, p_color);
+	if (is_debug_outline_enabled())
+		draw_outline(p_to_rid, p_color);
+}
+
+void ConvexPolygonShape2D::draw_fill(const RID &p_to_rid, const Color &p_color) {
+
 	Vector<Color> col;
 	col.push_back(p_color);
 	VisualServer::get_singleton()->canvas_item_add_polygon(p_to_rid, points, col);
+}
+
+void ConvexPolygonShape2D::draw_outline(const RID &p_to_rid, const Color &p_color) {
+
+	draw_debug_outline(p_to_rid, points, p_color);
 }
 
 Rect2 ConvexPolygonShape2D::get_rect() const {

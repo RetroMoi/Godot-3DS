@@ -51,7 +51,40 @@ Vector2 RectangleShape2D::get_extents() const {
 
 void RectangleShape2D::draw(const RID &p_to_rid, const Color &p_color) {
 
+	draw_fill(p_to_rid, p_color);
+	if (is_debug_outline_enabled())
+		draw_outline(p_to_rid, p_color);
+}
+
+void RectangleShape2D::draw_fill(const RID &p_to_rid, const Color &p_color) {
+
 	VisualServer::get_singleton()->canvas_item_add_rect(p_to_rid, Rect2(-extents, extents * 2.0), p_color);
+}
+
+void RectangleShape2D::draw_outline(const RID &p_to_rid, const Color &p_color) {
+
+	Rect2 r(-extents, extents * 2.0);
+	if (r.size.x <= 2 || r.size.y <= 2)
+		return;
+#ifdef TOOLS_ENABLED
+	// Editor: lines stay one screen pixel at any zoom.
+	Vector<Vector2> pts;
+	pts.push_back(r.pos);
+	pts.push_back(Vector2(r.pos.x + r.size.x, r.pos.y));
+	pts.push_back(r.pos + r.size);
+	pts.push_back(Vector2(r.pos.x, r.pos.y + r.size.y));
+	draw_debug_outline(p_to_rid, pts, p_color);
+#else
+	// Export templates (the 3DS): thin rects just inside the edges. Rects of one color batch into a
+	// single draw; lines are one draw each.
+	VisualServer *vs = VisualServer::get_singleton();
+	Color c = p_color;
+	c.a = 1.0;
+	vs->canvas_item_add_rect(p_to_rid, Rect2(r.pos, Size2(r.size.x, 1)), c);
+	vs->canvas_item_add_rect(p_to_rid, Rect2(r.pos.x, r.pos.y + r.size.y - 1, r.size.x, 1), c);
+	vs->canvas_item_add_rect(p_to_rid, Rect2(r.pos.x, r.pos.y + 1, 1, r.size.y - 2), c);
+	vs->canvas_item_add_rect(p_to_rid, Rect2(r.pos.x + r.size.x - 1, r.pos.y + 1, 1, r.size.y - 2), c);
+#endif
 }
 
 Rect2 RectangleShape2D::get_rect() const {

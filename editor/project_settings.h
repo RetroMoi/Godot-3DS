@@ -118,6 +118,9 @@ class ProjectSettings : public AcceptDialog {
 	void _settings_prop_edited(const String &p_name);
 	void _clamp_3ds_resolution();
 	void _settings_changed();
+	// Collision shapes in the edited scene follow the project's debug color and outline option at once.
+	bool last_collision_outline;
+	void _update_collision_debug_preview();
 
 	//ProjectExportSettings *export_settings;
 	void _copy_to_platform(int p_which);

@@ -29,10 +29,77 @@
 /*************************************************************************/
 
 #include "shape_2d.h"
+#include "globals.h"
+#include "scene/main/scene_main_loop.h"
 #include "servers/physics_2d_server.h"
+#include "servers/visual_server.h"
 RID Shape2D::get_rid() const {
 
 	return shape;
+}
+
+Color Shape2D::get_default_debug_color() {
+
+	SceneTree *st = SceneTree::get_singleton();
+	if (st)
+		return st->get_debug_collisions_color();
+	Globals *g = Globals::get_singleton();
+	if (g && g->has("debug/collision_shape_color"))
+		return g->get("debug/collision_shape_color");
+	return Color(0.0, 0.6, 0.7, 0.5);
+}
+
+bool Shape2D::is_debug_outline_enabled() {
+
+	Globals *g = Globals::get_singleton();
+	if (g && g->has("debug/collision_shape_outline"))
+		return g->get("debug/collision_shape_outline");
+	return true;
+}
+
+void Shape2D::draw_debug_outline(const RID &p_to_rid, const Vector<Vector2> &p_points, const Color &p_color) {
+
+	int n = p_points.size();
+	if (n < 2)
+		return;
+	Color c = p_color;
+	c.a = 1.0;
+	VisualServer *vs = VisualServer::get_singleton();
+#ifdef TOOLS_ENABLED
+	// Editor: lines stay one screen pixel at any zoom.
+	for (int i = 0; i < n; i++)
+		vs->canvas_item_add_line(p_to_rid, p_points[i], p_points[(i + 1) % n], c, 1);
+#else
+	// Export templates (the 3DS): one triangle array (a 1 unit wide band along each edge) instead of
+	// a line per edge, since every line is a draw of its own there (a circle has 24 edges).
+	Vector<Point2> pts;
+	Vector<int> idx;
+	for (int i = 0; i < n; i++) {
+		Vector2 a = p_points[i];
+		Vector2 b = p_points[(i + 1) % n];
+		Vector2 d = b - a;
+		float len = d.length();
+		if (len < CMP_EPSILON)
+			continue;
+		Vector2 nrm = Vector2(-d.y, d.x) * (0.5 / len);
+		int base = pts.size();
+		pts.push_back(a + nrm);
+		pts.push_back(b + nrm);
+		pts.push_back(b - nrm);
+		pts.push_back(a - nrm);
+		idx.push_back(base);
+		idx.push_back(base + 1);
+		idx.push_back(base + 2);
+		idx.push_back(base);
+		idx.push_back(base + 2);
+		idx.push_back(base + 3);
+	}
+	if (idx.empty())
+		return;
+	Vector<Color> cols;
+	cols.push_back(c);
+	vs->canvas_item_add_triangle_array(p_to_rid, idx, pts, cols);
+#endif
 }
 
 void Shape2D::set_custom_solver_bias(real_t p_bias) {

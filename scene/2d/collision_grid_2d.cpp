@@ -75,7 +75,7 @@ void CollisionGrid2D::add_tilemap(Object *p_tilemap) {
 	Matrix32 global = tm->is_inside_tree() ? tm->get_global_transform() : tm->get_transform();
 	if (tm->is_inside_tree() && !debug_canvas.is_valid() && tm->get_tree()->is_debugging_collisions_hint()) {
 		debug_canvas = tm->get_canvas();
-		debug_color = tm->get_tree()->get_debug_collisions_color();
+		debug_color = tm->get_collision_debug_color(); // the map's own color, or the project's
 	}
 	int skipped = 0;
 	for (List<TileMap::CollisionShape>::Element *E = shapes.front(); E; E = E->next()) {

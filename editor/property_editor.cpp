@@ -1905,6 +1905,17 @@ bool PropertyEditor::_get_instanced_node_original_property(const StringName &p_p
 	return found;
 }
 
+bool PropertyEditor::_get_property_revert(const String &p_name, Variant &r_value) {
+
+	if (!obj || !obj->has_method("_property_get_revert"))
+		return false;
+	Variant v = obj->call("_property_get_revert", p_name);
+	if (v.get_type() == Variant::NIL)
+		return false;
+	r_value = v;
+	return true;
+}
+
 bool PropertyEditor::_is_property_different(const Variant &p_current, const Variant &p_orig, int p_usage) {
 
 	{
@@ -2347,6 +2358,13 @@ void PropertyEditor::_check_reload_status(const String &p_name, TreeItem *item) 
 				has_reload = true;
 			}
 		}
+	}
+
+	if (!has_reload) {
+		Variant vorig, revert;
+		bool in_instance = _might_be_in_instance() && _get_instanced_node_original_property(p_name, vorig);
+		if (!in_instance && _get_property_revert(p_name, revert) && revert != obj->get(p_name))
+			has_reload = true;
 	}
 
 	//print_line("found: "+itos(found)+" has reload: "+itos(has_reload)+" is_disabled "+itos(is_disabled));
@@ -3512,6 +3530,15 @@ void PropertyEditor::update_tree() {
 			}
 		}
 
+		if (!has_reload) {
+			Variant vorig, revert;
+			bool in_instance = mbi && _get_instanced_node_original_property(p.name, vorig);
+			if (!in_instance && _get_property_revert(p.name, revert) && revert != obj->get(p.name)) {
+				item->add_button(1, get_icon("ReloadSmall", "EditorIcons"), 3);
+				has_reload = true;
+			}
+		}
+
 		if (mbi && !has_reload && item->get_cell_mode(1) == TreeItem::CELL_MODE_RANGE && item->get_text(1) == String()) {
 			item->add_button(1, get_icon("ReloadEmpty", "EditorIcons"), 3, true);
 		}
@@ -3899,8 +3926,13 @@ void PropertyEditor::_edit_button(Object *p_item, int p_column, int p_button) {
 			Variant orig_value;
 			if (scr->get_property_default_value(prop, orig_value)) {
 				_edit_set(prop, orig_value);
+				return;
 			}
 		}
+
+		Variant revert;
+		if (_get_property_revert(prop, revert))
+			_edit_set(prop, revert);
 
 	} else {
 

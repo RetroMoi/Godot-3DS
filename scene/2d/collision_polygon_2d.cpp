@@ -223,26 +223,25 @@ void CollisionPolygon2D::_notification(int p_what) {
 				break;
 			}
 
-			for (int i = 0; i < polygon.size(); i++) {
-
-				Vector2 p = polygon[i];
-				Vector2 n = polygon[(i + 1) % polygon.size()];
-				draw_line(p, n, Color(0.9, 0.2, 0.0, 0.8), 3);
+			if (polygon.size() < 2)
+				break;
+			{
+				Color color = get_debug_color();
+				if (build_mode == BUILD_SEGMENTS || polygon.size() < 3) {
+					// Segments collide only along the edges: lines, no fill.
+					Color c = color;
+					c.a = 1.0;
+					for (int i = 0; i < polygon.size(); i++)
+						draw_line(polygon[i], polygon[(i + 1) % polygon.size()], c, 2);
+				} else {
+					// The convex parts the physics uses, all in the node's color.
+					Vector<Vector<Vector2> > decomp = _decompose_in_convex();
+					for (int i = 0; i < decomp.size(); i++)
+						draw_colored_polygon(decomp[i], color);
+					if (Shape2D::is_debug_outline_enabled())
+						Shape2D::draw_debug_outline(get_canvas_item(), polygon, color);
+				}
 			}
-#define DEBUG_DECOMPOSE
-#if defined(TOOLS_ENABLED) && defined(DEBUG_DECOMPOSE)
-
-			Vector<Vector<Vector2> > decomp = _decompose_in_convex();
-
-			Color c(0.4, 0.9, 0.1);
-			for (int i = 0; i < decomp.size(); i++) {
-
-				c.set_hsv(Math::fmod(c.get_h() + 0.738, 1), c.get_s(), c.get_v(), 0.5);
-				draw_colored_polygon(decomp[i], c);
-			}
-#else
-			draw_colored_polygon(polygon, get_tree()->get_debug_collisions_color());
-#endif
 
 		} break;
 		case NOTIFICATION_UNPARENTED: {
@@ -339,7 +338,39 @@ String CollisionPolygon2D::get_configuration_warning() const {
 	return String();
 }
 
+void CollisionPolygon2D::set_debug_color(const Color &p_color) {
+
+	// A color equal to the project's counts as "no color of its own": it keeps following the project.
+	debug_color_custom = p_color != Shape2D::get_default_debug_color();
+	debug_color = p_color;
+	update();
+}
+
+Color CollisionPolygon2D::get_debug_color() const {
+
+	return debug_color_custom ? debug_color : Shape2D::get_default_debug_color();
+}
+
+void CollisionPolygon2D::_validate_property(PropertyInfo &property) const {
+
+	// Saved only when the polygon has a color of its own.
+	if (property.name == "debug_color" && !debug_color_custom)
+		property.usage &= ~PROPERTY_USAGE_STORAGE;
+}
+
+Variant CollisionPolygon2D::_property_get_revert(const String &p_name) const {
+
+	// Inspector revert button: back to the project's color.
+	if (p_name == "debug_color")
+		return Shape2D::get_default_debug_color();
+	return Variant();
+}
+
 void CollisionPolygon2D::_bind_methods() {
+
+	ObjectTypeDB::bind_method(_MD("set_debug_color", "color"), &CollisionPolygon2D::set_debug_color);
+	ObjectTypeDB::bind_method(_MD("get_debug_color"), &CollisionPolygon2D::get_debug_color);
+	ObjectTypeDB::bind_method(_MD("_property_get_revert", "property"), &CollisionPolygon2D::_property_get_revert);
 
 	ObjectTypeDB::bind_method(_MD("_add_to_collision_object"), &CollisionPolygon2D::_add_to_collision_object);
 	ObjectTypeDB::bind_method(_MD("set_polygon", "polygon"), &CollisionPolygon2D::set_polygon);
@@ -361,6 +392,7 @@ void CollisionPolygon2D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2_ARRAY, "polygon"), _SCS("set_polygon"), _SCS("get_polygon"));
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "shape_range", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), _SCS("_set_shape_range"), _SCS("_get_shape_range"));
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "trigger"), _SCS("set_trigger"), _SCS("is_trigger"));
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "debug_color"), _SCS("set_debug_color"), _SCS("get_debug_color"));
 }
 
 CollisionPolygon2D::CollisionPolygon2D() {
@@ -373,4 +405,6 @@ CollisionPolygon2D::CollisionPolygon2D() {
 	shape_to = -1;
 	can_update_body = false;
 	set_notify_local_transform(true);
+	debug_color = Shape2D::get_default_debug_color();
+	debug_color_custom = false;
 }

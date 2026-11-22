@@ -48,6 +48,8 @@ public:
 	Vector<Vector2> get_points() const;
 
 	virtual void draw(const RID &p_to_rid, const Color &p_color);
+	virtual void draw_fill(const RID &p_to_rid, const Color &p_color);
+	virtual void draw_outline(const RID &p_to_rid, const Color &p_color);
 	virtual Rect2 get_rect() const;
 
 	ConvexPolygonShape2D();

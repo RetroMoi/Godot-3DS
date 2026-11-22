@@ -884,6 +884,32 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - D: no conflito, o disco vence com aviso.
   - E: o Play não regrava mais `outside.tres` nem os diálogos.
 
+### 5.18 Cor própria das collision shapes e contorno opaco (22/11; feito, no estilo do Godot 4)
+- **Antes:** só havia a cor global `debug/collision_shape_color`. No Godot 4, `CollisionShape2D.debug_color` começa com a cor do projeto, só é gravada na cena quando é diferente, e o reverter volta à cor do projeto. Cada shape também tem um contorno opaco (`debug/shapes/collision/draw_2d_outlines`).
+- **O que entrou:**
+  - `CollisionShape2D.debug_color` e `CollisionPolygon2D.debug_color`, com `set_/get_debug_color` disponíveis também em script.
+  - `TileMap`: `collision/debug_color` (`set_/get_collision_debug_color`). Vale para as colisões dos tiles e para o `CollisionGrid2D` criado a partir dele (o grid usa a cor do primeiro TileMap adicionado).
+  - Sem cor própria, o nó segue a cor do projeto e nada é gravado. A regra é: cor igual à do projeto conta como "sem cor própria" (flag interna). Assim, mudar a cor do projeto depois não grava a cor velha em todas as cenas.
+  - **Inspetor:** botão ↺ para propriedades cujo padrão só se sabe na hora. Gancho genérico: o objeto responde `_property_get_revert(nome)`. O valor vindo de uma cena instanciada tem prioridade.
+  - **Opção de projeto `debug/collision_shape_outline`** (ligada por padrão): contorno opaco nos shapes preenchidos (retângulo, círculo, cápsula, polígono convexo e `CollisionPolygon2D`).
+    - No editor, o contorno é feito de linhas (1 pixel em qualquer zoom).
+    - No template (3DS), o retângulo usa 4 retângulos finos por dentro e os outros usam um único triângulo-array em anel. Linhas seriam uma chamada de desenho cada; um círculo tem 24 lados.
+  - O TileMap desenha todos os preenchimentos e depois todos os contornos de cada quadrante.
+  - Nas Configurações do Projeto, mudar a cor ou o contorno redesenha na hora os shapes da cena aberta.
+  - `CollisionPolygon2D` usa a cor do nó; antes tinha contorno laranja e, no editor, o preenchimento "arco-íris" da decomposição. Em modo segmentos, desenha só linhas.
+- **Custo:** nenhum com as colisões invisíveis; 16 bytes a mais por nó.
+  - Com colisões visíveis, no mapa do ARPG no emulador: 52 chamadas sem contorno e 62 com contorno; desenho 3,6 → 3,9 ms.
+  - A primeira versão, com linhas, dava 235 chamadas: os morcegos e as cápsulas tinham 24–26 linhas cada.
+- **Testado:**
+  - Script: padrão, gravação só quando diferente, carga, reverter.
+  - Editor (Xvfb): cores, contorno, ↺ e Desfazer, cor e contorno do projeto ao vivo, TileMap no Inspetor.
+  - Jogo no PC com `-dc`.
+  - Emulador (New e Old): cena de teste e mapa do ARPG.
+  - Salvar `test_player.tscn` não grava nenhuma `debug_color`.
+- **Para o jogo (Open), quando quiser:**
+  - Cores de hitbox, hurtbox e corpo direto nos nós (Inspetor → Debug Color).
+  - No ARPG, as áreas com a cor padrão (ex.: `damage_area`, áreas de fala) ficam por cima e escondem as coloridas: dar cor ou transparência a elas também.
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;

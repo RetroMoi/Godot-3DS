@@ -64,17 +64,33 @@ Rect2 CircleShape2D::get_rect() const {
 	return rect;
 }
 
-void CircleShape2D::draw(const RID &p_to_rid, const Color &p_color) {
+static Vector<Vector2> _circle_points(float p_radius) {
 
 	Vector<Vector2> points;
 	for (int i = 0; i < 24; i++) {
 
-		points.push_back(Vector2(Math::cos(i * Math_PI * 2 / 24.0), Math::sin(i * Math_PI * 2 / 24.0)) * get_radius());
+		points.push_back(Vector2(Math::cos(i * Math_PI * 2 / 24.0), Math::sin(i * Math_PI * 2 / 24.0)) * p_radius);
 	}
+	return points;
+}
+
+void CircleShape2D::draw(const RID &p_to_rid, const Color &p_color) {
+
+	draw_fill(p_to_rid, p_color);
+	if (is_debug_outline_enabled())
+		draw_outline(p_to_rid, p_color);
+}
+
+void CircleShape2D::draw_fill(const RID &p_to_rid, const Color &p_color) {
 
 	Vector<Color> col;
 	col.push_back(p_color);
-	VisualServer::get_singleton()->canvas_item_add_polygon(p_to_rid, points, col);
+	VisualServer::get_singleton()->canvas_item_add_polygon(p_to_rid, _circle_points(get_radius()), col);
+}
+
+void CircleShape2D::draw_outline(const RID &p_to_rid, const Color &p_color) {
+
+	draw_debug_outline(p_to_rid, _circle_points(get_radius()), p_color);
 }
 
 CircleShape2D::CircleShape2D() :

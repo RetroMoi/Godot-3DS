@@ -50,6 +50,9 @@ protected:
 	Vector<Point2> polygon;
 	bool trigger;
 	bool unparenting;
+	// Debug color, as in CollisionShape2D: follows the project's color unless set to another one.
+	Color debug_color;
+	bool debug_color_custom;
 
 	void _add_to_collision_object(Object *p_obj);
 	void _update_xform_in_parent();
@@ -68,8 +71,13 @@ protected:
 	void _notification(int p_what);
 	virtual void add_child_notify(Node *p_child);
 	static void _bind_methods();
+	virtual void _validate_property(PropertyInfo &property) const;
+	Variant _property_get_revert(const String &p_name) const;
 
 public:
+	void set_debug_color(const Color &p_color);
+	Color get_debug_color() const;
+
 	void set_trigger(bool p_trigger);
 	bool is_trigger() const;
 

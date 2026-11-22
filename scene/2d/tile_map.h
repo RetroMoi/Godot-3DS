@@ -167,6 +167,10 @@ private:
 	float fp_adjust;
 	float friction;
 	float bounce;
+	// Color of the collision shapes drawn with visible collision shapes; follows the project's
+	// debug/collision_shape_color unless set to another one (only then saved in the scene).
+	Color collision_debug_color;
+	bool collision_debug_color_custom;
 	uint32_t collision_layer;
 	uint32_t collision_mask;
 
@@ -206,6 +210,8 @@ private:
 protected:
 	void _notification(int p_what);
 	static void _bind_methods();
+	virtual void _validate_property(PropertyInfo &property) const;
+	Variant _property_get_revert(const String &p_name) const;
 
 public:
 	enum {
@@ -259,6 +265,9 @@ public:
 
 	void set_collision_bounce(float p_bounce);
 	float get_collision_bounce() const;
+
+	void set_collision_debug_color(const Color &p_color);
+	Color get_collision_debug_color() const;
 
 	void set_mode(Mode p_mode);
 	Mode get_mode() const;

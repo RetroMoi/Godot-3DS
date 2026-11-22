@@ -1638,6 +1638,8 @@ SceneTree::SceneTree() {
 	debug_navigation_hint = false;
 #endif
 	debug_collisions_color = GLOBAL_DEF("debug/collision_shape_color", Color(0.0, 0.6, 0.7, 0.5));
+	// Opaque outline around filled collision shapes (read by Shape2D when drawing).
+	GLOBAL_DEF("debug/collision_shape_outline", true);
 	debug_collision_contact_color = GLOBAL_DEF("debug/collision_contact_color", Color(1.0, 0.2, 0.1, 0.8));
 	debug_navigation_color = GLOBAL_DEF("debug/navigation_geometry_color", Color(0.1, 1.0, 0.7, 0.4));
 	debug_navigation_disabled_color = GLOBAL_DEF("debug/navigation_disabled_geometry_color", Color(1.0, 0.7, 0.1, 0.4));

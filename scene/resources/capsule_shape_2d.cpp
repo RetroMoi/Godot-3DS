@@ -61,20 +61,36 @@ real_t CapsuleShape2D::get_height() const {
 	return height;
 }
 
-void CapsuleShape2D::draw(const RID &p_to_rid, const Color &p_color) {
+static Vector<Vector2> _capsule_points(float p_radius, float p_height) {
 
 	Vector<Vector2> points;
 	for (int i = 0; i < 24; i++) {
-		Vector2 ofs = Vector2(0, (i > 6 && i <= 18) ? -get_height() * 0.5 : get_height() * 0.5);
+		Vector2 ofs = Vector2(0, (i > 6 && i <= 18) ? -p_height * 0.5 : p_height * 0.5);
 
-		points.push_back(Vector2(Math::sin(i * Math_PI * 2 / 24.0), Math::cos(i * Math_PI * 2 / 24.0)) * get_radius() + ofs);
+		points.push_back(Vector2(Math::sin(i * Math_PI * 2 / 24.0), Math::cos(i * Math_PI * 2 / 24.0)) * p_radius + ofs);
 		if (i == 6 || i == 18)
-			points.push_back(Vector2(Math::sin(i * Math_PI * 2 / 24.0), Math::cos(i * Math_PI * 2 / 24.0)) * get_radius() - ofs);
+			points.push_back(Vector2(Math::sin(i * Math_PI * 2 / 24.0), Math::cos(i * Math_PI * 2 / 24.0)) * p_radius - ofs);
 	}
+	return points;
+}
+
+void CapsuleShape2D::draw(const RID &p_to_rid, const Color &p_color) {
+
+	draw_fill(p_to_rid, p_color);
+	if (is_debug_outline_enabled())
+		draw_outline(p_to_rid, p_color);
+}
+
+void CapsuleShape2D::draw_fill(const RID &p_to_rid, const Color &p_color) {
 
 	Vector<Color> col;
 	col.push_back(p_color);
-	VisualServer::get_singleton()->canvas_item_add_polygon(p_to_rid, points, col);
+	VisualServer::get_singleton()->canvas_item_add_polygon(p_to_rid, _capsule_points(get_radius(), get_height()), col);
+}
+
+void CapsuleShape2D::draw_outline(const RID &p_to_rid, const Color &p_color) {
+
+	draw_debug_outline(p_to_rid, _capsule_points(get_radius(), get_height()), p_color);
 }
 
 Rect2 CapsuleShape2D::get_rect() const {
