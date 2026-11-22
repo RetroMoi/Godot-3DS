@@ -1056,6 +1056,7 @@ Address: 0x0010366c   Error code: 0xd8606408
 
 | Commit | Mudança |
 |---|---|
+| `908ef88` | editor 2D: nós Node2D só com caixa quando têm tamanho visível (5.19); shapes cinza quando o objeto não colide com nada (5.20); prévia do tile cresce com o painel |
 | `16fe639` | editor 2D: Area2D e corpos sem caixa (cruz na origem, sem puxadores; o tamanho é editado nos shapes), como no Godot 4 (5.19) |
 | `6bf64aa` | collision shapes: `debug_color` própria (shape, polígono, `collision/debug_color` no TileMap), reverter no Inspetor, contorno opaco (`debug/collision_shape_outline`) que agrupa no 3DS (5.18) |
 | `f5d3ecd` | editor: o Salvar do Inspetor não perde mais edições para recargas do disco; o Play não sobrescreve arquivos mais novos nem regrava recursos intocados (5.17) |
