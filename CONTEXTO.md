@@ -968,6 +968,18 @@ Também gasta memória e tempo de carga, com centenas de itens.
   - editor: área e corpo desligados cinza; troca ao vivo pelo Inspetor (só `monitoring` desligado mantém a cor; com `monitorable` também desligado, fica cinza);
   - jogo com `-dc`: um script alternando `monitorable` a cada segundo.
 
+### 5.21 Ícone da engine em vermelho 3DS (22/11)
+- Para distinguir do Godot 4 na barra de tarefas, o robô passou a vermelho 3DS (`#C8102E`).
+  - Recolorido por script (o azul vira vermelho mantendo o brilho de cada pixel, com bordas suavizadas).
+  - A partir da arte do usuário (versão transparente, com o rótulo "3DS"), com contorno branco no rótulo para aparecer no fundo escuro.
+- **Trocados:**
+  - `platform/windows/godot.ico` (ícone do `.exe`): 16, 24 e 32 só com a cabeça (o rótulo fica ilegível nesses tamanhos); 48, 64, 128 e 256 com o rótulo.
+  - `main/splash.h`: `app_icon_png` (ícone da janela, 64 px, só a cabeça) e `boot_splash_png` (tela de abertura recolorida). Os arrays foram regenerados e conferidos byte a byte.
+  - `editor/icons/icon_default_project_icon.png` (projeto novo e lista do Gerenciador de Projetos), `icon_logo.png` ("Sobre") e `icon_logo_small.png`.
+  - `icon.png` da raiz.
+- **Mantidos:** `icon_godot.png`, o botão da documentação online do Godot, e os ícones das plataformas de exportação (`platform/*/logo.png`).
+- O Windows guarda ícones em cache: um atalho ou ícone fixado antigo pode demorar a mudar (refazer o atalho resolve).
+
 ### 5.5 Receita recomendada para inimigos (lado do jogo)
   - a mesma do player: `CollisionGrid2D`, entrada sem polling e timers por contador;
   - IA a cada poucos quadros;
